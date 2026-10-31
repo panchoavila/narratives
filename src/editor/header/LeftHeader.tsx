@@ -11,8 +11,9 @@
 // component is gone; its menu definitions live in `menu-builders.tsx`
 // and are consumed verbatim by the logo dropdown.
 
-import { useRef, useState, useMemo } from 'react';
+import { useRef, useState, useMemo, useEffect } from 'react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
+import { listLocalSites, type LocalSiteSummary } from '@/backend/sites-backend';
 import { previewModeAtom } from '@/code/stores/editor-store';
 import {
   directSelectionEnabledAtom,
@@ -87,7 +88,13 @@ function RevymeLogo() {
 
 export function LogoButton() {
   const [open, setOpen] = useState(false);
+  const [localSites, setLocalSites] = useState<LocalSiteSummary[]>([]);
   const ref = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open || CLOUD_ENABLED) return;
+    listLocalSites().then(setLocalSites).catch(() => {});
+  }, [open]);
   // Viewers keep "Go to Dashboard" + "Your Account" (account-level,
   // harmless) but every menubar tab (File / Edit / Insert / View) is
   // disabled — they all open write paths.
@@ -144,6 +151,19 @@ export function LogoButton() {
           void leaveBuilderTo('/dashboard', 'logo-dashboard');
         },
       },
+      ...(!CLOUD_ENABLED && localSites.length > 0 ? [{
+        id: 'logo-switch-site',
+        label: 'Switch Site',
+        submenuItems: localSites.map((s) => ({
+          id: `switch-site-${s.id}`,
+          label: `${s.name} (${s.id})`,
+          checked: getProjectId() === s.id,
+          onClick: () => {
+            void leaveBuilderTo(`/builder/${encodeURIComponent(s.id)}`, 'logo-switch-site');
+          },
+        })),
+        onClick: () => {},
+      }] : []),
       {
         id: 'logo-account',
         label: 'Your Account',
@@ -217,7 +237,7 @@ export function LogoButton() {
     isViewer, hasActiveSubscription, setSettingsOpen, setSettingsSection,
     directSelectionEnabled, autoPanSpeed, autoFocusLayers, showRulers, useSmoothZoom, showPixelGrid, uploadImageFormat,
     setDirectSelectionEnabled, setAutoPanSpeed, setAutoFocusLayers, setShowRulers, setUseSmoothZoom, setShowPixelGrid, setUploadImageFormat,
-    builderTheme, setBuilderTheme,
+    builderTheme, setBuilderTheme, localSites,
   ]);
 
   return (

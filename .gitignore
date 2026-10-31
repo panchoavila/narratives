@@ -5,7 +5,7 @@ dist
 debug-trace.json
 debug-code.jsx
 debug_output/
-scripts/
+/scripts/
 
 # generated / local
 debug-code-before.jsx

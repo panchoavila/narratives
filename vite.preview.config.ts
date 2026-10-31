@@ -16,6 +16,7 @@
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
+import { sitesStaticAssetsPlugin } from './src/server/sites-plugin';
 
 const src = path.resolve(__dirname, 'src');
 
@@ -43,11 +44,14 @@ export default defineConfig({
   // restarts because each server boots, rebuilds, then the next server
   // invalidates again. Separate cacheDir per config keeps them disjoint.
   cacheDir: path.resolve(__dirname, 'node_modules/.vite-preview'),
-  plugins: [react(), runtimeBridgeImportmapPlugin()],
+  plugins: [react(), runtimeBridgeImportmapPlugin(), sitesStaticAssetsPlugin(__dirname)],
   server: {
     port: 5175,
     strictPort: true,
     cors: true,
+    watch: {
+      ignored: ['**/sites/**'],
+    },
     // CORP cross-origin is enough — the parent (3333) runs under
     // `Cross-Origin-Embedder-Policy: credentialless`, which allows it to
     // embed cross-origin iframes that send CORP. We deliberately do NOT

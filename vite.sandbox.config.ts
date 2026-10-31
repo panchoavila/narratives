@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
+import { sitesStaticAssetsPlugin } from './src/server/sites-plugin';
 
 const stubs = path.resolve(__dirname, 'src/canvas-sandbox/stubs');
 const src = path.resolve(__dirname, 'src');
@@ -69,11 +70,14 @@ export default defineConfig({
   // servers in one workspace stomp on `node_modules/.vite/deps/` if they
   // share it).
   cacheDir: path.resolve(__dirname, 'node_modules/.vite-sandbox'),
-  plugins: [react(), sandboxStubsPlugin(), runtimeBridgeImportmapPlugin()],
+  plugins: [react(), sandboxStubsPlugin(), runtimeBridgeImportmapPlugin(), sitesStaticAssetsPlugin(__dirname)],
   server: {
     port: 5174,
     strictPort: true,
     cors: true,
+    watch: {
+      ignored: ['**/sites/**'],
+    },
     // CORP `cross-origin` lets the parent (3333) embed sandbox responses under
     // its `Cross-Origin-Embedder-Policy: credentialless` policy. Without this
     // header on the iframe HTML + JS, the parent would refuse to load it.

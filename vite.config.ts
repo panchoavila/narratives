@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sitesApiPlugin } from './src/server/sites-plugin';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -372,14 +373,14 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const cloudMode = env.VITE_REVYME_CLOUD === 'true';
   return {
-  plugins: [react(), tailwindcss(), debugTracePlugin()],
+  plugins: [react(), tailwindcss(), debugTracePlugin(), sitesApiPlugin(__dirname)],
   // In cloud mode assets must be served under /builder/ so Next.js rewrite proxy can forward them.
   // Standalone mode uses root path (no proxy).
   base: cloudMode ? '/builder/' : '/',
   server: {
     port: 3333,
     watch: {
-      ignored: ['**/debug_output/**', '**/debug-code*.jsx'],
+      ignored: ['**/debug_output/**', '**/debug-code*.jsx', '**/sites/**'],
     },
     // No cross-origin isolation headers on the parent. We previously set
     // `Cross-Origin-Embedder-Policy: credentialless` here for process

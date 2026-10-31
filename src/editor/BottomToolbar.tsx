@@ -15,6 +15,7 @@ import { activeFilePathAtom, isIconSetFilePath } from '@/code/project/active-fil
 import { i18nConfigAtom, activeLocaleAtom, isDefaultLocaleAtom } from '@/code/stores/locale-store';
 import { creatorToolsLockedAtom } from '@/code/stores/tool-store';
 import { commentModeActiveAtom } from '@/code/stores/comment-store';
+import { timelineOpenAtom } from '@/code/stores/timeline-store';
 import {
   CursorIcon, FrameToolbarIcon, TextToolbarIcon, HandToolbarIcon,
   ShapeSquareIcon, ShapeCircleIcon, ShapeTriangleIcon, ShapePathIcon,
@@ -498,6 +499,7 @@ export default function BottomToolbar() {
   // Sites already on a paid, active plan don't need the Upgrade nudge —
   // it (and its separator) collapse out of the toolbar.
   const hasActiveSubscription = useAtomValue(hasActiveSubscriptionAtom);
+  const [timelineOpen, setTimelineOpen] = useAtom(timelineOpenAtom);
   // Offline is a stricter case than role-viewer: a role-viewer MAY
   // comment, but an offline user may NOT (the comment can't be
   // persisted/synced), so the comment tool is hidden when offline.
@@ -738,6 +740,33 @@ export default function BottomToolbar() {
 
         {/* ── Theme Switcher ── */}
         <ThemeSwitcher />
+
+        {/* ── Animation Timeline ── */}
+        <button
+          type="button"
+          data-testid="toggle-animation-timeline"
+          title="Animation Timeline"
+          onClick={() => {
+            trace.action('toolbar:animation-timeline', { open: !timelineOpen });
+            setTimelineOpen(!timelineOpen);
+          }}
+          className={`flex items-center justify-center gap-1 px-2 h-[32px] cut-corners transition-colors ${
+            timelineOpen
+              ? 'bg-[var(--accent)] text-[var(--accent-fg)] hover:brightness-110'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
+          }`}
+          style={{ border: 'none', cursor: 'pointer' }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="6" x2="15" y2="6" />
+            <circle cx="9" cy="6" r="2" fill="currentColor" />
+            <line x1="7" y1="12" x2="21" y2="12" />
+            <circle cx="15" cy="12" r="2" fill="currentColor" />
+            <line x1="4" y1="18" x2="18" y2="18" />
+            <circle cx="11" cy="18" r="2" fill="currentColor" />
+          </svg>
+          <span className="text-[11px] font-medium">Timeline</span>
+        </button>
 
         {/* ── Comments ── Hidden when offline: comments can't be
             persisted/synced without a connection. Role-viewers (online)

@@ -12,6 +12,7 @@ import PageChat from './editor/PageChat';
 import { componentEditorFileAtom } from '@/code/stores/component-editor-store';
 import { isComponentFileAtom } from './code/stores/store';
 import KeyframeSheet from './editor/tools/AnimationTool/css/KeyframeSheet';
+import AnimationTimeline from './editor/timeline/AnimationTimeline';
 import PreviewOverlay from './editor/header/PreviewOverlay';
 import { LeftMenu, LeftPanel, leftPanelAtom } from './editor/left-toolbar';
 import LeftHeader from './editor/header/LeftHeader';
@@ -244,6 +245,7 @@ export default function App() {
             and the chat is exactly where the run is watched and stopped. */}
         {!previewMode && !componentEditorOpen && !pluginEditorOpen && !isViewerRole && <PageChat />}
         {!previewMode && !componentEditorOpen && !pluginEditorOpen && !cmsOverlayShowing && !translationsOverlayOpen && <BottomToolbar />}
+        {!previewMode && !componentEditorOpen && !pluginEditorOpen && !cmsOverlayShowing && !translationsOverlayOpen && <AnimationTimeline />}
         {/* Sketch brush controls live in the right PropertiesPanel
             (SketchTool) so they sit in the same place as every other
             element's properties — not in a floating toolbar. */}

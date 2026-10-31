@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { CLOUD_ENABLED } from '@/shared/cloud-flag';
 import { useSetAtom, getDefaultStore } from 'jotai';
 import App from './App';
+import SitesDashboard from './editor/SitesDashboard';
 import RemixWorkspacePicker from './RemixWorkspacePicker';
 import { remixTemplate, remixTemplateShare } from '@/backend/revyme-backend';
 import { backend } from './backend';
@@ -79,6 +80,10 @@ function e2eSharedHooks(store: ReturnType<typeof getDefaultStore>) {
 }
 
 export default function ProjectLoader() {
+  const isDashboardRoute =
+    !CLOUD_ENABLED &&
+    typeof window !== 'undefined' &&
+    window.location.pathname.replace(/\/+$/, '') === '/dashboard';
   const [ready, setReady] = useState(false);
   // When set, a `?remix=` load is paused on the workspace picker — the
   // remix only runs once the user chooses a workspace (see below).
@@ -91,6 +96,7 @@ export default function ProjectLoader() {
     let cancelled = false;
 
     async function init() {
+      if (isDashboardRoute) return;
       trace.action('project-loader:start');
 
       // Dev escape hatch: `/builder/noauth` skips the auth flow entirely.
@@ -586,6 +592,10 @@ export default function ProjectLoader() {
   // to show behind it — the previewed template inside the builder when the
   // snapshot loaded, the ordinary loading shell when it didn't (share links).
   // The picker performs the remix + redirect itself.
+  if (isDashboardRoute) {
+    return <SitesDashboard />;
+  }
+
   if (!ready) {
     return <BuilderLoadingShell />;
   }
