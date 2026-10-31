@@ -1,5 +1,6 @@
 // AnimationTimeline.tsx — Bottom timeline panel inspecting and editing all
-// DOM element and page-level animations, durations, delays, and keyframe offsets.
+// DOM element and page-level animations, durations, delays, and keyframe offsets,
+// with 1D temporal Smart Guides (edge/stop alignment, equal duration, stagger cadence).
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAtom, useAtomValue } from 'jotai';
@@ -23,6 +24,13 @@ import {
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
 import { getViewportPrefix } from '@/canvas/node-ops';
 import { trace } from '@/shared/debug-trace';
+import {
+  computeTimelineSnap,
+  roundSec,
+  type TimelineGuideLine,
+  type TimelineDurationGuide,
+  type TimelineStaggerGuide,
+} from './timeline-snap';
 
 const KIND_COLORS: Record<string, string> = {
   keyframe: '#f59e0b',
@@ -34,23 +42,36 @@ const KIND_COLORS: Record<string, string> = {
   'smooth-scroll': '#14b8a6',
 };
 
-function roundSec(val: number): number {
-  return Math.round(val * 100) / 100;
+interface ActiveSnapState {
+  activeTrackId: string;
+  guideLines: TimelineGuideLine[];
+  durationGuide: TimelineDurationGuide | null;
+  staggerGuide: TimelineStaggerGuide | null;
 }
 
 function TrackRow({
   track,
+  allTracks,
   maxTime,
+  playhead,
+  ticks,
   showNumeric,
   isSelected,
+  activeSnap,
   onSelect,
+  onSnapChange,
   onCommitTiming,
 }: {
   track: TimelineTrack;
+  allTracks: readonly TimelineTrack[];
   maxTime: number;
+  playhead: number;
+  ticks: readonly number[];
   showNumeric: boolean;
   isSelected: boolean;
+  activeSnap: ActiveSnapState | null;
   onSelect: () => void;
+  onSnapChange: (snap: ActiveSnapState | null) => void;
   onCommitTiming: (track: TimelineTrack, nextDelay: number, nextDuration: number) => void;
 }) {
   const [delayDraft, setDelayDraft] = useState(() => String(track.delay));
@@ -110,28 +131,58 @@ function TrackRow({
       const dx = moveEvent.clientX - startX;
       const deltaSec = (dx / laneWidth) * maxTime;
 
+      let rawDelay = initialDelay;
+      let rawDuration = initialDuration;
+
       if (mode === 'move') {
-        latestDelay = roundSec(Math.max(0, initialDelay + deltaSec));
-        latestDuration = initialDuration;
+        rawDelay = Math.max(0, initialDelay + deltaSec);
+        rawDuration = initialDuration;
       } else if (mode === 'start') {
         const endSec = initialDelay + initialDuration;
-        const clampedStart = Math.max(0, Math.min(endSec - 0.05, initialDelay + deltaSec));
-        latestDelay = roundSec(clampedStart);
-        latestDuration = roundSec(Math.max(0.05, endSec - latestDelay));
+        rawDelay = Math.max(0, Math.min(endSec - 0.05, initialDelay + deltaSec));
+        rawDuration = Math.max(0.05, endSec - rawDelay);
       } else if (mode === 'end') {
-        latestDelay = initialDelay;
-        latestDuration = roundSec(Math.max(0.05, initialDuration + deltaSec));
+        rawDelay = initialDelay;
+        rawDuration = Math.max(0.05, initialDuration + deltaSec);
       }
+
+      const snap = computeTimelineSnap({
+        activeTrack: track,
+        otherTracks: allTracks,
+        mode,
+        rawDelay,
+        rawDuration,
+        maxTime,
+        laneWidthPx: laneWidth,
+        playhead,
+        ticks,
+        altKey: moveEvent.altKey,
+      });
+
+      latestDelay = snap.delay;
+      latestDuration = snap.duration;
 
       setDragState({ mode, delay: latestDelay, duration: latestDuration });
       setDelayDraft(String(latestDelay));
       setDurationDraft(String(latestDuration));
+
+      if (snap.guideLines.length > 0 || snap.durationGuide || snap.staggerGuide) {
+        onSnapChange({
+          activeTrackId: track.id,
+          guideLines: snap.guideLines,
+          durationGuide: snap.durationGuide,
+          staggerGuide: snap.staggerGuide,
+        });
+      } else {
+        onSnapChange(null);
+      }
     };
 
     const onPointerUp = () => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       setDragState(null);
+      onSnapChange(null);
       if (latestDelay !== initialDelay || latestDuration !== initialDuration) {
         onCommitTiming(track, latestDelay, latestDuration);
       }
@@ -144,6 +195,19 @@ function TrackRow({
   const effectiveDelay = dragState ? dragState.delay : track.delay;
   const effectiveDuration = dragState ? dragState.duration : track.duration;
 
+  const isSnapTargetRow =
+    activeSnap !== null &&
+    activeSnap.activeTrackId !== track.id &&
+    (activeSnap.guideLines.some((g) => g.targetTrackId === track.id) ||
+      activeSnap.durationGuide?.referenceTrackId === track.id ||
+      activeSnap.staggerGuide?.prevNodeId === track.nodeId ||
+      activeSnap.staggerGuide?.nextNodeId === track.nodeId);
+
+  const isDurationMatchRow =
+    activeSnap !== null &&
+    (activeSnap.durationGuide?.referenceTrackId === track.id ||
+      (activeSnap.activeTrackId === track.id && activeSnap.durationGuide !== null));
+
   const color = KIND_COLORS[track.kind] ?? '#f59e0b';
   const leftPct = Math.min(96, Math.max(0, (effectiveDelay / maxTime) * 100));
   const widthPct = Math.min(100 - leftPct, Math.max(2, (effectiveDuration / maxTime) * 100));
@@ -154,7 +218,11 @@ function TrackRow({
       data-track-id={track.id}
       onClick={onSelect}
       className={`grid items-center border-b border-[var(--border-light)] text-xs cursor-pointer transition-colors ${
-        isSelected ? 'bg-white/[0.08]' : 'hover:bg-white/[0.04]'
+        isSelected
+          ? 'bg-white/[0.08]'
+          : isSnapTargetRow
+            ? 'bg-pink-500/[0.08]'
+            : 'hover:bg-white/[0.04]'
       }`}
       style={{
         gridTemplateColumns: showNumeric ? '260px 210px 1fr' : '260px 1fr',
@@ -264,9 +332,14 @@ function TrackRow({
               left: `${leftPct}%`,
               width: `${widthPct}%`,
               backgroundColor: dragState ? `${color}55` : `${color}38`,
-              border: `1px solid ${color}`,
+              border: isDurationMatchRow
+                ? '1.5px solid #ec4899'
+                : isSnapTargetRow
+                  ? '1px solid #f472b6'
+                  : `1px solid ${color}`,
+              boxShadow: isDurationMatchRow ? '0 0 8px rgba(236,72,153,0.45)' : undefined,
             }}
-            title={`${track.nodeId} · ${track.label} | offset ${effectiveDelay}s · duration ${effectiveDuration}s · easing ${track.easing} (drag bar to shift offset, drag edges to resize duration)`}
+            title={`${track.nodeId} · ${track.label} | offset ${effectiveDelay}s · duration ${effectiveDuration}s · easing ${track.easing} (drag bar to shift offset, drag edges to resize duration, hold Alt to disable snapping)`}
           >
             {/* Interactive Start Handle (left diamond / edge) */}
             {track.editable && (
@@ -285,6 +358,7 @@ function TrackRow({
 
             <span className="text-[10px] font-mono text-white/95 truncate pointer-events-none">
               {effectiveDelay > 0 ? `+${effectiveDelay}s · ` : ''}{effectiveDuration}s
+              {isDurationMatchRow ? ' =' : ''}
             </span>
 
             {/* Intermediate keyframe stops (excluding 0% and 100% which have interactive handles) */}
@@ -329,6 +403,7 @@ export default function AnimationTimeline() {
   const nodes = useAtomValue(nodesAtom);
   const [selectedIds, setSelectedIds] = useAtom(selectedIdsAtom);
   const [playing, setPlaying] = useState(false);
+  const [activeSnap, setActiveSnap] = useState<ActiveSnapState | null>(null);
   const rafRef = useRef<number | null>(null);
   const rulerRef = useRef<HTMLDivElement | null>(null);
 
@@ -594,17 +669,43 @@ export default function AnimationTimeline() {
         </div>
       </div>
 
-      {/* Track List */}
+      {/* Track List + Smart Guides Overlay */}
       <div className="relative flex-1 overflow-y-auto">
-        {/* Playhead vertical line across the timeline column */}
+        {/* Playhead + Smart Guides Overlay across the timeline column */}
         <div
-          className="pointer-events-none absolute top-0 bottom-0 z-10"
+          className="pointer-events-none absolute top-0 bottom-0 z-30"
           style={{ left: timelineColOffsetPx + 12, right: 12 }}
         >
+          {/* Playhead vertical line */}
           <div
             className="absolute top-0 bottom-0 w-px bg-amber-400/80"
             style={{ left: `${playheadPct}%` }}
           />
+
+          {/* Active Smart Guide vertical lines & floating badges */}
+          {activeSnap?.guideLines.map((guide, idx) => {
+            const pct = Math.min(100, Math.max(0, (guide.time / maxTime) * 100));
+            return (
+              <div
+                key={`${guide.time}-${idx}`}
+                data-testid="timeline-smart-guide-line"
+                className="absolute top-0 bottom-0"
+                style={{
+                  left: `${pct}%`,
+                  width: 1,
+                  background: '#ec4899',
+                  boxShadow: '0 0 6px rgba(236, 72, 153, 0.9)',
+                }}
+              >
+                <span
+                  data-testid="timeline-smart-guide-badge"
+                  className="absolute top-1 -translate-x-1/2 px-1.5 py-0.5 rounded bg-pink-600 text-white text-[9px] font-mono whitespace-nowrap shadow-md"
+                >
+                  {guide.label}
+                </span>
+              </div>
+            );
+          })}
         </div>
 
         {filteredTracks.length === 0 ? (
@@ -616,13 +717,18 @@ export default function AnimationTimeline() {
             <TrackRow
               key={track.id}
               track={track}
+              allTracks={filteredTracks}
               maxTime={maxTime}
+              playhead={playhead}
+              ticks={ticks}
               showNumeric={showNumeric}
               isSelected={selectedIds.includes(track.nodeId)}
+              activeSnap={activeSnap}
               onSelect={() => {
                 setSelectedIds([track.nodeId]);
                 trace.action('animation-timeline:select-node', { nodeId: track.nodeId });
               }}
+              onSnapChange={setActiveSnap}
               onCommitTiming={handleCommitTiming}
             />
           ))
