@@ -70,6 +70,7 @@ export interface TimelineTrack {
 }
 
 export const timelineOpenAtom = atom<boolean>(false);
+export const timelineNumericColumnOpenAtom = atom<boolean>(false);
 export const timelineFilterAtom = atom<'all' | 'dom' | 'page' | 'scroll'>('all');
 export const timelinePlayheadAtom = atom<number>(0);
 
