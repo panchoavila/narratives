@@ -90,6 +90,18 @@ export interface WorkspaceFont {
   weightRange?: { min: number; max: number };
   /** `file` = read from the font's own tables, `filename` = guessed. */
   source?: 'file' | 'filename';
+  /** Low-level font origin ('upload' | 'adobe-fonts'). */
+  provider?: 'upload' | 'adobe-fonts';
+  /** Adobe Fonts / Typekit Kit ID when synced at low level. */
+  adobeKitId?: string;
+  /** Original Typekit CSS slug (e.g. "acumin-pro") and FVD ("n4", "i7"). */
+  adobeSlug?: string;
+  fvd?: string;
+  unicodeRange?: string;
+  /** OpenType SFNT table tags discovered inside the binary container. */
+  sfntTables?: string[];
+  /** SFNT outline flavor ('TTF' | 'CFF'). */
+  sfntFlavor?: 'TTF' | 'CFF';
 }
 
 export interface RevymeUser {

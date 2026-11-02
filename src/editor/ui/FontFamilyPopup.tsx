@@ -366,7 +366,7 @@ export default function FontFamilyPopup({ value, onChange, isOpen, onClose, anch
             the Google catalog under their own divider, each in its own face. */}
         {workspaceFamilies.length > 0 && (
           <div className="mb-1">
-            <div className="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+            <div className="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase text-[var(--text-tertiary)]">
               Workspace fonts
             </div>
             <div className="max-h-[150px] overflow-y-auto [&::-webkit-scrollbar]:hidden">
@@ -398,7 +398,7 @@ export default function FontFamilyPopup({ value, onChange, isOpen, onClose, anch
                 );
               })}
             </div>
-            <div className="mt-1 px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)] border-t border-[var(--border-light)]">
+            <div className="mt-1 px-3 pt-2 pb-1 text-[10px] font-semibold uppercase text-[var(--text-tertiary)] border-t border-[var(--border-light)]">
               All fonts
             </div>
           </div>

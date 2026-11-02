@@ -94,6 +94,7 @@ import MutationErrorBanner from './ui/MutationErrorBanner';
 import SnapGuidesOverlay from './ui/SnapGuidesOverlay';
 import { snapGuidesOps } from './ui/snap-guides-store';
 import { contextMenuAtom } from '@/code/stores/context-menu-store';
+import { timelineOpenAtom } from '@/code/stores/timeline-store';
 import { StableAtomSyncHost } from './hooks/useStableAtomSync';
 import { useMutationQueueLifecycle } from './hooks/useMutationQueueLifecycle';
 import { useActiveViewports } from './hooks/useActiveViewports';
@@ -136,6 +137,7 @@ export default function Canvas() {
   // but every variant-authoring affordance — Add Variant, Add Vector,
   // the connection-drag handle — stays hidden.
   const isViewer = useIsViewer();
+  const timelineOpen = useAtomValue(timelineOpenAtom);
   const selectedId = useAtomValue(selectedNodeAtom);
   const [selectedIds, setSelectedIds] = useAtom(selectedIdsAtom);
   const setMarqueeSpread = useSetAtom(marqueeViewportSpreadAtom);
@@ -1251,7 +1253,7 @@ export default function Canvas() {
   // ─── Render ────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', marginBottom: timelineOpen ? 270 : 0 }}>
       {/* Leaf hosts — their per-commit nodesAtom/codeAtom subscriptions live
           on these null-rendering fibers, not on Canvas (see
           useStableAtomSync / useRendererSync). */}

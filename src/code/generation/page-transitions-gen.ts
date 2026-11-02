@@ -194,13 +194,19 @@ export function PageTransitions({ children }: { children: React.ReactNode }) {
       styleEl.id = 'revyme-vt-active';
       styleEl.textContent = buildViewTransitionCSS(eff.exit, eff.enter);
       document.head.appendChild(styleEl);
+      const hasHtmlInCanvas = typeof CanvasRenderingContext2D !== 'undefined' && 'drawElementImage' in CanvasRenderingContext2D.prototype;
+      document.documentElement.dataset.vtPreset = eff.preset || 'custom';
+      document.documentElement.dataset.vtCanvasMode = hasHtmlInCanvas ? 'html-in-canvas' : 'fallback-dom';
       const vt = (document as any).startViewTransition(() =>
         new Promise<void>((resolve) => {
           finishRef.current = resolve;
           React.startTransition(() => router.push(dest.pathname + dest.search + dest.hash));
         })
       );
-      vt.finished.finally(() => styleEl.remove());
+      vt.finished.finally(() => {
+        styleEl.remove();
+        delete document.documentElement.dataset.vtPreset;
+      });
     }
     document.addEventListener('click', onClick, true);
     return () => document.removeEventListener('click', onClick, true);

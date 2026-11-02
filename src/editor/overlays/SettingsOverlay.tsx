@@ -40,6 +40,15 @@ import {
 } from './settings-shared';
 import { CLOUD_ENABLED } from '@/shared/cloud-flag';
 import { setWebsiteWatermark } from '@/backend/revyme-backend';
+import {
+  fetchProjectFonts,
+  removeProjectAdobeFonts,
+  syncProjectAdobeFonts,
+  type ProjectAdobeKitInfo,
+} from '@/backend/sites-backend';
+import { loadCustomFont } from '@/shared/font-loader';
+import { refreshWorkspaceFonts } from '@/code/stores/workspace-fonts-store';
+import type { WorkspaceFont } from '@/backend/types';
 
 // ─── Inline SVG icons ──────────────────────────────────────────────────────
 
@@ -70,6 +79,14 @@ const MoreVerticalIcon = ({ className = 'w-3 h-3' }: { className?: string }) => 
 const ChevronDownIcon = ({ className = 'w-4 h-4' }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="6 9 12 15 18 9" />
+  </svg>
+);
+
+const SettingsFontsIcon = ({ className = 'w-3.5 h-3.5' }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="4 7 4 4 20 4 20 7" />
+    <line x1="9" y1="20" x2="15" y2="20" />
+    <line x1="12" y1="4" x2="12" y2="20" />
   </svg>
 );
 
@@ -113,9 +130,15 @@ export function buildMenuCategories(
   registered: Array<{ title: string; items: SettingsSectionDef[] }>,
   abTestPages: string[],
 ): Array<{ title: string; items: MenuItem[] }> {
-  // Website is always first in General
+  // Website is always first in General, followed by per-project Fonts (Adobe Fonts kit)
   const result: Array<{ title: string; items: MenuItem[] }> = [
-    { title: 'General', items: [{ id: 'website', label: 'Website', icon: SettingsWebsiteIcon }] },
+    {
+      title: 'General',
+      items: [
+        { id: 'website', label: 'Website', icon: SettingsWebsiteIcon },
+        { id: 'fonts', label: 'Fonts', icon: SettingsFontsIcon },
+      ],
+    },
   ];
 
   for (const cat of registered) {
@@ -949,6 +972,10 @@ export default function SettingsOverlay() {
       );
     }
 
+    if (activeSection === 'fonts') {
+      return <ProjectFontsSettingsSection websiteId={websiteId} />;
+    }
+
     // Look up registered section from plugin registry
     const allSections = getSettingsCategories().flatMap(c => c.items);
     const section = allSections.find(s => s.id === activeSection);
@@ -1098,6 +1125,7 @@ export default function SettingsOverlay() {
                             </div>
                           ) : (
                             <button
+                              data-testid={`project-settings-nav-${item.id}`}
                               onClick={() => {
                                 if (item.pagePath) {
                                   trace.action('settings:ab-test-page-change', { page: item.pagePath });
@@ -1180,7 +1208,7 @@ export default function SettingsOverlay() {
                     <div className="absolute top-full left-0 mt-1 min-w-[200px] bg-[var(--dropdown-bg)] border border-[var(--border-light)] cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] shadow-lg py-1.5 z-[2]">
                       {menuCategories.map((category, ci) => (
                         <div key={ci}>
-                          <div className="px-3 py-1 text-[10px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider">
+                          <div className="px-3 py-1 text-[10px] font-semibold text-[var(--text-tertiary)] uppercase">
                             {category.title}
                           </div>
                           {category.items.map((item) => {
@@ -1376,5 +1404,226 @@ function SidebarRenameInput({
       onBlur={commit}
       className="flex-1 min-w-0 bg-transparent border-none outline-none text-xs font-medium text-[var(--text-primary)] p-0"
     />
+  );
+}
+
+function ProjectFontsSettingsSection({ websiteId }: { websiteId: string | null }) {
+  const siteId = websiteId || getProjectId();
+  const [kitInfo, setKitInfo] = useState<ProjectAdobeKitInfo | null>(null);
+  const [kitInput, setKitInput] = useState('');
+  const [preserveSlug, setPreserveSlug] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    fetchProjectFonts(siteId)
+      .then((res) => {
+        if (!active) return;
+        setKitInfo(res.adobeKit);
+        setKitInput(res.adobeKit?.input ?? '');
+        setPreserveSlug(Boolean(res.adobeKit?.preserveSlugAsFamily));
+        for (const f of res.fonts) {
+          void loadCustomFont({ family: f.family, url: f.url, weight: f.weight, style: f.style });
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [siteId]);
+
+  const groupedFamilies = React.useMemo(() => {
+    const fonts: WorkspaceFont[] = kitInfo?.fonts ?? [];
+    const map = new Map<string, WorkspaceFont[]>();
+    for (const f of fonts) {
+      const list = map.get(f.family) ?? [];
+      list.push(f);
+      map.set(f.family, list);
+    }
+    return Array.from(map.entries()).map(([family, faces]) => ({
+      family,
+      faces: faces.sort((a, b) => a.weight - b.weight || a.style.localeCompare(b.style)),
+      sfntFlavor: faces[0]?.sfntFlavor ?? 'TTF',
+      sfntTables: Array.from(new Set(faces.flatMap((f) => f.sfntTables ?? []))),
+    }));
+  }, [kitInfo]);
+
+  const isDirty = Boolean(
+    kitInput.trim() &&
+      (kitInput.trim() !== (kitInfo?.input ?? '') ||
+        preserveSlug !== Boolean(kitInfo?.preserveSlugAsFamily)),
+  );
+
+  const handleSyncKit = async () => {
+    const trimmed = kitInput.trim();
+    if (!trimmed || syncing) return;
+    setSyncing(true);
+    setError(null);
+    try {
+      const res = await syncProjectAdobeFonts(siteId, {
+        input: trimmed,
+        preserveSlugAsFamily: preserveSlug,
+      });
+      setKitInfo(res.adobeKit);
+      setKitInput(res.adobeKit.input);
+      for (const f of res.fonts) {
+        void loadCustomFont({ family: f.family, url: f.url, weight: f.weight, style: f.style });
+      }
+      await refreshWorkspaceFonts();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleRemoveKit = async () => {
+    if (removing) return;
+    setRemoving(true);
+    setError(null);
+    try {
+      await removeProjectAdobeFonts(siteId);
+      setKitInfo(null);
+      setKitInput('');
+      await refreshWorkspaceFonts();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  return (
+    <div data-testid="project-fonts-settings-section" className="space-y-8">
+      <SettingsGroup
+        title="Adobe Fonts"
+        action={
+          <SaveButton
+            onClick={() => void handleSyncKit()}
+            saving={syncing}
+            dirty={isDirty}
+            label="Sync kit"
+          />
+        }
+      >
+        <SettingsRow label="Web project" interactive={false} align="top">
+          <p className="text-sm text-[var(--text-secondary)]">
+            Connect one Adobe Fonts kit to <code className="text-xs text-[var(--text-primary)]">sites/{siteId}/</code>. Faces are extracted at low level as local <code className="text-xs text-[var(--text-primary)]">.woff2</code> binaries into <code className="text-xs text-[var(--text-primary)]">public/fonts/</code> and surfaced directly in the editor&apos;s native font picker.
+          </p>
+        </SettingsRow>
+
+        <SettingsRow label="Kit ID or CSS" htmlFor="project-adobe-kit-input" align="top">
+          <div className="flex flex-col gap-1.5">
+            <input
+              id="project-adobe-kit-input"
+              data-testid="project-adobe-kit-input"
+              type="text"
+              value={kitInput}
+              onChange={(e) => setKitInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && kitInput.trim()) {
+                  e.preventDefault();
+                  void handleSyncKit();
+                }
+              }}
+              className={ROW_INPUT_CLS}
+              placeholder="Kit ID (e.g. abc1def), https://use.typekit.net/abc1def.css, or @font-face CSS"
+            />
+            {error && (
+              <p data-testid="project-adobe-kit-error" className="text-xs text-red-400">
+                {error}
+              </p>
+            )}
+          </div>
+        </SettingsRow>
+
+        <SettingsRow label="Preserve Typekit slug">
+          <div className="flex items-center gap-3">
+            <Toggle value={preserveSlug} onChange={setPreserveSlug} />
+            <span className="text-xs text-[var(--text-tertiary)]">
+              Keep slugified CSS family names (e.g. acumin-pro instead of Acumin Pro)
+            </span>
+          </div>
+        </SettingsRow>
+
+        {kitInfo && (
+          <SettingsRow label="Connected kit" interactive={false}>
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-sm text-[var(--text-primary)]">
+                Kit <span className="font-mono">{kitInfo.kitId}</span> · {kitInfo.fonts.length}{' '}
+                {kitInfo.fonts.length === 1 ? 'face' : 'faces'}
+              </span>
+              <RowButton
+                variant="danger"
+                loading={removing}
+                onClick={() => void handleRemoveKit()}
+              >
+                Remove kit
+              </RowButton>
+            </div>
+          </SettingsRow>
+        )}
+      </SettingsGroup>
+
+      <SettingsGroup title="Kit fonts in editor">
+        {loading ? (
+          <SettingsRow label="Loading" interactive={false}>
+            <span className="text-sm text-[var(--text-tertiary)]">Loading project fonts…</span>
+          </SettingsRow>
+        ) : groupedFamilies.length === 0 ? (
+          <SettingsRow label="Status" interactive={false}>
+            <span data-testid="project-adobe-kit-empty" className="text-sm text-[var(--text-tertiary)]">
+              No Adobe Fonts kit connected to this project yet.
+            </span>
+          </SettingsRow>
+        ) : (
+          groupedFamilies.map((group) => (
+            <SettingsRow
+              key={group.family}
+              label={group.family}
+              align="top"
+              interactive={false}
+            >
+              <div
+                data-testid={`project-kit-family-${group.family}`}
+                className="flex flex-col gap-2"
+              >
+                <div
+                  className="text-lg text-[var(--text-primary)] truncate"
+                  style={{ fontFamily: `"${group.family}", sans-serif` }}
+                >
+                  The quick brown fox jumps over the lazy dog
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {group.faces.map((face) => (
+                    <span
+                      key={face.id}
+                      className="px-2 py-0.5 rounded text-xs bg-[var(--bg-hover)] text-[var(--text-secondary)]"
+                    >
+                      {face.weightRange
+                        ? `${face.weightRange.min}–${face.weightRange.max} variable`
+                        : `${face.weight} ${face.style}`}
+                      {face.fvd ? ` (${face.fvd})` : ''}
+                      {` · .${face.ext}`}
+                    </span>
+                  ))}
+                  {group.sfntTables.length > 0 && (
+                    <span className="text-xs font-mono text-[var(--text-tertiary)] ml-1">
+                      {group.sfntFlavor} · {group.sfntTables.join(' · ')}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </SettingsRow>
+          ))
+        )}
+      </SettingsGroup>
+    </div>
   );
 }

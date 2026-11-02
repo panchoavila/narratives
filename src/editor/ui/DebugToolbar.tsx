@@ -7,6 +7,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { trace, saveDebugCode, saveDebugProjectFiles } from '@/shared/debug-trace';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { codeAtom, selectedNodeAtom } from '@/code/stores/store';
+import { timelineOpenAtom } from '@/code/stores/timeline-store';
 import { parseJSX, findFirstElementByDataId } from '@/code/parsing/ast-utils';
 import { projectFS, createDefaultProject, createEmptyProject, resetProjectFS, projectVersionAtom } from '@/code/project/project-fs';
 import { activeFilePathAtom, getPageClientPath, isPageServerFile } from '@/code/project/active-file-store';
@@ -93,6 +94,7 @@ export default function DebugToolbar() {
   const code = useAtomValue(codeAtom);
   const setCode = useSetAtom(codeAtom);
   const selectedId = useAtomValue(selectedNodeAtom);
+  const timelineOpen = useAtomValue(timelineOpenAtom);
   const setProjectVersion = useSetAtom(projectVersionAtom);
   const setActiveFile = useSetAtom(activeFilePathAtom);
   const codeRef = useRef(code);
@@ -432,7 +434,7 @@ export default function GroupLayout({ children }: { children: React.ReactNode })
           // Anchored bottom-LEFT (just clear of the 308px left menu +
           // panel) instead of bottom-center, so it sits beside the
           // bottom toolbar rather than covering the centred canvas UI.
-          bottom: 80 - position.y,
+          bottom: (timelineOpen ? 330 : 80) - position.y,
           left: 320 + position.x,
           zIndex: 999999,
           width: 30,
@@ -468,7 +470,7 @@ export default function GroupLayout({ children }: { children: React.ReactNode })
         // Bottom-LEFT anchored (clear of the 308px left menu + panel) —
         // matches the collapsed puck's position so expand/collapse
         // doesn't jump.
-        bottom: 80 - position.y,
+        bottom: (timelineOpen ? 330 : 80) - position.y,
         left: 320 + position.x,
         zIndex: 999999,
         display: 'flex',

@@ -171,15 +171,206 @@ export class SitesBackend implements ProjectBackend {
     return false;
   }
 
-  async getWebsiteWorkspaceId(_id: string): Promise<string | null> {
-    return null;
+  async getWebsiteWorkspaceId(id: string): Promise<string | null> {
+    return id || 'local-workspace';
   }
 
   async getCredits(_workspaceId: string): Promise<number | null> {
     return null;
   }
 
-  async listWorkspaceFonts(_workspaceId: string): Promise<WorkspaceFont[]> {
-    return [];
+  async listWorkspaceFonts(workspaceOrSiteId: string): Promise<WorkspaceFont[]> {
+    try {
+      const requests: Array<Promise<WorkspaceFont[]>> = [];
+      if (workspaceOrSiteId && !isEphemeralId(workspaceOrSiteId) && workspaceOrSiteId !== 'local-workspace') {
+        requests.push(
+          fetch(`/api/sites/${encodeURIComponent(workspaceOrSiteId)}/fonts`)
+            .then(async (r) => (r.ok ? ((await r.json()) as { fonts?: WorkspaceFont[] }).fonts ?? [] : []))
+            .catch(() => []),
+        );
+      }
+      requests.push(
+        fetch('/api/workspace/fonts')
+          .then(async (r) => (r.ok ? ((await r.json()) as { fonts?: WorkspaceFont[] }).fonts ?? [] : []))
+          .catch(() => []),
+      );
+      const lists = await Promise.all(requests);
+      return lists.flat();
+    } catch {
+      return [];
+    }
   }
+}
+
+export interface ProjectAdobeKitInfo {
+  kitId: string;
+  input: string;
+  preserveSlugAsFamily?: boolean;
+  syncedAt: string;
+  fonts: WorkspaceFont[];
+}
+
+export async function fetchProjectFonts(siteId: string): Promise<{
+  adobeKit: ProjectAdobeKitInfo | null;
+  fonts: WorkspaceFont[];
+}> {
+  if (!siteId || isEphemeralId(siteId)) return { adobeKit: null, fonts: [] };
+  try {
+    const res = await fetch(`/api/sites/${encodeURIComponent(siteId)}/fonts`);
+    if (!res.ok) return { adobeKit: null, fonts: [] };
+    return await res.json();
+  } catch {
+    return { adobeKit: null, fonts: [] };
+  }
+}
+
+export async function syncProjectAdobeFonts(
+  siteId: string,
+  args: { input: string; preserveSlugAsFamily?: boolean },
+): Promise<{ adobeKit: ProjectAdobeKitInfo; fonts: WorkspaceFont[] }> {
+  const res = await fetch(`/api/sites/${encodeURIComponent(siteId)}/fonts/adobe`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(args),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Failed to sync project Adobe Fonts (${res.status})`);
+  }
+  return await res.json();
+}
+
+export async function removeProjectAdobeFonts(
+  siteId: string,
+): Promise<{ adobeKit: null; fonts: WorkspaceFont[] }> {
+  const res = await fetch(`/api/sites/${encodeURIComponent(siteId)}/fonts/adobe`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to remove project Adobe Fonts (${res.status})`);
+  }
+  return await res.json();
+}
+
+export interface LocalWorkspaceConfig {
+  id: string;
+  name: string;
+  logoInitial: string;
+  logoColor: string;
+  accountName: string;
+  accountEmail: string;
+  plan: string;
+  credits: number | null;
+  preserveSlugAsFamily: boolean;
+  connectedKits: Array<{
+    kitId: string;
+    syncedAt: string;
+    faceCount: number;
+    families: string[];
+  }>;
+  fonts: WorkspaceFont[];
+}
+
+export async function fetchWorkspaceConfig(): Promise<LocalWorkspaceConfig | null> {
+  try {
+    const res = await fetch('/api/workspace');
+    if (!res.ok) return null;
+    return (await res.json()) as LocalWorkspaceConfig;
+  } catch {
+    return null;
+  }
+}
+
+export async function updateWorkspaceConfig(patch: Partial<LocalWorkspaceConfig>): Promise<LocalWorkspaceConfig> {
+  const res = await fetch('/api/workspace', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to update workspace settings (${res.status})`);
+  }
+  return (await res.json()) as LocalWorkspaceConfig;
+}
+
+export async function uploadWorkspaceFontFile(file: File): Promise<{ font: WorkspaceFont; fonts: WorkspaceFont[] }> {
+  const res = await fetch('/api/workspace/fonts/upload', {
+    method: 'POST',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'x-font-filename': encodeURIComponent(file.name),
+    },
+    body: file,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Failed to upload font (${res.status})`);
+  }
+  return (await res.json()) as { font: WorkspaceFont; fonts: WorkspaceFont[] };
+}
+
+export async function syncAdobeFontsToWorkspace(args: {
+  input: string;
+  preserveSlugAsFamily?: boolean;
+  familyNameMap?: Record<string, string>;
+}): Promise<{
+  kitId: string;
+  addedFaces: WorkspaceFont[];
+  fonts: WorkspaceFont[];
+  connectedKits: LocalWorkspaceConfig['connectedKits'];
+}> {
+  const res = await fetch('/api/workspace/fonts/adobe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(args),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Failed to sync Adobe Fonts (${res.status})`);
+  }
+  return await res.json();
+}
+
+export interface AdobeTypekitKitClientSummary {
+  id: string;
+  name: string;
+  domains: string[];
+  families: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    cssNames: string[];
+    variations: string[];
+  }>;
+}
+
+export async function fetchAdobeKitsWithToken(apiToken: string): Promise<AdobeTypekitKitClientSummary[]> {
+  const res = await fetch('/api/workspace/fonts/adobe/kits', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiToken }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Failed to list Typekit kits (${res.status})`);
+  }
+  const data = (await res.json()) as { kits?: AdobeTypekitKitClientSummary[] };
+  return data.kits ?? [];
+}
+
+export async function deleteWorkspaceFontEntry(params: {
+  id?: string;
+  family?: string;
+  kitId?: string;
+}): Promise<{ fonts: WorkspaceFont[]; connectedKits: LocalWorkspaceConfig['connectedKits'] }> {
+  const url = params.id
+    ? `/api/workspace/fonts/${encodeURIComponent(params.id)}`
+    : `/api/workspace/fonts?${new URLSearchParams(
+        params.family ? { family: params.family } : params.kitId ? { kitId: params.kitId } : {},
+      ).toString()}`;
+  const res = await fetch(url, { method: 'DELETE' });
+  if (!res.ok) {
+    throw new Error(`Failed to remove font (${res.status})`);
+  }
+  return await res.json();
 }

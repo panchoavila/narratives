@@ -257,10 +257,11 @@ function FontFamilyBase({ value, isMixed, onChange, plain, onPreviewWrite, label
 
   return (
     <>
-      <div ref={rowRef} className="flex items-center justify-between w-full">
+      <div ref={rowRef} data-testid="font-family-control" className="flex items-center justify-between w-full">
         <ControlLabel label={label} property="fontFamily" plain={plain} />
         <ControlActionRow onClick={handleClick} className="min-w-0 overflow-hidden">
           <span
+            data-testid="font-family-trigger"
             className="text-xs truncate flex-1 min-w-0"
             style={{ fontFamily: isMixed ? undefined : value || undefined }}
           >

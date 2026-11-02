@@ -21,6 +21,7 @@
 import { projectFS } from './project-fs';
 import { ensureGoogleFontImport } from './preset-ops';
 import { isViewerMode } from '@/code/stores/viewer-mode-store';
+import { ensureWorkspaceFonts, isWorkspaceFontFamily } from '@/code/stores/workspace-fonts-store';
 import { loadGoogleFont } from '@/shared/font-loader';
 import { trace } from '@/shared/debug-trace';
 
@@ -98,6 +99,7 @@ export function collectFontFamilies(files: Record<string, string>): Set<string> 
  *  cheap to re-run: loadGoogleFont dedupes by family, ensureGoogleFontImport
  *  no-ops once the import line exists (and skips system fonts itself). */
 export function preloadProjectFonts(): void {
+  void ensureWorkspaceFonts();
   const files: Record<string, string> = {};
   for (const path of projectFS.listFiles()) {
     if (!SCANNABLE_EXT_RE.test(path)) continue;
@@ -107,6 +109,7 @@ export function preloadProjectFonts(): void {
   const families = collectFontFamilies(files);
   const viewer = isViewerMode();
   for (const fam of families) {
+    if (isWorkspaceFontFamily(fam)) continue;
     loadGoogleFont(fam);
     // Self-heal the @import for preview/live + the canvas iframe stylesheet.
     // Viewers must not mutate project files — their font load still works

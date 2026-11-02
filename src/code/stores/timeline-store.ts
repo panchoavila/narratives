@@ -25,6 +25,11 @@ import {
 } from '@/shared/animation-utils';
 import { getTextAnimForNode } from '@/code/parsing/text-anim-parser';
 import { getScrollDataForNode } from '@/code/parsing/scroll-parser';
+import {
+  parseCanvasEffectFromAttrs,
+  getCanvasEffectLabel,
+  supportsHtmlInCanvas,
+} from '@/shared/canvas-effects';
 
 export type TimelineScope = 'page' | 'dom';
 export type TimelineTrackKind =
@@ -33,6 +38,7 @@ export type TimelineTrackKind =
   | 'motion'
   | 'text'
   | 'scroll'
+  | 'canvas-effect'
   | 'page-transition'
   | 'smooth-scroll';
 
@@ -65,7 +71,7 @@ export interface TimelineTrack {
   stops: KeyframeStop[];
   scrollRange?: [number, number];
   editable: boolean;
-  styleProp?: 'animation' | 'transition';
+  styleProp?: 'animation' | 'transition' | 'canvas-effect';
   animIndex?: number;
 }
 
@@ -111,7 +117,10 @@ export const timelineTracksAtom = atom<TimelineTrack[]>((get) => {
   // 1. Page-level View Transitions
   const pageEffects = getEffectsForPage(activeFile);
   for (const effect of pageEffects) {
-    const dur = parseSecondsValue((effect as any).duration, 0.45);
+    const enterDur = effect.enter?.transition?.duration;
+    const exitDur = effect.exit?.transition?.duration;
+    const dur = parseSecondsValue(enterDur ?? exitDur ?? (effect as any).duration, 0.45);
+    const delay = parseSecondsValue(effect.enter?.transition?.delay ?? 0, 0);
     tracks.push({
       id: `page:transition:${effect.target}`,
       scope: 'page',
@@ -122,7 +131,7 @@ export const timelineTracksAtom = atom<TimelineTrack[]>((get) => {
       kind: 'page-transition',
       trigger: 'page',
       label: `View Transition → ${effect.target} (${effect.preset})`,
-      delay: 0,
+      delay,
       duration: dur,
       easing: String((effect as any).easing || 'ease-in-out'),
       iterationCount: '1',
@@ -377,6 +386,42 @@ export const timelineTracksAtom = atom<TimelineTrack[]>((get) => {
         ],
         scrollRange: [0, 100],
         editable: false,
+      });
+    }
+
+    // 3f. Progressive HTML-in-Canvas (`data-canvas-effect`) stage / DOM fallback
+    const canvasFx = parseCanvasEffectFromAttrs(node.attrs);
+    if (canvasFx) {
+      const htmlInCanvasActive = supportsHtmlInCanvas();
+      tracks.push({
+        id: `${nodeId}:canvas-effect`,
+        scope: 'dom',
+        nodeId,
+        nodeName,
+        nodeTag,
+        pageLabel,
+        kind: 'canvas-effect',
+        trigger: 'hover',
+        label: `Canvas Stage · ${getCanvasEffectLabel(canvasFx.preset)} (${htmlInCanvasActive ? 'HTML-in-Canvas' : 'DOM Fallback'})`,
+        delay: canvasFx.delay,
+        duration: canvasFx.duration,
+        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+        iterationCount: '1',
+        stops: [
+          {
+            offset: 0,
+            properties: {
+              preset: canvasFx.preset,
+              mode: htmlInCanvasActive ? 'html-in-canvas' : 'fallback-dom',
+            },
+          },
+          {
+            offset: 100,
+            properties: { intensity: `${canvasFx.intensity ?? 75}%` },
+          },
+        ],
+        editable: true,
+        styleProp: 'canvas-effect',
       });
     }
   });

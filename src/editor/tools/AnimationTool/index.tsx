@@ -82,8 +82,15 @@ import { AppearScrollPopup } from './popups/AppearScrollPopup';
 import { ScrollSpeedPopup } from './popups/ScrollSpeedPopup';
 import { LoopPopup } from './popups/LoopPopup';
 import { SketchDrawPopup } from './popups/SketchDrawPopup';
+import { CanvasEffectPopup } from './popups/CanvasEffectPopup';
 import { CssTransitionEditor } from './css/CssTransitionEditor';
 import { seedScroll } from './popups/seeds';
+import {
+  DEFAULT_CANVAS_EFFECT,
+  getCanvasEffectLabel,
+  parseCanvasEffectFromAttrs,
+  type CanvasEffectConfig,
+} from '@/shared/canvas-effects';
 
 /** Equality for two resolved scopes ({query}|{variant}|null) — matches a stored
  *  scroll-value override against the active tile's scope. */
@@ -600,6 +607,17 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
       }
     }
 
+    // Progressive HTML-in-Canvas stage effect (`data-canvas-effect`)
+    const canvasFx = parseCanvasEffectFromAttrs(node.attrs);
+    if (canvasFx) {
+      entries.push({
+        type: 'canvasEffect',
+        summary: getCanvasEffectLabel(canvasFx.preset),
+        key: 'canvasEffect',
+        data: canvasFx,
+      });
+    }
+
     return entries;
   }, [node, nodeId, allTextAnims, scrollData, code, s.transition, s.animation, cssHoverStyles, scopeCtx]);
 
@@ -898,6 +916,21 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
         // the editor popup so the user can dial it in.
         queueMutation({ type: 'setSketchAnim', nodeId, config: createDefaultSketchAnim() });
         setActivePopup('sketchDraw'); break;
+      case 'canvasEffect': {
+        expediteStableAtomSync();
+        queueMutation({
+          type: 'updateHtmlAttrs',
+          nodeId,
+          attrs: {
+            'data-canvas-effect': DEFAULT_CANVAS_EFFECT.preset,
+            'data-canvas-duration': String(DEFAULT_CANVAS_EFFECT.duration),
+            'data-canvas-delay': String(DEFAULT_CANVAS_EFFECT.delay),
+          },
+        });
+        flushNow();
+        setActivePopup('canvasEffect');
+        break;
+      }
       case 'keyframe': {
         // Open name modal — actual creation happens in handleCreateKeyframe
         setShowKfNameModal(true);
@@ -1032,6 +1065,19 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
       case 'transition': onUpdate('transition', ''); break;
       case 'sketchDraw':
         queueMutation({ type: 'removeSketchAnim', nodeId });
+        break;
+      case 'canvasEffect':
+        queueMutation({
+          type: 'updateHtmlAttrs',
+          nodeId,
+          attrs: {
+            'data-canvas-effect': '',
+            'data-canvas-duration': '',
+            'data-canvas-delay': '',
+            'data-canvas-intensity': '',
+          },
+        });
+        flushNow();
         break;
       case 'keyframe': {
         const anims = parseAnimationShorthand(s.animation || '');
@@ -1265,6 +1311,13 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
         if (!cfg) return null;
         return { title: 'Sketch Draw',
           content: <SketchDrawPopup key={nodeId} nodeId={nodeId} config={cfg} /> };
+      }
+      case 'canvasEffect': {
+        const cfg = (entry?.data as CanvasEffectConfig | undefined) ?? parseCanvasEffectFromAttrs(node.attrs) ?? DEFAULT_CANVAS_EFFECT;
+        return {
+          title: 'Canvas Stage',
+          content: <CanvasEffectPopup key={nodeId} nodeId={nodeId} config={cfg} />,
+        };
       }
       default:
         return null;

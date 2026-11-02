@@ -9,10 +9,14 @@
 //   - Static assets live in `sites/<siteId>/public/` and are served at root paths
 //     across the editor (:3333), canvas sandbox (:5174), and preview sandbox (:5175).
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
+import type { WorkspaceFont } from '../backend/types';
+import { inspectFontBinary } from './font-binary-inspector';
+import { fetchAdobeTypekitKits, ingestAdobeFontsLowLevel } from './adobe-fonts-lowlevel';
 
 const MANAGED_TOP_DIRS = new Set([
   'app',
@@ -28,6 +32,14 @@ const MANAGED_TOP_DIRS = new Set([
 
 const SITE_ID_RE = /^[a-z0-9][a-z0-9-_]{0,62}$/;
 
+export interface SiteAdobeKitMeta {
+  kitId: string;
+  input: string;
+  preserveSlugAsFamily?: boolean;
+  syncedAt: string;
+  fonts: WorkspaceFont[];
+}
+
 export interface SiteMetaFile {
   id: string;
   name: string;
@@ -37,6 +49,7 @@ export interface SiteMetaFile {
   mainBranchId?: string;
   settings?: Record<string, unknown>;
   managedFiles?: string[];
+  adobeKit?: SiteAdobeKitMeta | null;
   updatedAt?: string;
 }
 
@@ -127,6 +140,7 @@ function readSiteMeta(siteDir: string, siteId: string): SiteMetaFile {
         mainBranchId: parsed.mainBranchId,
         settings: parsed.settings,
         managedFiles: parsed.managedFiles,
+        adobeKit: parsed.adobeKit ?? null,
         updatedAt: parsed.updatedAt,
       };
     } catch {
@@ -295,6 +309,79 @@ function sendJson(res: ServerResponse, status: number, payload: unknown): void {
   res.end(JSON.stringify(payload));
 }
 
+export interface WorkspaceConfigFile {
+  id: string;
+  name: string;
+  logoInitial: string;
+  logoColor: string;
+  accountName: string;
+  accountEmail: string;
+  plan: string;
+  credits: number | null;
+  preserveSlugAsFamily: boolean;
+  connectedKits: Array<{
+    kitId: string;
+    syncedAt: string;
+    faceCount: number;
+    families: string[];
+  }>;
+  fonts: WorkspaceFont[];
+}
+
+function readWorkspaceConfig(sitesRoot: string): WorkspaceConfigFile {
+  const wsDir = path.join(sitesRoot, '.workspace');
+  const wsFile = path.join(wsDir, 'workspace.json');
+  const defaults: WorkspaceConfigFile = {
+    id: 'local-workspace',
+    name: 'My Workspace',
+    logoInitial: 'M',
+    logoColor: '#6366f1',
+    accountName: '',
+    accountEmail: '',
+    plan: 'Local mode',
+    credits: null,
+    preserveSlugAsFamily: false,
+    connectedKits: [],
+    fonts: [],
+  };
+  if (!fs.existsSync(wsFile)) return defaults;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(wsFile, 'utf-8')) as Partial<WorkspaceConfigFile>;
+    return {
+      ...defaults,
+      ...parsed,
+      connectedKits: Array.isArray(parsed.connectedKits) ? parsed.connectedKits : defaults.connectedKits,
+      fonts: Array.isArray(parsed.fonts) ? parsed.fonts : defaults.fonts,
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+function writeWorkspaceConfig(sitesRoot: string, config: WorkspaceConfigFile): void {
+  const wsDir = path.join(sitesRoot, '.workspace');
+  fs.mkdirSync(wsDir, { recursive: true });
+  fs.writeFileSync(path.join(wsDir, 'workspace.json'), JSON.stringify(config, null, 2) + '\n', 'utf-8');
+}
+
+function materializeSiteWorkspaceFonts(sitesRoot: string, siteDir: string, incomingFiles: Record<string, string>): void {
+  const globalsCss = incomingFiles['app/globals.css'];
+  if (!globalsCss || !globalsCss.includes('/workspace-fonts/')) return;
+  const wsFontsDir = path.join(sitesRoot, '.workspace', 'fonts');
+  if (!fs.existsSync(wsFontsDir)) return;
+  const siteFontsDir = path.join(siteDir, 'public', 'workspace-fonts');
+  const re = /\/workspace-fonts\/([a-zA-Z0-9._-]+)/g;
+  for (const match of globalsCss.matchAll(re)) {
+    const fileName = match[1];
+    if (!fileName || fileName.includes('..')) continue;
+    const srcPath = path.join(wsFontsDir, fileName);
+    if (fs.existsSync(srcPath) && fs.statSync(srcPath).isFile()) {
+      fs.mkdirSync(siteFontsDir, { recursive: true });
+      fs.copyFileSync(srcPath, path.join(siteFontsDir, fileName));
+    }
+  }
+}
+
 function createStaticAssetMiddleware(repoRoot: string) {
   const sitesRoot = path.join(repoRoot, 'sites');
   return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
@@ -314,6 +401,26 @@ function createStaticAssetMiddleware(repoRoot: string) {
     }
 
     if (!fs.existsSync(sitesRoot)) return next();
+
+    // Serve shared workspace fonts (/workspace-fonts/<fileName>) across editor, canvas iframe, and preview
+    if (pathname.startsWith('/workspace-fonts/')) {
+      const fontFile = path.basename(pathname);
+      const wsFontCandidate = path.join(sitesRoot, '.workspace', 'fonts', fontFile);
+      if (fs.existsSync(wsFontCandidate) && fs.statSync(wsFontCandidate).isFile()) {
+        const ext = path.extname(wsFontCandidate).toLowerCase();
+        res.statusCode = 200;
+        res.setHeader('Content-Type', MIME_TYPES[ext] ?? 'application/octet-stream');
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        if (req.method === 'HEAD') {
+          res.end();
+          return;
+        }
+        fs.createReadStream(wsFontCandidate).pipe(res);
+        return;
+      }
+    }
+
     for (const entry of fs.readdirSync(sitesRoot, { withFileTypes: true })) {
       if (!entry.isDirectory() || !SITE_ID_RE.test(entry.name)) continue;
       const candidate = path.join(sitesRoot, entry.name, 'public', pathname);
@@ -457,6 +564,7 @@ function createSitesApiMiddleware(repoRoot: string) {
         }
 
         ensureNextScaffold(siteDir, siteId, prevMeta.name, runtimeRange);
+        materializeSiteWorkspaceFonts(sitesRoot, siteDir, incomingFiles);
         writeSiteMeta(siteDir, {
           id: siteId,
           name: prevMeta.name,
@@ -466,6 +574,7 @@ function createSitesApiMiddleware(repoRoot: string) {
           mainBranchId: data?.mainBranchId,
           settings: data?.settings,
           managedFiles: nextManaged.sort(),
+          adobeKit: prevMeta.adobeKit ?? null,
           updatedAt: new Date().toISOString(),
         });
 
@@ -508,9 +617,306 @@ function createSitesApiMiddleware(repoRoot: string) {
         return;
       }
 
+      // GET /api/sites/:id/fonts — Per-project font configuration (1 Adobe Fonts kit per project)
+      if (segments.length === 4 && segments[3] === 'fonts' && req.method === 'GET') {
+        if (!fs.existsSync(siteDir)) {
+          sendJson(res, 404, { error: 'Site not found' });
+          return;
+        }
+        const meta = readSiteMeta(siteDir, siteId);
+        sendJson(res, 200, {
+          adobeKit: meta.adobeKit ?? null,
+          fonts: meta.adobeKit?.fonts ?? [],
+        });
+        return;
+      }
+
+      // POST /api/sites/:id/fonts/adobe — Sync/replace the project's Adobe Fonts kit (1 kit per project)
+      if (segments.length === 5 && segments[3] === 'fonts' && segments[4] === 'adobe' && req.method === 'POST') {
+        if (!fs.existsSync(siteDir)) {
+          sendJson(res, 404, { error: 'Site not found' });
+          return;
+        }
+        const body = await readJsonBody(req);
+        const input = String(body?.input || '').trim();
+        if (!input) {
+          sendJson(res, 400, { error: 'Adobe Fonts Kit ID, URL, or @font-face CSS is required.' });
+          return;
+        }
+        const preserveSlugAsFamily = Boolean(body?.preserveSlugAsFamily);
+        const siteFontsDir = path.join(siteDir, 'public', 'fonts');
+        fs.mkdirSync(siteFontsDir, { recursive: true });
+
+        // Remove previous Adobe kit binaries for this project so only the active kit remains
+        for (const existing of fs.readdirSync(siteFontsDir)) {
+          if (existing.startsWith('adobe-')) {
+            fs.rmSync(path.join(siteFontsDir, existing), { force: true });
+          }
+        }
+
+        const { kitId, faces } = await ingestAdobeFontsLowLevel({
+          input,
+          workspaceFontsDir: siteFontsDir,
+          preserveSlugAsFamily,
+          familyNameMap: body?.familyNameMap && typeof body.familyNameMap === 'object' ? body.familyNameMap : undefined,
+        });
+
+        const siteScopedFaces: WorkspaceFont[] = faces.map((f) => ({
+          ...f,
+          url: `/fonts/${f.fileName}`,
+        }));
+
+        const meta = readSiteMeta(siteDir, siteId);
+        const adobeKit: SiteAdobeKitMeta = {
+          kitId,
+          input: input.length > 240 ? `Kit ${kitId} (@font-face CSS)` : input,
+          preserveSlugAsFamily,
+          syncedAt: new Date().toISOString(),
+          fonts: siteScopedFaces,
+        };
+        writeSiteMeta(siteDir, {
+          ...meta,
+          adobeKit,
+          updatedAt: new Date().toISOString(),
+        });
+
+        sendJson(res, 200, {
+          adobeKit,
+          fonts: siteScopedFaces,
+        });
+        return;
+      }
+
+      // DELETE /api/sites/:id/fonts/adobe — Remove the project's Adobe Fonts kit
+      if (segments.length === 5 && segments[3] === 'fonts' && segments[4] === 'adobe' && req.method === 'DELETE') {
+        if (!fs.existsSync(siteDir)) {
+          sendJson(res, 404, { error: 'Site not found' });
+          return;
+        }
+        const siteFontsDir = path.join(siteDir, 'public', 'fonts');
+        if (fs.existsSync(siteFontsDir)) {
+          for (const existing of fs.readdirSync(siteFontsDir)) {
+            if (existing.startsWith('adobe-')) {
+              fs.rmSync(path.join(siteFontsDir, existing), { force: true });
+            }
+          }
+        }
+        const meta = readSiteMeta(siteDir, siteId);
+        writeSiteMeta(siteDir, {
+          ...meta,
+          adobeKit: null,
+          updatedAt: new Date().toISOString(),
+        });
+        sendJson(res, 200, { adobeKit: null, fonts: [] });
+        return;
+      }
+
       sendJson(res, 404, { error: 'Not found' });
     } catch (err) {
       sendJson(res, 500, { error: String(err) });
+    }
+  };
+}
+
+function createWorkspaceApiMiddleware(repoRoot: string) {
+  const sitesRoot = path.join(repoRoot, 'sites');
+  const wsFontsDir = path.join(sitesRoot, '.workspace', 'fonts');
+
+  return async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    const rawUrl = req.url ?? '/';
+    const [rawPath, rawQuery = ''] = rawUrl.split('?');
+    const pathname = decodeURIComponent(rawPath ?? '/');
+    if (!pathname.startsWith('/api/workspace')) return next();
+
+    const segments = pathname.split('/').filter(Boolean); // ['api', 'workspace', ...]
+
+    try {
+      // GET /api/workspace
+      if (segments.length === 2 && req.method === 'GET') {
+        const config = readWorkspaceConfig(sitesRoot);
+        sendJson(res, 200, config);
+        return;
+      }
+
+      // PATCH /api/workspace
+      if (segments.length === 2 && req.method === 'PATCH') {
+        const body = await readJsonBody(req);
+        const current = readWorkspaceConfig(sitesRoot);
+        const nextConfig: WorkspaceConfigFile = {
+          ...current,
+          ...(typeof body?.name === 'string' && body.name.trim() ? { name: body.name.trim() } : {}),
+          ...(typeof body?.logoInitial === 'string' && body.logoInitial.trim()
+            ? { logoInitial: body.logoInitial.trim().slice(0, 2).toUpperCase() }
+            : {}),
+          ...(typeof body?.logoColor === 'string' && body.logoColor.trim() ? { logoColor: body.logoColor.trim() } : {}),
+          ...(typeof body?.accountName === 'string'
+            ? { accountName: body.accountName.trim() }
+            : {}),
+          ...(typeof body?.accountEmail === 'string'
+            ? { accountEmail: body.accountEmail.trim() }
+            : {}),
+          ...(typeof body?.preserveSlugAsFamily === 'boolean'
+            ? { preserveSlugAsFamily: body.preserveSlugAsFamily }
+            : {}),
+        };
+        writeWorkspaceConfig(sitesRoot, nextConfig);
+        sendJson(res, 200, nextConfig);
+        return;
+      }
+
+      // GET /api/workspace/fonts
+      if (segments.length === 3 && segments[2] === 'fonts' && req.method === 'GET') {
+        const config = readWorkspaceConfig(sitesRoot);
+        sendJson(res, 200, { fonts: config.fonts });
+        return;
+      }
+
+      // POST /api/workspace/fonts/upload
+      if (segments.length === 4 && segments[2] === 'fonts' && segments[3] === 'upload' && req.method === 'POST') {
+        const rawFilename = decodeURIComponent(String(req.headers['x-font-filename'] || 'custom-font.woff2'));
+        const bytes = await readRawBody(req);
+        if (bytes.length === 0) {
+          sendJson(res, 400, { error: 'Empty font file' });
+          return;
+        }
+        const inspected = inspectFontBinary(bytes, rawFilename);
+        const hash = crypto.createHash('sha1').update(bytes).digest('hex').slice(0, 8);
+        const safeBase = rawFilename
+          .replace(/\.(woff2|woff|otf|ttf)$/i, '')
+          .replace(/[^a-zA-Z0-9._-]+/g, '-')
+          .replace(/^-+|-+$/g, '') || 'font';
+        const finalFileName = `${safeBase}-${hash}.${inspected.ext}`;
+
+        fs.mkdirSync(wsFontsDir, { recursive: true });
+        fs.writeFileSync(path.join(wsFontsDir, finalFileName), bytes);
+
+        const fontEntry: WorkspaceFont = {
+          id: `upload-${hash}`,
+          family: inspected.family,
+          weight: inspected.weight,
+          style: inspected.style,
+          ext: inspected.ext,
+          fileName: finalFileName,
+          size: bytes.length,
+          url: `/workspace-fonts/${finalFileName}`,
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: 'Workspace Admin',
+          isVariable: inspected.isVariable,
+          ...(inspected.weightRange ? { weightRange: inspected.weightRange } : {}),
+          source: inspected.source,
+          provider: 'upload',
+          sfntTables: inspected.sfntTables,
+          sfntFlavor: inspected.sfntFlavor,
+        };
+
+        const config = readWorkspaceConfig(sitesRoot);
+        const existingIdx = config.fonts.findIndex((f) => f.id === fontEntry.id);
+        if (existingIdx >= 0) {
+          config.fonts[existingIdx] = fontEntry;
+        } else {
+          config.fonts.push(fontEntry);
+        }
+        writeWorkspaceConfig(sitesRoot, config);
+        sendJson(res, 201, { font: fontEntry, fonts: config.fonts });
+        return;
+      }
+
+      // POST /api/workspace/fonts/adobe
+      if (segments.length === 4 && segments[2] === 'fonts' && segments[3] === 'adobe' && req.method === 'POST') {
+        const body = await readJsonBody(req);
+        const input = String(body?.input || '').trim();
+        if (!input) {
+          sendJson(res, 400, { error: 'Adobe Fonts Kit ID, URL, or @font-face CSS is required.' });
+          return;
+        }
+        const config = readWorkspaceConfig(sitesRoot);
+        const preserveSlugAsFamily =
+          typeof body?.preserveSlugAsFamily === 'boolean'
+            ? body.preserveSlugAsFamily
+            : config.preserveSlugAsFamily;
+
+        const { kitId, faces } = await ingestAdobeFontsLowLevel({
+          input,
+          workspaceFontsDir: wsFontsDir,
+          preserveSlugAsFamily,
+          familyNameMap: body?.familyNameMap && typeof body.familyNameMap === 'object' ? body.familyNameMap : undefined,
+        });
+
+        const byId = new Map<string, WorkspaceFont>();
+        for (const f of config.fonts) byId.set(f.id, f);
+        for (const f of faces) byId.set(f.id, f);
+        config.fonts = Array.from(byId.values());
+
+        const families = Array.from(new Set(faces.map((f) => f.family)));
+        const nextKits = config.connectedKits.filter((k) => k.kitId !== kitId);
+        nextKits.unshift({
+          kitId,
+          syncedAt: new Date().toISOString(),
+          faceCount: faces.length,
+          families,
+        });
+        config.connectedKits = nextKits;
+        writeWorkspaceConfig(sitesRoot, config);
+
+        sendJson(res, 200, {
+          kitId,
+          addedFaces: faces,
+          fonts: config.fonts,
+          connectedKits: config.connectedKits,
+        });
+        return;
+      }
+
+      // POST /api/workspace/fonts/adobe/kits
+      if (
+        segments.length === 5 &&
+        segments[2] === 'fonts' &&
+        segments[3] === 'adobe' &&
+        segments[4] === 'kits' &&
+        req.method === 'POST'
+      ) {
+        const body = await readJsonBody(req);
+        const apiToken = String(body?.apiToken || '').trim();
+        const kits = await fetchAdobeTypekitKits(apiToken);
+        sendJson(res, 200, { kits });
+        return;
+      }
+
+      // DELETE /api/workspace/fonts/:id (or DELETE /api/workspace/fonts?family=...)
+      if (segments[2] === 'fonts' && req.method === 'DELETE') {
+        const params = new URLSearchParams(rawQuery);
+        const familyFilter = params.get('family');
+        const kitFilter = params.get('kitId');
+        const fontId = segments[3] ? decodeURIComponent(segments[3]) : null;
+
+        const config = readWorkspaceConfig(sitesRoot);
+        const toRemove = config.fonts.filter((f) => {
+          if (fontId && f.id === fontId) return true;
+          if (familyFilter && f.family === familyFilter) return true;
+          if (kitFilter && f.adobeKitId === kitFilter) return true;
+          return false;
+        });
+
+        for (const rem of toRemove) {
+          const fileCandidate = path.join(wsFontsDir, rem.fileName);
+          if (fs.existsSync(fileCandidate)) {
+            fs.rmSync(fileCandidate, { force: true });
+          }
+        }
+
+        const removeIds = new Set(toRemove.map((f) => f.id));
+        config.fonts = config.fonts.filter((f) => !removeIds.has(f.id));
+        if (kitFilter) {
+          config.connectedKits = config.connectedKits.filter((k) => k.kitId !== kitFilter);
+        }
+        writeWorkspaceConfig(sitesRoot, config);
+        sendJson(res, 200, { fonts: config.fonts, connectedKits: config.connectedKits });
+        return;
+      }
+
+      sendJson(res, 404, { error: 'Not found' });
+    } catch (err) {
+      sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
     }
   };
 }
@@ -519,10 +925,12 @@ export function sitesApiPlugin(repoRoot: string): Plugin {
   return {
     name: 'websites-sites-api',
     configureServer(server) {
+      server.middlewares.use(createWorkspaceApiMiddleware(repoRoot));
       server.middlewares.use(createSitesApiMiddleware(repoRoot));
       server.middlewares.use(createStaticAssetMiddleware(repoRoot));
     },
     configurePreviewServer(server) {
+      server.middlewares.use(createWorkspaceApiMiddleware(repoRoot));
       server.middlewares.use(createSitesApiMiddleware(repoRoot));
       server.middlewares.use(createStaticAssetMiddleware(repoRoot));
     },

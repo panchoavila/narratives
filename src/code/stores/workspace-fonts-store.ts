@@ -26,6 +26,7 @@ import type { WorkspaceFont } from '@/backend/types';
 
 let _fonts: WorkspaceFont[] = [];
 let _loaded = false;
+let _loadedProjectId: string | null = null;
 let _loading = false;
 const listeners = new Set<() => void>();
 
@@ -41,18 +42,21 @@ function notify(): void {
  * just omits the section).
  */
 export async function ensureWorkspaceFonts(): Promise<void> {
-  if (_loaded || _loading) return;
+  const currentWebsiteId = getProjectId();
+  if (_loaded && _loadedProjectId === currentWebsiteId) return;
+  if (_loading) return;
   _loading = true;
   try {
-    const websiteId = getProjectId();
-    if (!websiteId || websiteId === 'local') { _loaded = true; return; }
+    const websiteId = currentWebsiteId;
+    if (!websiteId || websiteId === 'local') { _loaded = true; _loadedProjectId = websiteId; return; }
 
     const workspaceId = await backend.getWebsiteWorkspaceId(websiteId);
-    if (!workspaceId) { _loaded = true; return; }
+    if (!workspaceId) { _loaded = true; _loadedProjectId = websiteId; return; }
 
     const fonts = await backend.listWorkspaceFonts(workspaceId);
     _fonts = fonts;
     _loaded = true;
+    _loadedProjectId = websiteId;
     trace.action('workspace-fonts:loaded', { count: fonts.length, workspaceId });
 
     // Register every face so the picker renders each in its own typeface.
@@ -63,10 +67,19 @@ export async function ensureWorkspaceFonts(): Promise<void> {
   } catch (err) {
     trace.error('workspace-fonts:load-failed', err);
     _loaded = true;
+    _loadedProjectId = currentWebsiteId;
   } finally {
     _loading = false;
     notify();
   }
+}
+
+/** Force a re-fetch of the workspace font library after an upload or Adobe Fonts sync. */
+export async function refreshWorkspaceFonts(): Promise<void> {
+  _loaded = false;
+  _loadedProjectId = null;
+  _loading = false;
+  await ensureWorkspaceFonts();
 }
 
 /** Imperative read of the cached library (empty until loaded). */
@@ -91,6 +104,7 @@ export function applyWorkspaceFontToProject(family: string): void {
     // A variable file declares a RANGE, so the browser interpolates the real
     // axis instead of synthesising a faux bold off one pinned weight.
     ...(f.weightRange ? { weightRange: f.weightRange } : {}),
+    ...(f.unicodeRange ? { unicodeRange: f.unicodeRange } : {}),
   }));
 
   // modifyProjectFile flushes any pending mutation (e.g. the fontFamily write

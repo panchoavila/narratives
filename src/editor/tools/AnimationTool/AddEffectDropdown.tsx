@@ -83,6 +83,7 @@ const ADD_OPTIONS: AddOption[] = [
   { type: 'pageTransition', label: 'Page Transition', desc: 'Animate the page in/out on navigation (View Transitions).' },
   // Smooth Scroll (Lenis) — page-level, like Page Transition, set per page.
   { type: 'smoothScroll', label: 'Smooth Scroll', desc: 'Smooth, eased scrolling on this page (Lenis).' },
+  { type: 'canvasEffect', label: 'Canvas Stage', desc: 'Progressive HTML-in-Canvas (content="drawable" + drawElementImage) shader effect with automatic CSS/DOM fallback.' },
   { type: 'keyframe', label: 'Keyframe', desc: '@keyframes block. No JS. Visual scrubber.' },
   // Text
   { type: 'textEffect', label: 'Text', desc: 'Character/word/line stagger via Motion.', textOnly: true },

@@ -38,6 +38,7 @@ const KIND_COLORS: Record<string, string> = {
   motion: '#a855f7',
   text: '#ec4899',
   scroll: '#10b981',
+  'canvas-effect': '#e11d48',
   'page-transition': '#6366f1',
   'smooth-scroll': '#14b8a6',
 };
@@ -219,10 +220,10 @@ function TrackRow({
       onClick={onSelect}
       className={`grid items-center border-b border-[var(--border-light)] text-xs cursor-pointer transition-colors ${
         isSelected
-          ? 'bg-white/[0.08]'
+          ? 'bg-[var(--selection-bg)]'
           : isSnapTargetRow
-            ? 'bg-pink-500/[0.08]'
-            : 'hover:bg-white/[0.04]'
+            ? 'bg-pink-500/[0.10]'
+            : 'hover:bg-[var(--bg-hover)]'
       }`}
       style={{
         gridTemplateColumns: showNumeric ? '260px 210px 1fr' : '260px 1fr',
@@ -232,13 +233,14 @@ function TrackRow({
       {/* Element / Page identity */}
       <div className="flex items-center gap-2 px-3 py-1.5 min-w-0 border-r border-[var(--border-light)]">
         <span
-          className="px-1.5 py-0.5 rounded text-[10px] font-mono uppercase shrink-0"
+          className="px-1.5 py-0.5 rounded text-[10px] font-mono shrink-0"
           style={{
-            backgroundColor: track.scope === 'page' ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.08)',
-            color: track.scope === 'page' ? '#a5b4fc' : 'var(--text-secondary)',
+            backgroundColor:
+              track.scope === 'page' ? 'var(--accent-surface)' : 'var(--button-secondary-bg)',
+            color: track.scope === 'page' ? 'var(--accent-text)' : 'var(--text-secondary)',
           }}
         >
-          {track.scope === 'page' ? 'PAGE' : track.nodeTag}
+          {track.scope === 'page' ? 'Page' : track.nodeTag}
         </span>
         <div className="min-w-0 flex-1">
           <div className="font-medium text-[var(--text-primary)] truncate">
@@ -249,8 +251,11 @@ function TrackRow({
           </div>
         </div>
         <span
-          className="px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-semibold shrink-0"
-          style={{ backgroundColor: `${color}22`, color }}
+          className="px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0"
+          style={{
+            backgroundColor: `color-mix(in srgb, ${color} 16%, transparent)`,
+            color: `color-mix(in srgb, ${color} 72%, var(--text-primary))`,
+          }}
         >
           {track.trigger}
         </span>
@@ -261,8 +266,8 @@ function TrackRow({
         <div
           className="flex items-center gap-2 px-2.5 py-1 border-r border-[var(--border-light)] text-[11px] tabular-nums"
         >
-          <label className="flex items-center gap-1 text-[var(--text-tertiary)]">
-            <span>offset</span>
+          <label className="flex items-center gap-1 text-[var(--text-secondary)]">
+            <span>Offset</span>
             <input
               type="text"
               aria-label={`Delay for ${track.nodeId}`}
@@ -279,13 +284,13 @@ function TrackRow({
                   commitNumeric();
                 }
               }}
-              className="w-12 h-6 px-1.5 rounded bg-black/30 border border-[var(--border-light)] text-[var(--text-primary)] text-[11px] font-mono text-right focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
+              className="w-12 h-6 px-1.5 rounded bg-[var(--control-bg)] border border-[var(--control-border)] text-[var(--text-primary)] text-[11px] font-mono text-right focus:outline-none focus:border-[var(--border-focus)] disabled:opacity-50"
             />
             <span>s</span>
           </label>
 
-          <label className="flex items-center gap-1 text-[var(--text-tertiary)]">
-            <span>dur</span>
+          <label className="flex items-center gap-1 text-[var(--text-secondary)]">
+            <span>Dur</span>
             <input
               type="text"
               aria-label={`Duration for ${track.nodeId}`}
@@ -302,7 +307,7 @@ function TrackRow({
                   commitNumeric();
                 }
               }}
-              className="w-12 h-6 px-1.5 rounded bg-black/30 border border-[var(--border-light)] text-[var(--text-primary)] text-[11px] font-mono text-right focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
+              className="w-12 h-6 px-1.5 rounded bg-[var(--control-bg)] border border-[var(--control-border)] text-[var(--text-primary)] text-[11px] font-mono text-right focus:outline-none focus:border-[var(--border-focus)] disabled:opacity-50"
             />
             <span>s</span>
           </label>
@@ -315,7 +320,7 @@ function TrackRow({
           {/* Delay / Offset leader line */}
           {effectiveDelay > 0 && (
             <div
-              className="absolute top-1/2 -translate-y-1/2 border-t border-dashed border-white/25 pointer-events-none"
+              className="absolute top-1/2 -translate-y-1/2 border-t border-dashed border-[var(--border-default)] pointer-events-none"
               style={{ left: 0, width: `${leftPct}%` }}
               title={`Start offset: ${effectiveDelay}s`}
             />
@@ -331,7 +336,7 @@ function TrackRow({
             style={{
               left: `${leftPct}%`,
               width: `${widthPct}%`,
-              backgroundColor: dragState ? `${color}55` : `${color}38`,
+              backgroundColor: `color-mix(in srgb, ${color} ${dragState ? '34%' : '22%'}, var(--bg-surface))`,
               border: isDurationMatchRow
                 ? '1.5px solid #ec4899'
                 : isSnapTargetRow
@@ -352,11 +357,14 @@ function TrackRow({
                 className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 flex items-center justify-center cursor-ew-resize z-20"
                 title={`Drag to adjust start offset (${effectiveDelay}s)`}
               >
-                <span className="w-2 h-2 rotate-45 bg-white border border-black/70 group-hover:scale-125 transition-transform" />
+                <span
+                  className="w-2 h-2 rotate-45 bg-[var(--bg-surface)] group-hover:scale-125 transition-transform"
+                  style={{ border: `1.5px solid ${color}` }}
+                />
               </span>
             )}
 
-            <span className="text-[10px] font-mono text-white/95 truncate pointer-events-none">
+            <span className="text-[10px] font-mono font-medium text-[var(--text-primary)] truncate pointer-events-none">
               {effectiveDelay > 0 ? `+${effectiveDelay}s · ` : ''}{effectiveDuration}s
               {isDurationMatchRow ? ' =' : ''}
             </span>
@@ -367,8 +375,8 @@ function TrackRow({
               .map((stop, sIdx) => (
                 <span
                   key={sIdx}
-                  className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rotate-45 bg-white/80 border border-black/60 pointer-events-none"
-                  style={{ left: `calc(${stop.offset}% - 4px)` }}
+                  className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rotate-45 bg-[var(--bg-surface)] pointer-events-none"
+                  style={{ left: `calc(${stop.offset}% - 4px)`, border: `1.5px solid ${color}` }}
                   title={`Keyframe stop ${stop.offset}%`}
                 />
               ))}
@@ -384,7 +392,10 @@ function TrackRow({
                 className="absolute -right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 flex items-center justify-center cursor-ew-resize z-20"
                 title={`Drag to adjust duration (${effectiveDuration}s)`}
               >
-                <span className="w-2 h-2 rotate-45 bg-white border border-black/70 group-hover:scale-125 transition-transform" />
+                <span
+                  className="w-2 h-2 rotate-45 bg-[var(--bg-surface)] group-hover:scale-125 transition-transform"
+                  style={{ border: `1.5px solid ${color}` }}
+                />
               </span>
             )}
           </div>
@@ -502,6 +513,26 @@ export default function AnimationTimeline() {
   const handleCommitTiming = (track: TimelineTrack, nextDelay: number, nextDuration: number) => {
     const node = nodes.get(track.nodeId);
     if (!node || !track.styleProp) return;
+
+    if (track.styleProp === 'canvas-effect') {
+      expediteStableAtomSync();
+      queueMutation({
+        type: 'updateHtmlAttrs',
+        nodeId: track.nodeId,
+        attrs: {
+          'data-canvas-delay': String(nextDelay),
+          'data-canvas-duration': String(nextDuration),
+        },
+      });
+      flushNow();
+      trace.action('animation-timeline:update-canvas-effect', {
+        nodeId: track.nodeId,
+        delay: nextDelay,
+        duration: nextDuration,
+      });
+      return;
+    }
+
     const currentRaw = node.styles?.[track.styleProp] ?? '';
     if (!currentRaw) return;
 
@@ -551,19 +582,19 @@ export default function AnimationTimeline() {
     <section
       data-testid="animation-timeline-panel"
       aria-label="Animation Timeline"
-      className="fixed z-[90] bg-[var(--bg-surface)] border-t border-[var(--border-light)] text-[var(--text-primary)] flex flex-col shadow-2xl"
+      className="fixed z-40 bg-[var(--bg-surface)] border-t border-[var(--border-light)] text-[var(--text-primary)] flex flex-col shadow-2xl"
       style={{
         left: 308,
         right: 260,
-        bottom: 52,
-        height: 290,
+        bottom: 0,
+        height: 270,
         fontFamily: 'Inter, system-ui, sans-serif',
       }}
     >
       {/* Top Bar */}
-      <div className="flex items-center justify-between px-3 h-9 border-b border-[var(--border-light)] bg-black/20 shrink-0 gap-2">
+      <div className="flex items-center justify-between px-3 h-9 border-b border-[var(--border-light)] bg-[var(--bg-toolbar)] shrink-0 gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
-          <span className="text-xs font-semibold tracking-wide uppercase text-[var(--accent)] whitespace-nowrap shrink-0">
+          <span className="text-xs font-semibold text-[var(--text-primary)] whitespace-nowrap shrink-0">
             Animation Timeline
           </span>
           <span className="text-[11px] text-[var(--text-secondary)] whitespace-nowrap shrink-0">
@@ -571,18 +602,25 @@ export default function AnimationTimeline() {
           </span>
 
           <div className="flex items-center gap-1 ml-1 shrink-0">
-            {(['all', 'dom', 'page', 'scroll'] as const).map((f) => (
+            {(
+              [
+                { id: 'all', label: 'All' },
+                { id: 'dom', label: 'DOM' },
+                { id: 'page', label: 'Page' },
+                { id: 'scroll', label: 'Scroll' },
+              ] as const
+            ).map((f) => (
               <button
-                key={f}
+                key={f.id}
                 type="button"
-                onClick={() => setFilter(f)}
-                className={`px-2 py-0.5 rounded text-[10px] uppercase font-medium cursor-pointer border-none whitespace-nowrap ${
-                  filter === f
+                onClick={() => setFilter(f.id)}
+                className={`px-2 py-0.5 rounded text-[11px] font-medium cursor-pointer border-none whitespace-nowrap transition-colors ${
+                  filter === f.id
                     ? 'bg-[var(--accent)] text-[var(--accent-fg)]'
-                    : 'bg-white/5 text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    : 'bg-[var(--button-secondary-bg)] hover:bg-[var(--button-secondary-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >
-                {f}
+                {f.label}
               </button>
             ))}
           </div>
@@ -592,10 +630,10 @@ export default function AnimationTimeline() {
             data-testid="toggle-timeline-numeric-column"
             onClick={() => setShowNumeric((prev) => !prev)}
             title={showNumeric ? 'Hide Offset & Duration inputs' : 'Show Offset & Duration inputs'}
-            className={`px-2 py-0.5 rounded text-[10px] font-medium cursor-pointer border-none transition-colors whitespace-nowrap shrink-0 ${
+            className={`px-2 py-0.5 rounded text-[11px] font-medium cursor-pointer border-none transition-colors whitespace-nowrap shrink-0 ${
               showNumeric
-                ? 'bg-white/15 text-[var(--text-primary)]'
-                : 'bg-white/5 text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                ? 'bg-[var(--bg-active)] text-[var(--text-primary)]'
+                : 'bg-[var(--button-secondary-bg)] hover:bg-[var(--button-secondary-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
           >
             {showNumeric ? '▾ Inputs' : '▸ Inputs'}
@@ -607,7 +645,7 @@ export default function AnimationTimeline() {
             type="button"
             data-testid="timeline-play-button"
             onClick={handleReplayAll}
-            className="px-2.5 py-1 rounded bg-white/10 hover:bg-white/15 text-[11px] font-medium text-[var(--text-primary)] cursor-pointer border-none whitespace-nowrap shrink-0"
+            className="px-2.5 py-1 rounded bg-[var(--button-secondary-bg)] hover:bg-[var(--button-secondary-hover)] text-[11px] font-medium text-[var(--text-primary)] cursor-pointer border-none whitespace-nowrap shrink-0 transition-colors"
           >
             {playing ? 'Playing…' : '▶ Replay All'}
           </button>
@@ -619,7 +657,7 @@ export default function AnimationTimeline() {
             aria-label="Close Animation Timeline"
             data-testid="close-animation-timeline"
             onClick={() => setOpen(false)}
-            className="w-6 h-6 rounded flex items-center justify-center bg-transparent hover:bg-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer border-none shrink-0"
+            className="w-6 h-6 rounded flex items-center justify-center bg-transparent hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer border-none shrink-0 transition-colors"
           >
             ×
           </button>
@@ -628,7 +666,7 @@ export default function AnimationTimeline() {
 
       {/* Column Headers + Interactive Time Ruler */}
       <div
-        className="grid items-center border-b border-[var(--border-light)] bg-black/10 text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] shrink-0"
+        className="grid items-center border-b border-[var(--border-light)] bg-[var(--bg-toolbar)] text-[11px] font-medium text-[var(--text-secondary)] shrink-0"
         style={{
           gridTemplateColumns: showNumeric ? '260px 210px 1fr' : '260px 1fr',
           height: 26,
@@ -658,8 +696,8 @@ export default function AnimationTimeline() {
                   className="absolute top-0 bottom-0 flex items-center pointer-events-none"
                   style={{ left: `${pct}%` }}
                 >
-                  <div className="h-2 w-px bg-white/20 mr-1" />
-                  <span className="text-[9px] font-mono text-[var(--text-tertiary)] select-none">
+                  <div className="h-2 w-px bg-[var(--border-default)] mr-1" />
+                  <span className="text-[10px] font-mono font-normal text-[var(--text-tertiary)] select-none">
                     {t}s
                   </span>
                 </div>

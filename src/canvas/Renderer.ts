@@ -38,6 +38,9 @@ import { applyNodeCmsBindings, applyBindingDataToTree, applyLocaleOverrides, cle
 import { extractCanvasGlobals, canvasThemeMode } from './canvas-theme';
 import { isRtlLocale, RTL_TEXT_CSS } from '@/shared/rtl-text';
 import { scopeSvgMarkupIds, elementSvgScope } from '../shared/svg-id-scope';
+import { attachCanvasEffectsRuntime } from '@/shared/canvas-effects';
+
+const _canvasEffectsAttachedDocs = new WeakSet<Document>();
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -1231,6 +1234,11 @@ export function renderNodes(
       rtlEl.setAttribute('data-canvas-rtl-text', 'true');
       rtlEl.textContent = RTL_TEXT_CSS;
       container.prepend(rtlEl);
+    }
+    const ownerDoc = container.ownerDocument ?? document;
+    if (!_canvasEffectsAttachedDocs.has(ownerDoc)) {
+      _canvasEffectsAttachedDocs.add(ownerDoc);
+      attachCanvasEffectsRuntime(ownerDoc);
     }
   }
 
@@ -2585,6 +2593,14 @@ export function patchElement(
     // Overlays keeps the shown one glued to its canvas-node trigger.
     if (node.attrs['data-overlay'] && !el.hasAttribute('data-overlay-node')) {
       el.setAttribute('data-overlay-node', 'true');
+    }
+    if (!node.attrs['data-canvas-effect'] && el.hasAttribute('data-canvas-effect')) {
+      el.removeAttribute('data-canvas-effect');
+      el.removeAttribute('data-canvas-duration');
+      el.removeAttribute('data-canvas-delay');
+      el.removeAttribute('data-canvas-intensity');
+      el.removeAttribute('data-canvas-mode');
+      el.removeAttribute('drawable');
     }
     // Overlay positioning is handled by the portal system in renderNodes()
     // (overlays are moved from viewport tree to a portal sibling)
