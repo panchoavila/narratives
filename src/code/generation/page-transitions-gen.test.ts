@@ -81,3 +81,19 @@ describe('page-transitions-gen: deployed runtime matches the editor builder (no 
     });
   });
 });
+
+
+describe('page transitions: syntactic children insertion', () => {
+  it('ignores destructuring and comments, inserts after complete multiline imports', () => {
+    const code = `import {
+  Fragment
+} from 'react';
+// {children} is a comment
+export default function Layout({children}: {children:React.ReactNode}) {return <Fragment>{children}</Fragment>}`;
+    const output = injectPageTransitionsInCode(code);
+    expect(output).toContain('function Layout({children}:');
+    expect(output).toContain('<Fragment><PageTransitions>{children}</PageTransitions></Fragment>');
+    parsesTsx(output);
+    expect(injectPageTransitionsInCode(output)).toBe(output);
+  });
+});

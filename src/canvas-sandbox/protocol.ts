@@ -24,6 +24,7 @@ export interface TextEditFitResult {
 }
 
 export type SandboxEvent =
+  | { type: 'sceneViewportBounds'; viewportId: string; bounds: import('@/shared/scene-projection').SceneViewportBounds }
   // Sandbox loaded and ready (Comlink.expose has been called)
   | { type: 'sandboxReady' }
   // Render completed

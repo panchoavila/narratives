@@ -11,6 +11,8 @@
 // ./sandbox/rect-emit.ts is what broke the old bridge-sandbox ↔
 // sandbox-code-host circular import.
 
+import { applySceneInspection, findSceneViewport, getSceneViewportBounds } from './sandbox/scene-inspection';
+import type { SceneInspectionOptions } from './sandbox/scene-inspection';
 import { CullingController } from './culling-controller';
 import * as Comlink from 'comlink';
 import type { SandboxApi, RenderInput } from './sandbox-api';
@@ -166,13 +168,47 @@ function hintCameraGesture(scale?: number): void {
 // request to test its impact — zoom-out WITHOUT it was "terrible and
 // extremely laggy" (every offscreen tile painted + rastered at every
 // intermediate scale). Re-enabled permanently; culling stays.
+let sceneInspection: SceneInspectionOptions = { enabled: false, separation: 48, selectedId: '' };
+let sceneObserver: ResizeObserver | null = null;
+let observedSceneViewport: HTMLElement | null = null;
+let sceneBoundsSignature = '';
+function observeSceneViewport(): void {
+  const id = sceneInspection.enabled ? sceneInspection.viewportId : undefined;
+  const viewport = contentRoot && id ? findSceneViewport(contentRoot, id) : null;
+  const notifyBounds = () => {
+    if (!contentRoot || !id || !sceneInspection.enabled) return;
+    const bounds = getSceneViewportBounds(contentRoot, id);
+    const signature = JSON.stringify({ id, bounds });
+    if (bounds && signature !== sceneBoundsSignature) {
+      sceneBoundsSignature = signature;
+      emit({ type: 'sceneViewportBounds', viewportId: id, bounds });
+    }
+  };
+  if (viewport !== observedSceneViewport) {
+    sceneObserver?.disconnect();
+    observedSceneViewport = viewport;
+    sceneBoundsSignature = '';
+    if (viewport) { sceneObserver = new ResizeObserver(notifyBounds); sceneObserver.observe(viewport); }
+    else sceneObserver = null;
+  }
+  notifyBounds();
+}
+let sceneInspectionRequest = 0;
+
+/** Camera transform is outside the common 3D plane; pan/zoom remain native. */
+function applyCameraTransform(x: number, y: number, scale: number): void {
+  if (!contentRoot) return;
+  const camera = contentRoot.parentElement?.matches('[data-canvas-camera]') ? contentRoot.parentElement : contentRoot;
+  camera.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
+  camera.style.transformOrigin = '0 0';
+}
 let cullingController: CullingController | null = null;
 function getCulling(): CullingController | null {
   if (!contentRoot) return null;
   if (!cullingController) {
     cullingController = new CullingController(
       contentRoot,
-      () => isSandboxDndInteracting(),
+      () => isSandboxDndInteracting() || sceneInspection.enabled,
       (_culled, restored) => {
         // Re-materialised subtrees need fresh parent-cache rects NOW — the
         // next render may be far away and hover/selection would read the
@@ -198,6 +234,25 @@ let lastNodesMap: Map<string, CanvasNode> | null = null;
 let lastAppliedSeq = 0;
 
 const api: SandboxApi = {
+  getSceneViewportBounds(viewportId) {
+    if (!contentRoot) return null;
+    getCulling()?.restoreAll();
+    return getSceneViewportBounds(contentRoot, viewportId);
+  },
+  async setSceneInspection(options): Promise<boolean> {
+    if (!contentRoot) return false;
+    const request = ++sceneInspectionRequest;
+    // Keep culling suspended through the transition back to 2D.
+    if (options.enabled) sceneInspection = options;
+    if (options.enabled) getCulling()?.restoreAll();
+    await applySceneInspection(contentRoot, options);
+    if (request !== sceneInspectionRequest) return true;
+    sceneInspection = options;
+    if (!options.interacting) forceRemeasureAllRects();
+    observeSceneViewport();
+    if (!options.enabled) getCulling()?.scheduleEvaluate();
+    return true;
+  },
   render(input: RenderInput): void {
     if (!contentRoot) return;
     try {
@@ -241,8 +296,7 @@ const api: SandboxApi = {
       // Apply transform BEFORE render so getBoundingClientRect includes pan/zoom
       if (input.transform) {
         setCurrentSandboxTransform({ ...input.transform });
-        contentRoot.style.transform = `translate3d(${input.transform.x}px, ${input.transform.y}px, 0) scale(${input.transform.scale})`;
-        contentRoot.style.transformOrigin = '0 0';
+        applyCameraTransform(input.transform.x, input.transform.y, input.transform.scale);
         getCulling()?.onTransform(input.transform.x, input.transform.y, input.transform.scale);
       }
       trace.action('canvas-sandbox:render', { nodeCount: nodes.size, vpCount: input.viewports.length, codeLen: input.code ? input.code.length : 0 });
@@ -360,6 +414,10 @@ const api: SandboxApi = {
         input.distrustPatchKeys,
       );
       trace.action('canvas-sandbox:render-done', { children: contentRoot.children.length });
+      if (sceneInspection.enabled) {
+        void applySceneInspection(contentRoot, sceneInspection);
+        observeSceneViewport();
+      }
       // Re-cull SYNCHRONOUSLY before measuring: at high zoom this drops the
       // measure pass from every-element to visible-elements-only (culled
       // subtrees replay their cached payloads below). evaluate() reads root
@@ -374,7 +432,7 @@ const api: SandboxApi = {
       // every later read saw only culled zeros ("measured: 3" trace, user
       // report 2026-07-27). A new file needs ONE full measure before any
       // culling; the idle evaluate re-culls at the SETTLED camera.
-      if (!input.distrustPatchKeys || input.preserveCulling) getCulling()?.evaluate();
+      if (!sceneInspection.enabled && (!input.distrustPatchKeys || input.preserveCulling)) getCulling()?.evaluate();
       // AFTER the sync re-cull: culled roots whose content was PATCHED this
       // render (marked data-culled-dirty by patchElement) re-materialise so
       // the measure below emits their REAL new geometry — otherwise the grey
@@ -445,8 +503,7 @@ const api: SandboxApi = {
     if (!contentRoot) return;
     setCurrentSandboxTransform({ x, y, scale });
     hintCameraGesture(scale);
-    contentRoot.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
-    contentRoot.style.transformOrigin = '0 0';
+    applyCameraTransform(x, y, scale);
     // Forward to canvas-dnd so drag/snap math uses the right scale + offset
     setSandboxDndTransform(x, y, scale);
     // Viewport culling: evaluate when the camera settles (idle debounce) —

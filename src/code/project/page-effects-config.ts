@@ -56,7 +56,10 @@ export interface SideConfig {
   transition: TransitionConfig; // each side has its OWN transition (design-tool parity)
 }
 
+import type { DisplacementConfig } from '@/shared/displacement-config';
+
 export interface PageEffect {
+  displacement?: DisplacementConfig;
   preset: string; // 'crossfade' | 'fade-out-in' | 'slide-left' | … | 'custom'
   target: string; // destination route ('/team'), or 'all'
   exit?: SideConfig; // This Page  (omit = page leaves with no animation)

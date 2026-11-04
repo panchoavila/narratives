@@ -147,6 +147,8 @@ export function initCameraPersist(): () => void {
     if (settleTimer !== null) clearTimeout(settleTimer);
     settleTimer = setTimeout(() => {
       settleTimer = null;
+      // 3D inspection has a temporary focus camera. Keep the file's 2D camera.
+      if (document.querySelector('[data-canvas-root][data-scene-view="isometric"]')) return;
       const active = getDefaultStore().get(activeFilePathAtom);
       if (!active) return;
       // Save the ACTIVE file's settled camera. cameraStash.save notifies the

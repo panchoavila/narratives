@@ -28,6 +28,9 @@ import { trace } from '@/shared/debug-trace';
 import { useIsViewer, useIsOffline } from '@/code/stores/viewer-mode-store';
 import { isShortcutKey } from '@/shared/shortcut-key';
 
+import { useSceneInspection } from './scene-composer/useSceneInspection';
+import { SceneViewportSelect } from './scene-composer/SceneViewControls';
+
 // ─── Chevron & Check icons ─────────────────────────────────────────────────
 
 const ChevronDownSvg = () => (
@@ -136,6 +139,8 @@ function ToolButton({ active, onClick, title, children, dataTutorial }: {
 }) {
   return (
     <button
+      type="button"
+      aria-pressed={active}
       onClick={onClick}
       title={title}
       data-tutorial={dataTutorial}
@@ -478,6 +483,7 @@ function ThemeSwitcher() {
 // ─── Main BottomToolbar ─────────────────────────────────────────────────────
 
 export default function BottomToolbar() {
+  const sceneInspection = useSceneInspection();
   const [toolMode, setToolMode] = useAtom(toolModeAtom);
   // DIAGNOSTIC (temporary): when does the toolbar re-render, and what toolMode
   // does it see? Pairs with border-radius-handle:state to test whether the
@@ -799,6 +805,13 @@ export default function BottomToolbar() {
             </button>
           </>
         )}
+        <SceneViewportSelect />
+        <ToolButton active={sceneInspection.active} onClick={sceneInspection.toggle} title={sceneInspection.error || (sceneInspection.active ? '2D view (Esc)' : 'Isometric view')}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" />
+            <path d="m4 7.5 8 4.5 8-4.5M12 12v9" />
+          </svg>
+        </ToolButton>
       </div>
     </div>
   );

@@ -1,0 +1,57 @@
+/* Inspection is the existing workspace. Keep its viewport headers visible;
+   hide only 2D editing overlays whose hit geometry does not describe depth. */
+[data-canvas-root][data-scene-view="isometric"] > :not(iframe):not([data-viewport-header-overlay]):not([data-scene-controls]) {
+  visibility: hidden !important;
+}
+[data-canvas-root][data-scene-view="isometric"] [data-viewport-header-overlay] {
+  visibility: visible !important;
+}
+[data-canvas-root][data-scene-view="isometric"] [data-viewport-header] {
+  pointer-events: none !important;
+}
+[data-canvas-root][data-scene-view="isometric"] [data-viewport-header] * {
+  pointer-events: none !important;
+}
+
+.scene-axis-gizmo {
+  position: relative;
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  cursor: grab;
+  touch-action: none;
+}
+.scene-axis-gizmo:hover { background: color-mix(in srgb, var(--canvas-chrome-bg) 65%, transparent); }
+.scene-axis-gizmo > svg { position: absolute; inset: 0; pointer-events: none; }
+.scene-axis-end {
+  position: absolute;
+  width: 23px;
+  height: 23px;
+  transform: translate(-50%, -50%);
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+}
+.scene-axis-end span { color: #18202a; pointer-events: none; }
+.scene-axis-end:hover, .scene-axis-end:focus-visible { outline: 2px solid var(--text-primary); }
+.scene-navigation-tools { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.scene-navigation-button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+  background: var(--canvas-chrome-bg);
+  border: 1px solid var(--control-border);
+  --cut-border-color: var(--control-border);
+  cursor: pointer;
+  touch-action: none;
+}
+.scene-navigation-button:hover { background: var(--grid-line); }
+.scene-navigation-button:focus-visible { outline: 1px solid var(--border-focus); }
+.scene-navigation-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }

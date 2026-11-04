@@ -84,6 +84,11 @@ export class PostMessageBridge implements CanvasBridge {
 
   // Event callbacks
   onRenderComplete: (() => void) | null = null;
+  private sceneBoundsListeners = new Set<(viewportId: string, bounds: import('@/shared/scene-projection').SceneViewportBounds) => void>();
+  subscribeSceneViewportBounds(listener: (viewportId: string, bounds: import('@/shared/scene-projection').SceneViewportBounds) => void): () => void {
+    this.sceneBoundsListeners.add(listener);
+    return () => { this.sceneBoundsListeners.delete(listener); };
+  }
   onNodeMouseDown: ((nodeId: string, event: { clientX: number; clientY: number; button: number; shiftKey: boolean; altKey: boolean; ctrlKey: boolean; metaKey: boolean }) => void) | null = null;
   onSandboxMouseMove: ((clientX: number, clientY: number) => void) | null = null;
   onReady: (() => void) | null = null;
@@ -146,6 +151,7 @@ export class PostMessageBridge implements CanvasBridge {
 
   /** Clean up. */
   destroy(): void {
+    this.sceneBoundsListeners.clear();
     window.removeEventListener('message', this.handleMessage);
     this.remote?.[Comlink.releaseProxy]?.();
     this.remote = null;
@@ -642,9 +648,18 @@ export class PostMessageBridge implements CanvasBridge {
     this.remote?.setShapeEditAnchorPosition(x, y);
   }
 
+  /** Apply view-only inspection to the existing DOM inside the canvas iframe. */
+  async setSceneInspection(options: import('./sandbox/scene-inspection').SceneInspectionOptions): Promise<boolean> {
+    if (!this.remote) return false;
+    return await this.remote.setSceneInspection(options);
+  }
+
+  async getSceneViewportBounds(viewportId: string): Promise<import('@/shared/scene-projection').SceneViewportBounds | null> {
+    return this.remote ? await this.remote.getSceneViewportBounds(viewportId) : null;
+  }
+
   /** Capture a canvas element as an image data-URL. Awaitable Comlink RPC —
-   *  `html-to-image` runs inside the iframe where the element actually
-   *  lives (a parent-frame capture finds nothing post-iframe-migration). */
+   *  `html-to-image` runs inside the iframe where the element actually lives. */
   async captureElement(
     nodeId: string,
     vpPrefix: string,
@@ -1021,6 +1036,9 @@ export class PostMessageBridge implements CanvasBridge {
     const event = e.data.payload as SandboxEvent;
 
     switch (event.type) {
+      case 'sceneViewportBounds':
+        this.sceneBoundsListeners.forEach(fn => fn(event.viewportId, event.bounds));
+        break;
       case 'sandboxReady':
         if (!this.ready) {
           this.ready = true;

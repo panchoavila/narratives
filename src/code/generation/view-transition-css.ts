@@ -296,6 +296,7 @@ export const PRESET_OPTIONS: { value: string; label: string }[] = [
   { value: 'refraction-lens', label: 'Refraction Lens (Canvas)' },
   { value: 'paper-fold', label: 'Paper Fold (Canvas)' },
   { value: 'halftone-dissolve', label: 'Halftone Dissolve (Canvas)' },
+  { value: 'displacement', label: 'Displacement' },
   { value: 'custom', label: 'Custom' },
 ];
 

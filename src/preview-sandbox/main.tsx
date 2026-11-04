@@ -45,6 +45,7 @@ import * as NextIntl from 'next-intl';
 // this import resolves to the same code that runs in the canvas editor and
 // in production.
 import * as RevymeRuntime from '@revyme/runtime';
+import { runDisplacementNavigation } from '../../packages/revyme-runtime-scene/src/displacement-navigation';
 
 import { buildRouteTable, resolveRoute, type Route } from './router';
 import { templatePreviewPages } from '@/preview/template-preview';
@@ -202,6 +203,7 @@ const MODULE_MAP: Record<string, any> = {
   // explicit shape + `__esModule: true` flag guarantees Babel resolves
   // named imports against the right keys.
   '@revyme/runtime': esm({
+    runDisplacementNavigation,
     withResponsiveProps: RevymeRuntime.withResponsiveProps,
     withCursor: RevymeRuntime.withCursor,
     CursorPortal: RevymeRuntime.CursorPortal,

@@ -38,7 +38,8 @@ export function routeForPage(pageFile: string): string {
 function layoutClientForPage(pageFile: string): string | null {
   const layout = getLayoutForPage(pageFile);
   if (!layout) return null;
-  return getLayoutClientPath(layout);
+  const clientPath = getLayoutClientPath(layout);
+  return projectFS.readFile(clientPath) != null ? clientPath : layout;
 }
 
 /** Read the effects map for a page's route group (empty when none yet). */
@@ -62,7 +63,7 @@ export function setPageEffectForPage(pageFile: string, effect: PageEffect): bool
     trace.error('page-effects-ops:set', { pageFile, reason: 'no-layout' });
     return false;
   }
-  ensurePageEffectsScaffold(lc);
+  ensurePageEffectsScaffold(lc, effect.preset === 'displacement');
   // Inject <PageTransitions> into the LayoutClient (existing file → modifyProjectFile).
   modifyProjectFile(lc, (code) => injectPageTransitionsInCode(code));
   const sourceRoute = routeForPage(pageFile);

@@ -19,6 +19,47 @@ const HEADER_HEIGHT = 36;
 const HEADER_MARGIN = 10;
 const DRAG_THRESHOLD = 3;
 
+type ViewportPosition = { left: number; top: number; width: number; height: number };
+let inspectionPositions: Map<string, ViewportPosition> | null = null;
+let inspectionViewportId: string | null = null;
+
+export function focusViewportHeader(container: HTMLElement, viewportId: string, bounds: import('@/shared/scene-projection').SceneViewportBounds): void {
+  inspectionViewportId = viewportId;
+  inspectionPositions?.set(viewportId, { left: bounds.x, top: bounds.y, width: bounds.width, height: bounds.height });
+  updateViewportHeaderPositions(container);
+}
+
+/** Existing header DOM stays on the same world plane as the canvas. */
+export function getViewportHeaderPlane(container: HTMLElement): HTMLElement {
+  let plane = container.querySelector<HTMLElement>(':scope > [data-viewport-header-plane]');
+  if (!plane) {
+    plane = document.createElement('div');
+    plane.dataset.viewportHeaderPlane = '';
+    plane.style.position = 'absolute';
+    container.appendChild(plane);
+  }
+  return plane;
+}
+
+export function setViewportHeaderInspection(container: HTMLElement, active: boolean): void {
+  if (active && inspectionPositions) return;
+  if (!active) { inspectionPositions = null; inspectionViewportId = null; updateViewportHeaderPositions(container); return; }
+  const positions = new Map<string, ViewportPosition>();
+  container.querySelectorAll<HTMLElement>('[data-viewport-header]').forEach(header => {
+    const id = header.dataset.viewportHeader!;
+    const scale = transformManager.getTransform().scale;
+    const position = getViewportPositionData(id, null) ?? {
+      left: parseFloat(header.style.left) || 0,
+      top: (parseFloat(header.style.top) || 0) + (HEADER_HEIGHT + HEADER_MARGIN) / scale,
+      width: parseFloat(header.style.width) || 0,
+      height: 0,
+    };
+    if (position) positions.set(id, position);
+  });
+  inspectionPositions = positions;
+  trace.action('viewport-header:scene-inspection', { active, count: positions.size });
+}
+
 // ─── Overlay edit mode ───────────────────────────────────────────────────────
 // While the user edits an overlay, the viewport header becomes the exit
 // affordance (standard): accent background, "Editing Overlay" label, and a
@@ -38,6 +79,7 @@ export function setViewportHeaderOverlayEditMode(active: boolean, onDone?: () =>
  *  creation AND every RAF tick so a mode flip restyles within a frame even
  *  though headers rebuild constantly. */
 function applyHeaderModeStyles(header: HTMLElement, scale: number): void {
+  header.style.visibility = inspectionViewportId && header.dataset.viewportHeader !== inspectionViewportId ? 'hidden' : '';
   const title = header.querySelector('[data-header-title]') as HTMLElement | null;
   const widthBadge = header.querySelector('[data-header-width]') as HTMLElement | null;
   const addBtn = header.querySelector('[data-header-add]') as HTMLElement | null;
@@ -92,6 +134,9 @@ function getViewportFrameNodeId(_vpId: string): string {
 }
 
 function getViewportPositionData(vpId: string, _vpEl: HTMLElement | null): { left: number; top: number; width: number; height: number } | null {
+  // Projected axis-aligned bridge rects are not layout coordinates. Keep the
+  // original world positions while the entire plane rotates, including zoom.
+  if (inspectionPositions) return inspectionPositions.get(vpId) ?? null;
   // Identical math to canvas-math's shared helper: screen rect via the bridge,
   // converted to canvas-space against the container rect.
   return getCanvasRectById(getViewportFrameNodeId(vpId), getViewportPrefix(vpId), transformManager.getTransform());
@@ -149,7 +194,7 @@ export function renderViewportHeaders(
     if (!posData) continue;
 
     const header = createHeader(vp, vpEl, posData, viewports, callbacks);
-    container.appendChild(header);
+    getViewportHeaderPlane(container).appendChild(header);
   }
 }
 
@@ -203,7 +248,7 @@ export function updateViewportHeaderPositions(container: HTMLElement): void {
 
     const { left, top, width } = posData;
 
-    const dirtyKey = `${left.toFixed(1)}:${top.toFixed(1)}:${width.toFixed(1)}:${scale.toFixed(4)}:${overlayEditActive}:${isViewerMode()}`;
+    const dirtyKey = `${left.toFixed(1)}:${top.toFixed(1)}:${width.toFixed(1)}:${scale.toFixed(4)}:${overlayEditActive}:${isViewerMode()}:${inspectionViewportId}`;
     if (_lastHeaderKey.get(header) === dirtyKey) return;
     _lastHeaderKey.set(header, dirtyKey);
 

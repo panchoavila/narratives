@@ -40,6 +40,7 @@ import ToolbarGhost from './ui/ToolbarGhost';
 import CanvasRulers from './ui/CanvasRulers';
 import RulerGuides from './ui/RulerGuides';
 import Comments from './ui/Comments';
+import SceneViewControls from '@/editor/scene-composer/SceneViewControls';
 import { getContentRoot, getViewportPrefix, setStyleContext, setUpdatingFromCanvasFlagger, setForceCanvasRender, setReplicaOverridesGetter, getNodeHitsAtPoint, injectCanvasCSS, removeCanvasCSS, forceCanvasRender } from './node-ops';
 import { reclaimKeyboardFocus } from './reclaim-keyboard-focus';
 import { registerTextEditCommitter } from './text-edit-committer';
@@ -1362,10 +1363,11 @@ export default function Canvas() {
           zIndex:1 keeps it above the iframe (zIndex:0). Without an explicit
           z-index the iframe's stacking context wins on some browser/GPU paths
           and the headers become invisible. */}
-      <div ref={vpOverlayRef} style={{ position: 'absolute', transform: 'translateZ(0)', backfaceVisibility: 'hidden', pointerEvents: 'none', zIndex: 1 }} />
+      <div ref={vpOverlayRef} data-viewport-header-overlay="" style={{ position: 'absolute', transform: 'translateZ(0)', backfaceVisibility: 'hidden', pointerEvents: 'none', zIndex: 1 }} />
 
       {/* Pixel grid — shows 1px grid lines when zoomed past 500% */}
       <PixelGrid />
+      <SceneViewControls />
 
       {/* Rulers + persistent ruler guides — gated on the `showRulers`
           pref. CanvasRulers draws the top + left strips with px ticks

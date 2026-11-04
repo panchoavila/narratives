@@ -2,6 +2,8 @@
 // Preset, This Page (Exit) + Next/Any Page (Enter) rows. Each side opens a
 // SideEditor sub-panel. See plan §6.2.
 
+import { DEFAULT_DISPLACEMENT, normalizeDisplacement } from '@/shared/displacement-config';
+import { ToolInput } from '../../controls';
 import { ToolRow, ToolSelect, ControlActionRow, RemoveButton } from '../../controls';
 import { useToolPopup } from '../../ui/ToolPopup';
 import SideEditor from './SideEditor';
@@ -25,14 +27,17 @@ export default function PageEffectPopup({ effect, onChange, targetOptions }: {
   const { pushPanel } = useToolPopup();
 
   const setPreset = (preset: string) => {
-    if (preset === 'custom') { onChange({ ...effect, preset }); return; }
+    if (preset === 'displacement') { onChange({ target: effect.target, preset, displacement: { ...DEFAULT_DISPLACEMENT } });return; }
+    if (preset === 'custom') { onChange({ ...effect, preset, displacement: undefined }); return; }
     const sides = applyPreset(preset);
-    onChange({ ...effect, preset, exit: sides.exit, enter: sides.enter });
+    const nextEffect: PageEffect = { ...effect, preset, displacement: undefined, exit: sides.exit, enter: sides.enter };
+    onChange(nextEffect);
   };
 
   // Editing any side flips the preset to 'custom' (design-tool parity).
   const setSide = (which: 'exit' | 'enter', side: SideConfig | undefined) => {
-    onChange({ ...effect, preset: 'custom', [which]: side });
+    const nextEffect: PageEffect = { ...effect, preset: 'custom', [which]: side };
+    onChange(nextEffect);
   };
 
   const openSide = (which: 'exit' | 'enter') => {
@@ -53,6 +58,15 @@ export default function PageEffectPopup({ effect, onChange, targetOptions }: {
         <ToolSelect value={effect.preset} onChange={setPreset} options={PRESET_OPTIONS} />
       </ToolRow>
 
+      {effect.preset === 'displacement' ? <div className="flex flex-col gap-2" data-displacement-controls>
+        {([['duration', 'Duration (s)'], ['strength', 'Strength'], ['seed', 'Seed'], ['columns', 'Grid columns']] as const).map(([key,label]) =>
+          <ToolRow key={key} label={label}><ToolInput value={String((effect.displacement ?? DEFAULT_DISPLACEMENT)[key])} step={key === 'duration' ? .1 : key === 'strength' ? .01 : 1} min={key === 'duration' ? .1 : key === 'columns' ? 2 : 0} max={key === 'duration' ? 4 : key === 'strength' ? .15 : key === 'columns' ? 64 : 65535} onChange={value => {
+            const number = Number(value);if (!Number.isFinite(number)) return;
+            const config = normalizeDisplacement({ ...(effect.displacement ?? DEFAULT_DISPLACEMENT), [key]: number });
+            if (config) onChange({ ...effect, displacement: config });
+          }} /></ToolRow>)}
+        <p className="text-[11px] text-[var(--text-secondary)]">Navigate between pages in Preview to play this transition. Reduced motion uses normal navigation.</p>
+      </div> : <>
       <ToolRow label="This Page">
         {effect.exit ? (
           <ControlActionRow className="!pr-2" onClick={() => openSide('exit')}>
@@ -80,6 +94,7 @@ export default function PageEffectPopup({ effect, onChange, targetOptions }: {
           </ControlActionRow>
         )}
       </ToolRow>
+      </>}
     </div>
   );
 }

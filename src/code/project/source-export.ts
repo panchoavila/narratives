@@ -127,7 +127,15 @@ export async function buildSourceExport(input: Record<string, string>, opts: Sou
     if (!isBuilderMetadataPath(path)) files[path] = content;
   }
   const slug = exportSlug(opts.name);
+  const needsExperimentalRuntime = Object.values(files).some(code => code.includes('@pt-scene-v3'));
   if (!localized['package.json']) files['package.json'] = buildPackageJson(slug, opts.runtimeRange, opts.now ?? new Date());
+  if (needsExperimentalRuntime) {
+    const { EXPERIMENTAL_RUNTIME_FILES } = await import('../generation/experimental-runtime-files');
+    Object.assign(files, EXPERIMENTAL_RUNTIME_FILES);
+    const pkg = JSON.parse(files['package.json']);
+    pkg.dependencies = { ...pkg.dependencies, '@revyme/runtime': 'file:./vendor/revyme-runtime' };
+    files['package.json'] = JSON.stringify(pkg, null, 2);
+  }
   if (!localized['next.config.mjs'] && !localized['next.config.js']) files['next.config.mjs'] = NEXT_CONFIG;
   if (!localized['tsconfig.json']) files['tsconfig.json'] = TSCONFIG;
   files['README.md'] = buildReadme(opts.name || 'Revyme project');

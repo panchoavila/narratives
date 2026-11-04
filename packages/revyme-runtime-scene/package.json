@@ -1,0 +1,39 @@
+{
+  "name": "@revyme/runtime",
+  "version": "0.0.32-scene.3",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {},
+  "peerDependencies": {
+    "framer-motion": ">=11",
+    "perfect-freehand": ">=1.2",
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "perfect-freehand": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "perfect-freehand": "^1.2.3",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.1"
+  },
+  "private": true
+}

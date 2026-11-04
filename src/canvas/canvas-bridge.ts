@@ -14,6 +14,11 @@ import { trace } from '@/shared/debug-trace';
 // Writes are fire-and-forget postMessage commands.
 
 export interface CanvasBridge {
+  /** Ephemeral view of the real canvas DOM; never writes authored styles. */
+  setSceneInspection?(options: import('@/canvas-sandbox/sandbox/scene-inspection').SceneInspectionOptions): Promise<boolean>;
+  getSceneViewportBounds?(viewportId: string): Promise<import('@/shared/scene-projection').SceneViewportBounds | null>;
+  subscribeSceneViewportBounds?(listener: (viewportId: string, bounds: import('@/shared/scene-projection').SceneViewportBounds) => void): () => void;
+
   /** Monotonic cache epoch, when the transport tracks one. Lets a reader
    *  tell whether a measurement predates its own write. Optional: a
    *  transport without epochs simply reports none. */

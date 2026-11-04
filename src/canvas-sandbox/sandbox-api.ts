@@ -125,6 +125,9 @@ export interface PatchUpdate {
  * `Promise<T>`. Fire-and-forget commands return void; queries return data.
  */
 export interface SandboxApi {
+  setSceneInspection(options: import('./sandbox/scene-inspection').SceneInspectionOptions): Promise<boolean>;
+  getSceneViewportBounds(viewportId: string): import('@/shared/scene-projection').SceneViewportBounds | null;
+
   // ─── Render ────────────────────────────────────────────────────────────
   render(input: RenderInput): void | Promise<void>;
 
