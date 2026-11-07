@@ -1,5 +1,7 @@
 node_modules
 dist
+!packages/revyme-runtime-scene/dist/
+!packages/revyme-runtime-scene/dist/*.d.ts
 .env
 .env.local
 debug-trace.json

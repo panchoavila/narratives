@@ -62,7 +62,7 @@ describe('page-transitions-gen: generated source files', () => {
 describe('page-transitions-gen: deployed runtime matches the editor builder (no drift)', () => {
   // eval the generated standalone helpers and compare buildViewTransitionCSS output.
   function loadRuntime(): { buildViewTransitionCSS: (e?: any, n?: any) => string } {
-    const src = PAGE_EFFECTS_RUNTIME_SOURCE.replace(/export function/g, 'function');
+    const src = transform(PAGE_EFFECTS_RUNTIME_SOURCE, { presets: ['typescript'], filename: 'runtime.ts' }).code!.replace(/export function/g, 'function');
      
     const factory = new Function(src + '\nreturn { buildViewTransitionCSS };');
     return factory();

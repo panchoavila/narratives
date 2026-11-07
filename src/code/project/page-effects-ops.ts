@@ -63,7 +63,7 @@ export function setPageEffectForPage(pageFile: string, effect: PageEffect): bool
     trace.error('page-effects-ops:set', { pageFile, reason: 'no-layout' });
     return false;
   }
-  ensurePageEffectsScaffold(lc, effect.preset === 'displacement');
+  ensurePageEffectsScaffold(lc, ['displacement', 'glitch', 'ripple-water'].includes(effect.preset));
   // Inject <PageTransitions> into the LayoutClient (existing file → modifyProjectFile).
   modifyProjectFile(lc, (code) => injectPageTransitionsInCode(code));
   const sourceRoute = routeForPage(pageFile);

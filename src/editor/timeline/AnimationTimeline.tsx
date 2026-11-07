@@ -522,6 +522,7 @@ export default function AnimationTimeline() {
         attrs: {
           'data-canvas-delay': String(nextDelay),
           'data-canvas-duration': String(nextDuration),
+          ...(node.attrs?.['data-canvas-effect'] === 'glitch' ? { 'data-glitch-duration': String(nextDuration) } : {}),
         },
       });
       flushNow();

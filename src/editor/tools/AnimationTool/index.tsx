@@ -83,9 +83,12 @@ import { ScrollSpeedPopup } from './popups/ScrollSpeedPopup';
 import { LoopPopup } from './popups/LoopPopup';
 import { SketchDrawPopup } from './popups/SketchDrawPopup';
 import { CanvasEffectPopup } from './popups/CanvasEffectPopup';
+import { ensureGlitchElementRuntime } from '@/code/project/glitch-ops';
+import { toast } from 'sonner';
 import { CssTransitionEditor } from './css/CssTransitionEditor';
 import { seedScroll } from './popups/seeds';
 import {
+  CANVAS_EFFECT_OPTIONS,
   DEFAULT_CANVAS_EFFECT,
   getCanvasEffectLabel,
   parseCanvasEffectFromAttrs,
@@ -607,7 +610,7 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
       }
     }
 
-    // Progressive HTML-in-Canvas stage effect (`data-canvas-effect`)
+    // Object effects use the preset saved on the element.
     const canvasFx = parseCanvasEffectFromAttrs(node.attrs);
     if (canvasFx) {
       entries.push({
@@ -916,14 +919,23 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
         // the editor popup so the user can dial it in.
         queueMutation({ type: 'setSketchAnim', nodeId, config: createDefaultSketchAnim() });
         setActivePopup('sketchDraw'); break;
-      case 'canvasEffect': {
+      case 'glitch':
+      case 'glyphRain':
+      case 'rippleEffect':
+      case 'particleEffect': {
+        if (!ensureGlitchElementRuntime()) {
+          toast.error('This effect needs a root layout with a body element.');
+          break;
+        }
+        const preset = { glitch: 'glitch', glyphRain: 'glyph-rain', rippleEffect: 'ripple-water', particleEffect: 'particle-object' }[type];
+        const duration = CANVAS_EFFECT_OPTIONS.find(option => option.value === preset)?.defaultDuration ?? DEFAULT_CANVAS_EFFECT.duration;
         expediteStableAtomSync();
         queueMutation({
           type: 'updateHtmlAttrs',
           nodeId,
           attrs: {
-            'data-canvas-effect': DEFAULT_CANVAS_EFFECT.preset,
-            'data-canvas-duration': String(DEFAULT_CANVAS_EFFECT.duration),
+            'data-canvas-effect': preset,
+            'data-canvas-duration': String(duration),
             'data-canvas-delay': String(DEFAULT_CANVAS_EFFECT.delay),
           },
         });
@@ -1075,6 +1087,9 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
             'data-canvas-duration': '',
             'data-canvas-delay': '',
             'data-canvas-intensity': '',
+            'data-glyph-rain': '',
+            'data-ripple': '',
+            'data-particle-object': '',
           },
         });
         flushNow();
@@ -1313,10 +1328,11 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
           content: <SketchDrawPopup key={nodeId} nodeId={nodeId} config={cfg} /> };
       }
       case 'canvasEffect': {
-        const cfg = (entry?.data as CanvasEffectConfig | undefined) ?? parseCanvasEffectFromAttrs(node.attrs) ?? DEFAULT_CANVAS_EFFECT;
+        const cfg = (entry?.data as CanvasEffectConfig | undefined) ?? parseCanvasEffectFromAttrs(node.attrs);
+        if (!cfg) return null;
         return {
-          title: 'Canvas Stage',
-          content: <CanvasEffectPopup key={nodeId} nodeId={nodeId} config={cfg} />,
+          title: getCanvasEffectLabel(cfg.preset),
+          content: <CanvasEffectPopup key={nodeId} nodeId={nodeId} config={cfg} isParticleTarget={['img', 'Image', 'motion.img', 'svg', 'motion.svg'].includes(node.type)} />,
         };
       }
       default:
@@ -1370,7 +1386,7 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
   return (
     <LocalizeGate hidden>
       <ToolSection title="Animation" collapsible hasContent={detected.length > 0 || pageEffects.length > 0 || !!smoothScroll?.own}
-        action={<AddEffectDropdown onAdd={handleAdd} existing={smoothScroll?.own ? new Set([...existingTypes, 'smoothScroll'] as any) : existingTypes} isTextNode={!!node && isTextTag(node.type)}
+        action={<AddEffectDropdown onAdd={handleAdd} existing={smoothScroll?.own ? new Set([...existingTypes, 'smoothScroll'] as any) : existingTypes} isTextNode={!!node && isTextTag(node.type)} isParticleTarget={!!node && ['img', 'Image', 'motion.img', 'svg', 'motion.svg'].includes(node.type)}
           pasteItem={pasteItem}
           isComponentInstance={!!node?.componentFile}
           appearOnly={isOverlayNode}
@@ -1507,7 +1523,7 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
                     <span className="flex items-center justify-center w-5 h-5 rounded shrink-0" style={{ backgroundColor: 'var(--accent)' }}>
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="var(--accent-fg)"><path d="M12 2 L22 12 L12 22 L2 12 Z" /></svg>
                     </span>
-                    <span className="truncate flex-1">{pe.preset === 'displacement' ? 'Displacement · ' : ''}{label}</span>
+                    <span className="truncate flex-1">{pe.preset === 'displacement' ? 'Displacement · ' : pe.preset === 'glitch' ? 'Glitch · ' : pe.preset === 'ripple-water' ? 'Ripple · ' : ''}{label}</span>
                     <RemoveButton onClick={() => removePageEffect(pe.target)} />
                   </ControlActionRow>
                 </ToolRow>,

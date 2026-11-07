@@ -46,11 +46,25 @@ import * as NextIntl from 'next-intl';
 // in production.
 import * as RevymeRuntime from '@revyme/runtime';
 import { runDisplacementNavigation } from '../../packages/revyme-runtime-scene/src/displacement-navigation';
+import { normalizeDisplacement } from '../../packages/revyme-runtime-scene/src/displacement-config';
+import { runGlitchNavigation } from '../../packages/revyme-runtime-scene/src/glitch-navigation';
+import { normalizeGlitch } from '../../packages/revyme-runtime-scene/src/glitch-config';
+import { attachGlitchElements } from '../../packages/revyme-runtime-scene/src/glitch-elements';
+import { attachGlyphRainElements } from '../../packages/revyme-runtime-scene/src/glyph-rain';
+import { runRippleNavigation } from '../../packages/revyme-runtime-scene/src/ripple-navigation';
+import { normalizeRipple } from '../../packages/revyme-runtime-scene/src/ripple-config';
+import { attachRippleElements } from '../../packages/revyme-runtime-scene/src/ripple-elements';
+import { attachParticleElements } from '../../packages/revyme-runtime-scene/src/particle-elements';
 
 import { buildRouteTable, resolveRoute, type Route } from './router';
 import { templatePreviewPages } from '@/preview/template-preview';
 import { LinkShim, ImageShim, useRouter as useRouterShim, usePathname, useSearchParams, useParams as useParamsShim, setCurrentParams } from './next-shims';
 import Lenis from 'lenis';
+import {
+  supportsHtmlInCanvas,
+} from '@/shared/canvas-effects';
+import { parsePageEffects } from '@/code/project/page-effects-config';
+import { resolvePageEffect, buildViewTransitionCSS, resolveTiming } from '@/code/generation/view-transition-css';
 
 // ─── Project files (mirror of parent ProjectFS) ────────────────────────────
 
@@ -204,6 +218,11 @@ const MODULE_MAP: Record<string, any> = {
   // named imports against the right keys.
   '@revyme/runtime': esm({
     runDisplacementNavigation,
+    normalizeDisplacement,
+    runGlitchNavigation,
+    normalizeGlitch,
+    runRippleNavigation,
+    normalizeRipple,
     withResponsiveProps: RevymeRuntime.withResponsiveProps,
     withCursor: RevymeRuntime.withCursor,
     CursorPortal: RevymeRuntime.CursorPortal,
@@ -500,6 +519,42 @@ const variantPageOverrides = new Map<string, string>();
 // always defaulting to the primary. `null` = use the component's own
 // `initialVariant` default (which is 'default' / the primary variant).
 let previewInitialVariant: string | null = null;
+let previewRenderRevision = 0;
+
+function runPreviewPageTransition(pathname: string): void {
+  let pageEffectsCode: string | undefined;
+  for (const [p, content] of projectFiles) {
+    if (p === 'app/page-effects.ts' || p.endsWith('/page-effects.ts')) {
+      pageEffectsCode = content;
+      break;
+    }
+  }
+  if (!pageEffectsCode) return;
+  const map = parsePageEffects(pageEffectsCode);
+  const curPath = pathname.split('?')[0] || '/';
+  const eff = resolvePageEffect(map, curPath, curPath);
+  if (!eff) return;
+
+  document.documentElement.dataset.vtPreset = eff.preset || 'custom';
+  document.documentElement.dataset.vtCanvasMode = supportsHtmlInCanvas(window)
+    ? 'html-in-canvas'
+    : 'fallback-dom';
+
+  if (eff.enter) {
+    const tn = resolveTiming(eff.enter.transition);
+    const existing = document.getElementById('revyme-vt-mount');
+    if (existing) existing.remove();
+    const styleEl = document.createElement('style');
+    styleEl.id = 'revyme-vt-mount';
+    styleEl.textContent =
+      buildViewTransitionCSS(undefined, eff.enter) +
+      `\n@media (prefers-reduced-motion: no-preference) { body { animation: ${tn.duration}s ${tn.easing} ${tn.delay}s both revyme-vt-enter; transform-origin: 50% 50%; } }`;
+    document.head.appendChild(styleEl);
+    window.setTimeout(() => {
+      styleEl.remove();
+    }, Math.ceil((tn.duration + tn.delay) * 1000) + 120);
+  }
+}
 
 /**
  * The project's own `Providers` around an isolated component preview.
@@ -600,13 +655,21 @@ function ComponentPreviewShell({ bg, children }: { bg: string; children: React.R
   );
 }
 
-function PreviewApp() {
+function PreviewApp({ revision }: { revision: number }) {
   const [url, setUrl] = React.useState(() => location.pathname + location.search);
   React.useEffect(() => {
     const onPop = () => setUrl(location.pathname + location.search);
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
+  React.useEffect(() => {
+    const cleanupGlitch = attachGlitchElements(document);
+    const cleanupGlyphRain = attachGlyphRainElements(document);
+    const cleanupRipple = attachRippleElements(document);
+    const cleanupParticle = attachParticleElements(document);
+    runPreviewPageTransition(url);
+    return () => { cleanupGlitch(); cleanupGlyphRain(); cleanupRipple(); cleanupParticle(); };
+  }, [url, revision]);
 
   // Component-isolation mode short-circuits the route-resolution path. The
   // component is compiled with the same `compileFile` that pages use, so
@@ -751,12 +814,14 @@ function rerender(): void {
   // the first render → React errors with "Element type is invalid".
   // Renders an empty page while loading, then re-renders with content.
   preloadCdnImports().then(() => {
-    root.render(<PreviewApp />);
+    previewRenderRevision += 1;
+    root.render(<PreviewApp revision={previewRenderRevision} />);
   }).catch((err) => {
     // Even if preload fails, render so the user sees an error rather
     // than a blank screen. requireFn falls back to a stub component.
     console.error('[preview] preload failed, rendering anyway', err);
-    root.render(<PreviewApp />);
+    previewRenderRevision += 1;
+    root.render(<PreviewApp revision={previewRenderRevision} />);
   });
 }
 

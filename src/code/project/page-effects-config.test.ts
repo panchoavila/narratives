@@ -53,6 +53,19 @@ describe('page-effects-config: serialize/parse', () => {
     expect(out.pages).toEqual({});
     expect(out.__default?.preset).toBe('crossfade');
   });
+
+  it('keeps the authored settings of retired Canvas transitions as Custom', () => {
+    const map = sampleMap();
+    map.__default!.preset = 'ink-flood';
+    map.pages['/team'].all!.preset = 'paper-fold';
+    map.pages['/team'].byTarget['/'].preset = 'halftone-dissolve';
+
+    const saved = serializePageEffects(map);
+    map.__default!.preset = 'custom';
+    map.pages['/team'].all!.preset = 'custom';
+    map.pages['/team'].byTarget['/'].preset = 'custom';
+    expect(parsePageEffects(saved)).toEqual(map);
+  });
 });
 
 describe('page-effects-config: map mutators', () => {

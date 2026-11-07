@@ -28,7 +28,6 @@ import { getScrollDataForNode } from '@/code/parsing/scroll-parser';
 import {
   parseCanvasEffectFromAttrs,
   getCanvasEffectLabel,
-  supportsHtmlInCanvas,
 } from '@/shared/canvas-effects';
 
 export type TimelineScope = 'page' | 'dom';
@@ -389,10 +388,9 @@ export const timelineTracksAtom = atom<TimelineTrack[]>((get) => {
       });
     }
 
-    // 3f. Progressive HTML-in-Canvas (`data-canvas-effect`) stage / DOM fallback
+    // 3f. Object effects
     const canvasFx = parseCanvasEffectFromAttrs(node.attrs);
     if (canvasFx) {
-      const htmlInCanvasActive = supportsHtmlInCanvas();
       tracks.push({
         id: `${nodeId}:canvas-effect`,
         scope: 'dom',
@@ -402,7 +400,7 @@ export const timelineTracksAtom = atom<TimelineTrack[]>((get) => {
         pageLabel,
         kind: 'canvas-effect',
         trigger: 'hover',
-        label: `Canvas Stage · ${getCanvasEffectLabel(canvasFx.preset)} (${htmlInCanvasActive ? 'HTML-in-Canvas' : 'DOM Fallback'})`,
+        label: getCanvasEffectLabel(canvasFx.preset),
         delay: canvasFx.delay,
         duration: canvasFx.duration,
         easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
@@ -412,7 +410,6 @@ export const timelineTracksAtom = atom<TimelineTrack[]>((get) => {
             offset: 0,
             properties: {
               preset: canvasFx.preset,
-              mode: htmlInCanvasActive ? 'html-in-canvas' : 'fallback-dom',
             },
           },
           {

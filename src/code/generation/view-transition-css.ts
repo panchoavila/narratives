@@ -211,69 +211,6 @@ export const PRESETS: Record<string, () => PresetSides> = {
   'wipe-right': () => ({ enter: maskSide('wipe-right') }),
   'wipe-up': () => ({ enter: maskSide('wipe-up') }),
   'wipe-down': () => ({ enter: maskSide('wipe-down') }),
-  'ink-flood': () => ({
-    exit: side({
-      opacity: 0.15,
-      scale: 1.015,
-      transition: { ...createDefaultSide().transition, duration: 0.55 },
-    }),
-    enter: side({
-      opacity: 0.92,
-      scale: 0.985,
-      mask: { type: 'circle', originX: 50, originXUnit: 'rel', originY: 50, originYUnit: 'rel' },
-      transition: { ...createDefaultSide().transition, duration: 0.65 },
-    }),
-  }),
-  'refraction-lens': () => ({
-    exit: side({
-      opacity: 0,
-      scale: 1.04,
-      offsetY: -6,
-      offsetYUnit: 'relative',
-      transition: { ...createDefaultSide().transition, duration: 0.5 },
-    }),
-    enter: side({
-      opacity: 0,
-      scale: 0.96,
-      offsetY: 6,
-      offsetYUnit: 'relative',
-      transition: { ...createDefaultSide().transition, duration: 0.55 },
-    }),
-  }),
-  'paper-fold': () => ({
-    exit: side({
-      opacity: 0.15,
-      rotate: '3d',
-      rotateX: 16,
-      rotateY: -6,
-      offsetY: -12,
-      offsetYUnit: 'relative',
-      transition: { ...createDefaultSide().transition, duration: 0.55 },
-    }),
-    enter: side({
-      opacity: 0,
-      rotate: '3d',
-      rotateX: -16,
-      rotateY: 6,
-      offsetY: 12,
-      offsetYUnit: 'relative',
-      transition: { ...createDefaultSide().transition, duration: 0.6 },
-    }),
-  }),
-  'halftone-dissolve': () => ({
-    exit: side({
-      opacity: 0,
-      scale: 0.99,
-      mask: { type: 'wipe-down', originX: 50, originXUnit: 'rel', originY: 50, originYUnit: 'rel' },
-      transition: { ...createDefaultSide().transition, duration: 0.38 },
-    }),
-    enter: side({
-      opacity: 0,
-      scale: 1.01,
-      mask: { type: 'circle', originX: 50, originXUnit: 'rel', originY: 50, originYUnit: 'rel' },
-      transition: { ...createDefaultSide().transition, duration: 0.52, delay: 0.12 },
-    }),
-  }),
 };
 
 /** Human labels for the Preset dropdown (order matches the reference's menu). */
@@ -292,11 +229,9 @@ export const PRESET_OPTIONS: { value: string; label: string }[] = [
   { value: 'wipe-up', label: 'Wipe Up' },
   { value: 'wipe-right', label: 'Wipe Right' },
   { value: 'wipe-down', label: 'Wipe Down' },
-  { value: 'ink-flood', label: 'Ink Flood (Canvas)' },
-  { value: 'refraction-lens', label: 'Refraction Lens (Canvas)' },
-  { value: 'paper-fold', label: 'Paper Fold (Canvas)' },
-  { value: 'halftone-dissolve', label: 'Halftone Dissolve (Canvas)' },
   { value: 'displacement', label: 'Displacement' },
+  { value: 'glitch', label: 'Glitch' },
+  { value: 'ripple-water', label: 'Ripple' },
   { value: 'custom', label: 'Custom' },
 ];
 

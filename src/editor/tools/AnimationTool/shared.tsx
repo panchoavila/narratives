@@ -92,7 +92,7 @@ export const ENTRY_META: Record<AnimEntryType, { label: string; Icon: React.FC<R
   keyframe: { label: 'Keyframe', Icon: AnimationIcon },
   cssHover: { label: 'CSS Hover', Icon: HoverIcon },
   sketchDraw: { label: 'Draw', Icon: AnimationIcon },
-  canvasEffect: { label: 'Canvas Stage', Icon: AnimationIcon },
+  canvasEffect: { label: 'Effect', Icon: AnimationIcon },
 };
 
 /** Detected animation entry */

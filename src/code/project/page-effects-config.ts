@@ -57,9 +57,13 @@ export interface SideConfig {
 }
 
 import type { DisplacementConfig } from '@/shared/displacement-config';
+import type { GlitchConfig } from '../../../packages/revyme-runtime-scene/src/glitch-config';
+import type { RippleConfig } from '../../../packages/revyme-runtime-scene/src/ripple-config';
 
 export interface PageEffect {
   displacement?: DisplacementConfig;
+  glitch?: GlitchConfig;
+  ripple?: RippleConfig;
   preset: string; // 'crossfade' | 'fade-out-in' | 'slide-left' | … | 'custom'
   target: string; // destination route ('/team'), or 'all'
   exit?: SideConfig; // This Page  (omit = page leaves with no animation)
@@ -109,6 +113,14 @@ const PAGE_EFFECTS_CONST = 'PAGE_EFFECTS';
 
 const EMPTY_MAP: PageEffectsMap = { pages: {} };
 
+const RETIRED_CANVAS_TRANSITIONS = new Set(['ink-flood', 'refraction-lens', 'paper-fold', 'halftone-dissolve']);
+
+function keepSavedTransitionAsCustom(effect: PageEffect | undefined): void {
+  if (effect && RETIRED_CANVAS_TRANSITIONS.has(effect.preset)) {
+    effect.preset = 'custom';
+  }
+}
+
 /**
  * Parse the `export const PAGE_EFFECTS = {…} as const;` object out of a generated
  * `page-effects.ts` module. The object literal is JSON-compatible (the serializer
@@ -141,6 +153,12 @@ export function parsePageEffects(code: string): PageEffectsMap {
     const obj = JSON.parse(code.slice(braceStart, end + 1)) as PageEffectsMap;
     if (!obj || typeof obj !== 'object') return { pages: {} };
     if (!obj.pages || typeof obj.pages !== 'object') obj.pages = {};
+    // These presets already store their full enter and exit settings.
+    keepSavedTransitionAsCustom(obj.__default);
+    for (const bucket of Object.values(obj.pages)) {
+      keepSavedTransitionAsCustom(bucket?.all);
+      Object.values(bucket?.byTarget ?? {}).forEach(keepSavedTransitionAsCustom);
+    }
     return obj;
   } catch {
     trace.error('page-effects-config:parse', 'failed to JSON.parse PAGE_EFFECTS');

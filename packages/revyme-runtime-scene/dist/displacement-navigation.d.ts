@@ -1,9 +1,12 @@
+import { createDisplacement } from './displacement-renderer';
 import { type DisplacementConfig } from './displacement-config';
 export interface DisplacementNavigationOptions {
     config: DisplacementConfig;
     /** Resolves after the destination DOM has committed. Called at most once. */
     navigate: () => Promise<void>;
     signal?: AbortSignal;
+    /** Optional renderer lets other snapshot effects reuse the same safe navigation lifecycle. */
+    renderer?: (canvas: HTMLCanvasElement, onLost: () => void) => ReturnType<typeof createDisplacement>;
 }
 export interface DisplacementNavigationResult {
     mode: 'gpu' | 'fallback' | 'cancelled';

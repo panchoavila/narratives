@@ -3,6 +3,8 @@
 // SideEditor sub-panel. See plan §6.2.
 
 import { DEFAULT_DISPLACEMENT, normalizeDisplacement } from '@/shared/displacement-config';
+import { DEFAULT_GLITCH, normalizeGlitch } from '../../../../packages/revyme-runtime-scene/src/glitch-config';
+import { DEFAULT_RIPPLE, normalizeRipple } from '../../../../packages/revyme-runtime-scene/src/ripple-config';
 import { ToolInput } from '../../controls';
 import { ToolRow, ToolSelect, ControlActionRow, RemoveButton } from '../../controls';
 import { useToolPopup } from '../../ui/ToolPopup';
@@ -28,9 +30,11 @@ export default function PageEffectPopup({ effect, onChange, targetOptions }: {
 
   const setPreset = (preset: string) => {
     if (preset === 'displacement') { onChange({ target: effect.target, preset, displacement: { ...DEFAULT_DISPLACEMENT } });return; }
-    if (preset === 'custom') { onChange({ ...effect, preset, displacement: undefined }); return; }
+    if (preset === 'glitch') { onChange({ target: effect.target, preset, glitch: { ...DEFAULT_GLITCH } });return; }
+    if (preset === 'ripple-water') { onChange({ target: effect.target, preset, ripple: { ...DEFAULT_RIPPLE } });return; }
+    if (preset === 'custom') { onChange({ ...effect, preset, displacement: undefined, glitch: undefined, ripple: undefined }); return; }
     const sides = applyPreset(preset);
-    const nextEffect: PageEffect = { ...effect, preset, displacement: undefined, exit: sides.exit, enter: sides.enter };
+    const nextEffect: PageEffect = { ...effect, preset, displacement: undefined, glitch: undefined, ripple: undefined, exit: sides.exit, enter: sides.enter };
     onChange(nextEffect);
   };
 
@@ -52,19 +56,46 @@ export default function PageEffectPopup({ effect, onChange, targetOptions }: {
   return (
     <div className="flex flex-col gap-2 p-1">
       <ToolRow label="Target">
-        <ToolSelect value={effect.target} onChange={(v) => onChange({ ...effect, target: v })} options={targetOptions} />
+        <label className="w-full"><span className="sr-only">Transition target</span><ToolSelect value={effect.target} onChange={(v) => onChange({ ...effect, target: v })} options={targetOptions} /></label>
       </ToolRow>
       <ToolRow label="Preset">
-        <ToolSelect value={effect.preset} onChange={setPreset} options={PRESET_OPTIONS} />
+        <label className="w-full"><span className="sr-only">Transition preset</span><ToolSelect value={effect.preset} onChange={setPreset} options={PRESET_OPTIONS} /></label>
       </ToolRow>
 
-      {effect.preset === 'displacement' ? <div className="flex flex-col gap-2" data-displacement-controls>
+      {effect.preset === 'ripple-water' ? <div className="flex flex-col gap-2" data-ripple-controls>
+        {([
+          ['amplitude', 'Amplitude', 0, 3, .05], ['speed', 'Speed', .1, 3, .05],
+          ['wavelength', 'Wavelength (px)', 10, 300, 1], ['rings', 'Rings', 1, 8, 1],
+          ['decay', 'Decay', .1, 4, .05], ['refraction', 'Refraction (px)', 0, 200, 1],
+          ['dispersion', 'Dispersion', 0, 1, .05], ['shine', 'Shine', 0, 2, .05],
+        ] as const).map(([key, label, min, max, step]) =>
+          <ToolRow key={key} label={label}><label className="w-full"><span className="sr-only">{label}</span><ToolInput value={String((effect.ripple ?? DEFAULT_RIPPLE)[key])} min={min} max={max} step={step} onChange={value => {
+            if (value.trim() === '') return;
+            const number = Number(value); if (!Number.isFinite(number)) return;
+            const config = normalizeRipple({ ...(effect.ripple ?? DEFAULT_RIPPLE), [key]: number });
+            if (config) onChange({ ...effect, ripple: config });
+          }} /></label></ToolRow>)}
+        <p className="text-[11px] text-[var(--text-secondary)]">Navigate between pages in Preview to play this transition.</p>
+      </div> : effect.preset === 'glitch' ? <div className="flex flex-col gap-2" data-glitch-controls>
+        {([
+          ['duration', 'Duration (s)', 0.05, 4, 0.05], ['intensity', 'Intensity', 0, 2, 0.05],
+          ['slices', 'Slices', 3, 100, 1], ['shift', 'Shift (px)', 0, 200, 1],
+          ['rgbShift', 'RGB shift (px)', 0, 40, 0.5], ['blocks', 'Blocks', 0, 1, 0.05], ['noise', 'Noise', 0, 1, 0.05],
+        ] as const).map(([key, label, min, max, step]) =>
+          <ToolRow key={key} label={label}><label className="w-full"><span className="sr-only">{label}</span><ToolInput value={String((effect.glitch ?? DEFAULT_GLITCH)[key])} min={min} max={max} step={step} onChange={value => {
+            if (value.trim() === '') return;
+            const number = Number(value); if (!Number.isFinite(number)) return;
+            const config = normalizeGlitch({ ...(effect.glitch ?? DEFAULT_GLITCH), [key]: number });
+            if (config) onChange({ ...effect, glitch: config });
+          }} /></label></ToolRow>)}
+        <p className="text-[11px] text-[var(--text-secondary)]">Navigate between pages in Preview to play this transition.</p>
+      </div> : effect.preset === 'displacement' ? <div className="flex flex-col gap-2" data-displacement-controls>
         {([['duration', 'Duration (s)'], ['strength', 'Strength'], ['seed', 'Seed'], ['columns', 'Grid columns']] as const).map(([key,label]) =>
-          <ToolRow key={key} label={label}><ToolInput value={String((effect.displacement ?? DEFAULT_DISPLACEMENT)[key])} step={key === 'duration' ? .1 : key === 'strength' ? .01 : 1} min={key === 'duration' ? .1 : key === 'columns' ? 2 : 0} max={key === 'duration' ? 4 : key === 'strength' ? .15 : key === 'columns' ? 64 : 65535} onChange={value => {
+          <ToolRow key={key} label={label}><label className="w-full"><span className="sr-only">{label}</span><ToolInput value={String((effect.displacement ?? DEFAULT_DISPLACEMENT)[key])} step={key === 'duration' ? .1 : key === 'strength' ? .01 : 1} min={key === 'duration' ? .1 : key === 'columns' ? 2 : 0} max={key === 'duration' ? 4 : key === 'strength' ? .15 : key === 'columns' ? 64 : 65535} onChange={value => {
             const number = Number(value);if (!Number.isFinite(number)) return;
             const config = normalizeDisplacement({ ...(effect.displacement ?? DEFAULT_DISPLACEMENT), [key]: number });
             if (config) onChange({ ...effect, displacement: config });
-          }} /></ToolRow>)}
+          }} /></label></ToolRow>)}
         <p className="text-[11px] text-[var(--text-secondary)]">Navigate between pages in Preview to play this transition. Reduced motion uses normal navigation.</p>
       </div> : <>
       <ToolRow label="This Page">

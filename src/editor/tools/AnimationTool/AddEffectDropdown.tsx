@@ -13,7 +13,7 @@ import { type AnimEntryType } from './shared';
  *  'scrollAnimation' (the On-Scroll trigger of the `appear` effect — shares
  *  the `appear` entry so it's mutually exclusive with Appear), 'scrollVariant'
  *  (placeholder, disabled), and 'scrollGroup' (the Scroll submenu header). */
-export type AddActionType = AnimEntryType | 'scrollAnimation' | 'scrollVariant' | 'scrollGroup' | 'pageTransition' | 'smoothScroll';
+export type AddActionType = AnimEntryType | 'scrollAnimation' | 'scrollVariant' | 'scrollGroup' | 'pageTransition' | 'smoothScroll' | 'glitch' | 'glyphRain' | 'rippleEffect' | 'particleEffect';
 
 interface AddOption {
   type: AddActionType;
@@ -83,7 +83,10 @@ const ADD_OPTIONS: AddOption[] = [
   { type: 'pageTransition', label: 'Page Transition', desc: 'Animate the page in/out on navigation (View Transitions).' },
   // Smooth Scroll (Lenis) — page-level, like Page Transition, set per page.
   { type: 'smoothScroll', label: 'Smooth Scroll', desc: 'Smooth, eased scrolling on this page (Lenis).' },
-  { type: 'canvasEffect', label: 'Canvas Stage', desc: 'Progressive HTML-in-Canvas (content="drawable" + drawElementImage) shader effect with automatic CSS/DOM fallback.' },
+  { type: 'glitch', label: 'Glitch', desc: 'Glitch bursts on this element.', engines: ['canvasEffect'] },
+  { type: 'glyphRain', label: 'Glyph Rain', desc: 'Falling glyphs illuminate this element.', engines: ['canvasEffect'] },
+  { type: 'rippleEffect', label: 'Ripple', desc: 'Water ripples refract this element.', engines: ['canvasEffect'] },
+  { type: 'particleEffect', label: 'Particle Object', desc: 'Rebuild this image or SVG as particles.', engines: ['canvasEffect'] },
   { type: 'keyframe', label: 'Keyframe', desc: '@keyframes block. No JS. Visual scrubber.' },
   // Text
   { type: 'textEffect', label: 'Text', desc: 'Character/word/line stagger via Motion.', textOnly: true },
@@ -238,10 +241,11 @@ function EffectSubMenu({ label, desc, children, onSelect }: {
   );
 }
 
-export default function AddEffectDropdown({ onAdd, existing, isTextNode, isSketchNode, isComponentInstance, appearOnly, glideOnly, noGlide, canTicker, onApplyKeyframe, pasteItem }: {
+export default function AddEffectDropdown({ onAdd, existing, isTextNode, isSketchNode, isParticleTarget, isComponentInstance, appearOnly, glideOnly, noGlide, canTicker, onApplyKeyframe, pasteItem }: {
   onAdd: (t: AddActionType) => void;
   existing: Set<AnimEntryType>;
   isTextNode?: boolean;
+  isParticleTarget?: boolean;
   /** Restrict the picker to ONLY the Glide effect — used on the viewport/root,
    *  where Glide ("Flow") is the one meaningful animation (the reference puts Flow on
    *  the page). Every other effect is hidden from the menu there. */
@@ -321,6 +325,7 @@ export default function AddEffectDropdown({ onAdd, existing, isTextNode, isSketc
     (o.type !== 'glide' || !isTextNode) &&
     // Ticker loops a LAYOUT's children — only on a frame with a layout.
     (o.type !== 'ticker' || !!canTicker) &&
+    (o.type !== 'particleEffect' || !!isParticleTarget) &&
     (!glideOnly || o.type === 'glide' || o.type === 'pageTransition' || o.type === 'smoothScroll') &&
     // Page Transition is a PAGE-LEVEL effect — only when a viewport/root is the
     // selection (glideOnly), never on a normal element node.

@@ -127,7 +127,7 @@ export async function buildSourceExport(input: Record<string, string>, opts: Sou
     if (!isBuilderMetadataPath(path)) files[path] = content;
   }
   const slug = exportSlug(opts.name);
-  const needsExperimentalRuntime = Object.values(files).some(code => code.includes('@pt-scene-v3'));
+  const needsExperimentalRuntime = Object.values(files).some(code => code.includes('@pt-scene-') || code.includes('@revyme-glitch-runtime-'));
   if (!localized['package.json']) files['package.json'] = buildPackageJson(slug, opts.runtimeRange, opts.now ?? new Date());
   if (needsExperimentalRuntime) {
     const { EXPERIMENTAL_RUNTIME_FILES } = await import('../generation/experimental-runtime-files');

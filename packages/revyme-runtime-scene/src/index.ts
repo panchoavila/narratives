@@ -46,3 +46,12 @@ export { RevymeTicker, type RevymeTickerProps, type TickerDirection, type Ticker
 export { runDisplacementNavigation, type DisplacementNavigationOptions, type DisplacementNavigationResult } from './displacement-navigation';
 export { normalizeDisplacement, DEFAULT_DISPLACEMENT, type DisplacementConfig } from './displacement-config';
 export { createDisplacement } from './displacement-renderer';
+export { runGlitchNavigation } from './glitch-navigation';
+export { normalizeGlitch, DEFAULT_GLITCH, type GlitchConfig } from './glitch-config';
+export { attachGlitchElements } from './glitch-elements';
+export { attachGlyphRainElements, normalizeGlyphRain, DEFAULT_GLYPH_RAIN, type GlyphRainConfig } from './glyph-rain';
+export { runRippleNavigation } from './ripple-navigation';
+export { DEFAULT_RIPPLE, normalizeRipple, type RippleConfig } from './ripple-config';
+export { attachRippleElements } from './ripple-elements';
+export { DEFAULT_PARTICLE, normalizeParticle, type ParticleConfig } from './particle-config';
+export { attachParticleElements } from './particle-elements';
