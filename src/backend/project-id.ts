@@ -15,5 +15,9 @@ export function getProjectId(): string {
   if (builderIdx !== -1 && parts[builderIdx + 1]) {
     return parts[builderIdx + 1];
   }
+  const siteParam = new URLSearchParams(window.location.search).get('site')?.trim();
+  if (siteParam) {
+    return siteParam;
+  }
   return 'local';
 }

@@ -4,6 +4,7 @@
 // Sort editor panels.
 
 import type { FilterConfig, FieldDefinition, CollectionSchema } from '@/shared/types';
+import type { CmsPageMeta } from '@/code/project/cms-page-meta';
 
 type FieldType = FieldDefinition['type'];
 
@@ -124,6 +125,55 @@ export function orderLabels(type: FieldType | undefined): { value: 'asc' | 'desc
   }
 }
 
+/** Whether the "Current item" value source (a field of the page's detail item) can be
+ *  offered: only while the active file is a `@cmsPage` detail page. */
+export function canOfferCurrentItem(meta: CmsPageMeta | null): boolean {
+  return meta?.kind === 'detail';
+}
+
+/** Whether the list at `nodeId` sits inside another collection list (an ancestor carries a
+ *  `collectionList`). The outer list's row parameter shadows the detail item there, so
+ *  "Current item" is not offered for it. Walks the parsed node map's parent chain. */
+export function isNestedInCollectionList(
+  nodes: ReadonlyMap<string, { parentId: string | null; collectionList?: unknown }>,
+  nodeId: string,
+): boolean {
+  const seen = new Set<string>();
+  let cur = nodes.get(nodeId)?.parentId ?? null;
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    const parent = nodes.get(cur);
+    if (!parent) return false;
+    if (parent.collectionList) return true;
+    cur = parent.parentId;
+  }
+  return false;
+}
+
+/** Operators a currentItem filter can use — the generator and parser only emit these. */
+export function currentItemOperators(): { value: FilterConfig['operator']; label: string }[] {
+  return [
+    { value: 'equals', label: 'equals' },
+    { value: 'not_equals', label: 'not equals' },
+    { value: 'contains', label: 'contains' },
+    { value: 'not_contains', label: 'does not contain' },
+  ];
+}
+
+/** Fields of the detail item a currentItem filter can read: its `_id` / `_slug` (always
+ *  present on a collection item) followed by the detail collection's own fields. */
+export function currentItemFieldOptions(detailSchema: CollectionSchema | null): { value: string; label: string }[] {
+  return [
+    { value: '_id', label: 'ID' },
+    { value: '_slug', label: 'Slug' },
+    ...(detailSchema?.fields ?? []).map(f => ({ value: f.id, label: f.name })),
+  ];
+}
+
+const CURRENT_ITEM_SYMBOL: Partial<Record<FilterConfig['operator'], string>> = {
+  equals: '=', not_equals: '≠', contains: 'contains', not_contains: 'does not contain',
+};
+
 const OP_SUMMARY: Record<FilterConfig['operator'], string> = {
   equals: 'is', not_equals: 'is not', contains: 'contains', not_contains: 'excludes',
   gt: '>', gte: '≥', lt: '<', lte: '≤', in: 'in', not_in: 'not in', exists: 'is set', between: 'between',
@@ -133,9 +183,46 @@ const OP_SUMMARY: Record<FilterConfig['operator'], string> = {
 export function filterSummary(f: FilterConfig, fieldName: string): string {
   if (f.valueSource === 'searchField') return `${fieldName} matches search`;
   if (f.valueSource === 'dateField') return `${fieldName} from date`;
+  if (f.valueSource === 'currentItem') {
+    return `${fieldName} ${CURRENT_ITEM_SYMBOL[f.operator] ?? f.operator} current item's ${f.valueField ?? '…'}`;
+  }
   const op = OP_SUMMARY[f.operator] ?? f.operator;
   if (operatorTakesNoValue(f.operator)) return `${fieldName} ${op}`;
   if (f.operator === 'between' && Array.isArray(f.value)) return `${fieldName} ${op} ${f.value[0]}–${f.value[1]}`;
   const v = f.value === '' || f.value == null ? '…' : String(f.value);
   return `${fieldName} ${op} ${v}`;
+}
+
+/** Preserve compatible field bindings when switching a collection. */
+export function collectionFieldRemap(oldSchema?: CollectionSchema, newSchema?: CollectionSchema): Record<string, string> {
+    const remap: Record<string, string> = {};
+    if (oldSchema && newSchema) {
+      const typeBucket = (t: string): string => {
+        if (t === 'text' || t === 'textarea' || t === 'richtext' || t === 'slug') return 'text';
+        if (t === 'image' || t === 'file') return 'image';
+        if (t === 'link' || t === 'url') return 'link';
+        return t;
+      };
+      const consumed = new Set<string>();
+      for (const oldField of oldSchema.fields) {
+        // Prefer same id if it exists with a compatible type (the user
+        // probably meant the same thing).
+        const sameId = newSchema.fields.find(
+          f => f.id === oldField.id && typeBucket(f.type) === typeBucket(oldField.type),
+        );
+        if (sameId) {
+          remap[oldField.id] = sameId.id;
+          consumed.add(sameId.id);
+          continue;
+        }
+        const candidate = newSchema.fields.find(
+          f => typeBucket(f.type) === typeBucket(oldField.type) && !consumed.has(f.id),
+        );
+        if (candidate) {
+          remap[oldField.id] = candidate.id;
+          consumed.add(candidate.id);
+        }
+      }
+    }
+  return remap;
 }

@@ -42,6 +42,8 @@ export const RENDER_RESOLVED_MUTATIONS: ReadonlySet<string> = new Set([
   'removePseudo',
   'updateCssHover',
   'removeCssHover',
+  // Page Flow rewrites the page's @media band rules (and root/child inline values) in one step.
+  'setPageFlow',
   // ── Render-resolved (variant merge / per-variant ternaries) ──
   'updateVariantStyle',
   'setConditionalStyle',

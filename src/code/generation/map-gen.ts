@@ -39,6 +39,7 @@ export function bindToCmsCollectionInCode(
   code: string,
   nodeId: string,
   collectionSlug: string,
+  stableKey = false,
 ): string {
   trace.fn('map-gen:bindToCms', { nodeId, collectionSlug });
 
@@ -68,7 +69,7 @@ export function bindToCmsCollectionInCode(
   // Static `data-id` is preserved — parser uses it to find the template.
   const templateJSX = originalJSX.replace(
     `data-id="${nodeId}"`,
-    `data-id="${nodeId}" key={idx}`,
+    `data-id="${nodeId}" key={${stableKey ? 'item._id ?? idx' : 'idx'}}`,
   );
 
   const mapExpr = `{${importVar}.map((item, idx) => (\n      ${templateJSX}\n    ))}`;

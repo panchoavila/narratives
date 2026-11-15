@@ -3,7 +3,7 @@ import React, { Children, cloneElement, createElement, forwardRef, isValidElemen
 import { AnimatePresence, MotionConfig, isMotionValue, motion, useMotionValue, useScroll, useSpring, useTransform } from "framer-motion";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import { getStroke } from "perfect-freehand";
-//#region scene-poc-03/runtime-package/src/variant-ssr-copies.ts
+//#region packages/revyme-runtime-scene/src/variant-ssr-copies.ts
 /**
 * One copy per DISTINCT variant across the breakpoints, widest first.
 *
@@ -57,7 +57,7 @@ function safe(id) {
 	return id.replace(/[^A-Za-z0-9_-]/g, "_");
 }
 //#endregion
-//#region scene-poc-03/runtime-package/src/withResponsiveProps.tsx
+//#region packages/revyme-runtime-scene/src/withResponsiveProps.tsx
 /**
 * HOC that reads a `data-responsive` JSON prop and merges per-viewport overrides.
 * Usage: `export default withResponsiveProps(MyComponent)`
@@ -86,7 +86,7 @@ function safe(id) {
 */
 /** Style keys only a motion.* element understands (translated into
 *  `transform`) — a plain DOM element ignores them entirely. */
-var MOTION_ONLY_KEYS = new Set([
+const MOTION_ONLY_KEYS = new Set([
 	"x",
 	"y",
 	"z",
@@ -108,7 +108,7 @@ var MOTION_ONLY_KEYS = new Set([
 /** Placement props describing the instance's slot in ITS PARENT's layout —
 *  these must ride on whichever element is outermost (the wrapper, when one
 *  exists), mirroring the design-instance wrapper/root split. */
-var PLACEMENT_KEYS = new Set([
+const PLACEMENT_KEYS = new Set([
 	"position",
 	"left",
 	"top",
@@ -392,11 +392,11 @@ function withInstantCrossing(crossing, tree) {
 	});
 }
 //#endregion
-//#region scene-poc-03/runtime-package/src/cursor-runtime.tsx
-var _active = null;
-var _listeners = /* @__PURE__ */ new Set();
-var _componentKeys = /* @__PURE__ */ new WeakMap();
-var _nextComponentKey = 0;
+//#region packages/revyme-runtime-scene/src/cursor-runtime.tsx
+let _active = null;
+const _listeners = /* @__PURE__ */ new Set();
+const _componentKeys = /* @__PURE__ */ new WeakMap();
+let _nextComponentKey = 0;
 function _keyFor(c) {
 	let k = _componentKeys.get(c);
 	if (k === void 0) {
@@ -405,7 +405,7 @@ function _keyFor(c) {
 	}
 	return k;
 }
-var _pendingClear = null;
+let _pendingClear = null;
 function _setActive(next) {
 	_active = next;
 	_listeners.forEach((l) => l());
@@ -568,7 +568,7 @@ function _innerTransform(opts) {
 	return "translate(" + tx + "%, " + ty + "%)";
 }
 //#endregion
-//#region scene-poc-03/runtime-package/src/useStaticCanvas.ts
+//#region packages/revyme-runtime-scene/src/useStaticCanvas.ts
 /**
 * `useStaticCanvas()` — returns `true` when the component is being rendered
 * inside the Revyme canvas editor, `false` in the live preview, published
@@ -590,12 +590,12 @@ function useStaticCanvas() {
 	return false;
 }
 //#endregion
-//#region scene-poc-03/runtime-package/src/split-text.tsx
-var WRAP_PLAIN = { whiteSpace: "nowrap" };
+//#region packages/revyme-runtime-scene/src/split-text.tsx
+const WRAP_PLAIN = { whiteSpace: "nowrap" };
 /** paddingBottom/marginBottom cancel out — zero layout cost. The padding keeps descenders
 *  (g, y, p) from being shaved by the clip AND leaves the sliver IntersectionObserver needs
 *  when a unit is offset a full 100% (otherwise it sits entirely outside the clip). */
-var WRAP_MASK = {
+const WRAP_MASK = {
 	whiteSpace: "nowrap",
 	display: "inline-block",
 	overflow: "hidden",
@@ -674,7 +674,7 @@ function useActiveScopeIndex(spec, variant) {
 	}, [entries, compute]);
 	return idx;
 }
-var RESTING = {
+const RESTING = {
 	opacity: 1,
 	scale: 1,
 	rotateX: 0,
@@ -685,7 +685,7 @@ var RESTING = {
 	x: 0,
 	y: 0
 };
-var CHANNELS = [
+const CHANNELS = [
 	"opacity",
 	"scale",
 	"rotateX",
@@ -725,7 +725,7 @@ function restingOf(from, key) {
 /** Inline tags a rich run may carry — anything else (an icon, a nested
 *  component) makes the content unsplittable and the whole child tree renders
 *  verbatim, exactly as before. */
-var INLINE_MARK_TAGS = new Set([
+const INLINE_MARK_TAGS = new Set([
 	"span",
 	"strong",
 	"em",
@@ -1142,7 +1142,7 @@ function RevymeSplitText({ spec, variant, children }) {
 	});
 }
 /** Viewport line (fraction of the viewport height from the top) per `viewport`. */
-var VIEWPORT_LINE = {
+const VIEWPORT_LINE = {
 	top: 0,
 	middle: .5,
 	bottom: 1
@@ -1187,8 +1187,8 @@ function usePlayed(hostRef, spec) {
 	return played;
 }
 //#endregion
-//#region scene-poc-03/runtime-package/src/sketch-draw.ts
-var DEFAULT_OPTS = {
+//#region packages/revyme-runtime-scene/src/sketch-draw.ts
+const DEFAULT_OPTS = {
 	trigger: "inView",
 	mode: "sequential",
 	durationScale: 1,
@@ -1347,7 +1347,7 @@ function playSketchDraw(wrapperEl, userOpts = {}) {
 	};
 }
 //#endregion
-//#region scene-poc-03/runtime-package/src/localize-rows.ts
+//#region packages/revyme-runtime-scene/src/localize-rows.ts
 /**
 * `rows` with `locale`'s translations merged over each item's base fields.
 *
@@ -1377,7 +1377,7 @@ function localizeRows(rows, locale) {
 	return changed ? out : rows;
 }
 //#endregion
-//#region scene-poc-03/runtime-package/src/code-override.tsx
+//#region packages/revyme-runtime-scene/src/code-override.tsx
 /**
 * Code overrides — HOCs applied to a single canvas element.
 *
@@ -1411,7 +1411,7 @@ function isComponentLike(value) {
 * elements don't. Map it to children so a `withX` returning
 * `<Component text="…"/>` renders the text.
 */
-var baseCache = /* @__PURE__ */ new Map();
+const baseCache = /* @__PURE__ */ new Map();
 function hostCompatible(type) {
 	let cached = baseCache.get(type);
 	if (!cached) {
@@ -1428,7 +1428,7 @@ function hostCompatible(type) {
 	return cached;
 }
 /** One override applied to one component type. Cached so identity is stable across renders. */
-var applied = /* @__PURE__ */ new WeakMap();
+const applied = /* @__PURE__ */ new WeakMap();
 function applyOne(fn, Component) {
 	let byType = applied.get(fn);
 	if (!byType) {
@@ -1509,7 +1509,7 @@ function createStore(initial) {
 * hostCompat;`. Overrides never run on the editor canvas, so everything here
 * reports "preview / live".
 */
-var hostCompat = {
+const hostCompat = {
 	RenderTarget: {
 		canvas: "CANVAS",
 		export: "EXPORT",
@@ -1537,7 +1537,7 @@ var hostCompat = {
 	withCSS: (Component) => Component
 };
 //#endregion
-//#region scene-poc-03/runtime-package/src/ticker.tsx
+//#region packages/revyme-runtime-scene/src/ticker.tsx
 /**
 * RevymeTicker — the Ticker effect on a layout frame (an infinite marquee).
 *
@@ -1583,8 +1583,8 @@ var hostCompat = {
 * The editor canvas never runs it (the parser looks through the wrapper and
 * the canvas draws the frame still); preview and the live site do.
 */
-var MAX_COPIES = 50;
-var useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+const MAX_COPIES = 50;
+const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 /** The scrolling items: every element child of the frame except the marker. */
 function itemElements(host, marker) {
 	const out = [];
@@ -1618,7 +1618,7 @@ function orderCopies(els, perSet) {
 }
 /** Holds a frame that hugs its content at its own size: `x` / `y` = the axis,
 *  the size is `--revyme-ticker-fit` (see the marker rules). */
-var FIT_ATTR = "data-revyme-ticker-fit";
+const FIT_ATTR = "data-revyme-ticker-fit";
 /** The frame's main size (its CSS `width` / `height`) with and without the
 *  copies. A frame whose size comes from its content (width auto on an
 *  absolute frame, a hug flex item, fit-content) grows with every copy, so
@@ -1655,8 +1655,8 @@ function applyOverride(base, ov) {
 		disabled: typeof ov.disabled === "boolean" ? ov.disabled : base.disabled
 	};
 }
-var isQuery = (s) => !!s && typeof s.query === "string";
-var isVariant = (s) => !!s && typeof s.variant === "string";
+const isQuery = (s) => !!s && typeof s.query === "string";
+const isVariant = (s) => !!s && typeof s.variant === "string";
 /** Index of the first override that applies now: a `{ variant }` scope by the
 *  `variant` prop, a `{ query }` scope by matchMedia (client only). -1 = base.
 *  Lazy initial read + change listeners, the same shape as RevymeSplitText. */
@@ -1994,7 +1994,7 @@ function RevymeTicker({ speed = 80, hoverSpeed = 1, direction = "left", draggabl
 	return viaOverride ? cloneElement(outer, void 0, rendered) : rendered;
 }
 //#endregion
-//#region ../../../../Development/Websites/node_modules/html-to-image/es/util.js
+//#region node_modules/html-to-image/es/util.js
 function resolveUrl(url, baseUrl) {
 	if (url.match(/^[a-z]+:\/\//i)) return url;
 	if (url.match(/^\/\//)) return window.location.protocol + url;
@@ -2008,7 +2008,7 @@ function resolveUrl(url, baseUrl) {
 	a.href = url;
 	return a.href;
 }
-var uuid = (() => {
+const uuid = (() => {
 	let counter = 0;
 	const random = () => `0000${(Math.random() * 36 ** 4 << 0).toString(36)}`.slice(-4);
 	return () => {
@@ -2021,7 +2021,7 @@ function toArray(arrayLike) {
 	for (let i = 0, l = arrayLike.length; i < l; i++) arr.push(arrayLike[i]);
 	return arr;
 }
-var styleProps = null;
+let styleProps = null;
 function getStyleProperties(options = {}) {
 	if (styleProps) return styleProps;
 	if (options.includeStyleProperties) {
@@ -2064,7 +2064,7 @@ function getPixelRatio() {
 	}
 	return ratio || window.devicePixelRatio || 1;
 }
-var canvasDimensionLimit = 16384;
+const canvasDimensionLimit = 16384;
 function checkCanvasDimensions(canvas) {
 	if (canvas.width > canvasDimensionLimit || canvas.height > canvasDimensionLimit) if (canvas.width > canvasDimensionLimit && canvas.height > canvasDimensionLimit) if (canvas.width > canvas.height) {
 		canvas.height *= canvasDimensionLimit / canvas.width;
@@ -2114,14 +2114,14 @@ async function nodeToDataURL(node, width, height) {
 	foreignObject.appendChild(node);
 	return svgToDataURL(svg);
 }
-var isInstanceOfElement = (node, instance) => {
+const isInstanceOfElement = (node, instance) => {
 	if (node instanceof instance) return true;
 	const nodePrototype = Object.getPrototypeOf(node);
 	if (nodePrototype === null) return false;
 	return nodePrototype.constructor.name === instance.name || isInstanceOfElement(nodePrototype, instance);
 };
 //#endregion
-//#region ../../../../Development/Websites/node_modules/html-to-image/es/clone-pseudos.js
+//#region node_modules/html-to-image/es/clone-pseudos.js
 function formatCSSText(style) {
 	const content = style.getPropertyValue("content");
 	return `${style.cssText} content: '${content.replace(/'|"/g, "")}';`;
@@ -2155,10 +2155,10 @@ function clonePseudoElements(nativeNode, clonedNode, options) {
 	clonePseudoElement(nativeNode, clonedNode, ":after", options);
 }
 //#endregion
-//#region ../../../../Development/Websites/node_modules/html-to-image/es/mimes.js
-var WOFF = "application/font-woff";
-var JPEG = "image/jpeg";
-var mimes = {
+//#region node_modules/html-to-image/es/mimes.js
+const WOFF = "application/font-woff";
+const JPEG = "image/jpeg";
+const mimes = {
 	woff: WOFF,
 	woff2: WOFF,
 	ttf: "application/font-truetype",
@@ -2179,7 +2179,7 @@ function getMimeType(url) {
 	return mimes[getExtension(url).toLowerCase()] || "";
 }
 //#endregion
-//#region ../../../../Development/Websites/node_modules/html-to-image/es/dataurl.js
+//#region node_modules/html-to-image/es/dataurl.js
 function getContentFromDataUrl(dataURL) {
 	return dataURL.split(/,/)[1];
 }
@@ -2209,7 +2209,7 @@ async function fetchAsDataURL(url, init, process) {
 		reader.readAsDataURL(blob);
 	});
 }
-var cache = {};
+const cache = {};
 function getCacheKey(url, contentType, includeQueryParams) {
 	let key = url.replace(/\?.*/, "");
 	if (includeQueryParams) key = url;
@@ -2236,7 +2236,7 @@ async function resourceToDataURL(resourceUrl, contentType, options) {
 	return dataURL;
 }
 //#endregion
-//#region ../../../../Development/Websites/node_modules/html-to-image/es/clone-node.js
+//#region node_modules/html-to-image/es/clone-node.js
 async function cloneCanvasElement(canvas) {
 	const dataURL = canvas.toDataURL();
 	if (dataURL === "data:,") return canvas.cloneNode(false);
@@ -2267,8 +2267,8 @@ async function cloneSingleNode(node, options) {
 	if (isInstanceOfElement(node, HTMLIFrameElement)) return cloneIFrameElement(node, options);
 	return node.cloneNode(isSVGElement(node));
 }
-var isSlotElement = (node) => node.tagName != null && node.tagName.toUpperCase() === "SLOT";
-var isSVGElement = (node) => node.tagName != null && node.tagName.toUpperCase() === "SVG";
+const isSlotElement = (node) => node.tagName != null && node.tagName.toUpperCase() === "SLOT";
+const isSVGElement = (node) => node.tagName != null && node.tagName.toUpperCase() === "SVG";
 async function cloneChildren(nativeNode, clonedNode, options) {
 	var _a, _b;
 	if (isSVGElement(clonedNode)) return clonedNode;
@@ -2351,10 +2351,10 @@ async function cloneNode(node, options, isRoot) {
 	return Promise.resolve(node).then((clonedNode) => cloneSingleNode(clonedNode, options)).then((clonedNode) => cloneChildren(node, clonedNode, options)).then((clonedNode) => decorate(node, clonedNode, options)).then((clonedNode) => ensureSVGSymbols(clonedNode, options));
 }
 //#endregion
-//#region ../../../../Development/Websites/node_modules/html-to-image/es/embed-resources.js
-var URL_REGEX = /url\((['"]?)([^'"]+?)\1\)/g;
-var URL_WITH_FORMAT_REGEX = /url\([^)]+\)\s*format\((["']?)([^"']+)\1\)/g;
-var FONT_SRC_REGEX = /src:\s*(?:url\([^)]+\)\s*format\([^)]+\)[,;]\s*)+/g;
+//#region node_modules/html-to-image/es/embed-resources.js
+const URL_REGEX = /url\((['"]?)([^'"]+?)\1\)/g;
+const URL_WITH_FORMAT_REGEX = /url\([^)]+\)\s*format\((["']?)([^"']+)\1\)/g;
+const FONT_SRC_REGEX = /src:\s*(?:url\([^)]+\)\s*format\([^)]+\)[,;]\s*)+/g;
 function toRegex(url) {
 	const escaped = url.replace(/([.*+?^${}()|\[\]\/\\])/g, "\\$1");
 	return new RegExp(`(url\\(['"]?)(${escaped})(['"]?\\))`, "g");
@@ -2396,7 +2396,7 @@ async function embedResources(cssText, baseUrl, options) {
 	return parseURLs(filteredCSSText).reduce((deferred, url) => deferred.then((css) => embed(css, url, baseUrl, options)), Promise.resolve(filteredCSSText));
 }
 //#endregion
-//#region ../../../../Development/Websites/node_modules/html-to-image/es/embed-images.js
+//#region node_modules/html-to-image/es/embed-images.js
 async function embedProp(propName, node, options) {
 	var _a;
 	const propValue = (_a = node.style) === null || _a === void 0 ? void 0 : _a.getPropertyValue(propName);
@@ -2446,7 +2446,7 @@ async function embedImages(clonedNode, options) {
 	}
 }
 //#endregion
-//#region ../../../../Development/Websites/node_modules/html-to-image/es/apply-style.js
+//#region node_modules/html-to-image/es/apply-style.js
 function applyStyle(node, options) {
 	const { style } = node;
 	if (options.backgroundColor) style.backgroundColor = options.backgroundColor;
@@ -2459,8 +2459,8 @@ function applyStyle(node, options) {
 	return node;
 }
 //#endregion
-//#region ../../../../Development/Websites/node_modules/html-to-image/es/embed-webfonts.js
-var cssFetchCache = {};
+//#region node_modules/html-to-image/es/embed-webfonts.js
+const cssFetchCache = {};
 async function fetchCSS(url) {
 	let cache = cssFetchCache[url];
 	if (cache != null) return cache;
@@ -2597,7 +2597,7 @@ async function embedWebFonts(clonedNode, options) {
 	}
 }
 //#endregion
-//#region ../../../../Development/Websites/node_modules/html-to-image/es/index.js
+//#region node_modules/html-to-image/es/index.js
 async function toSvg(node, options = {}) {
 	const { width, height } = getImageSize(node, options);
 	const clonedNode = await cloneNode(node, options, true);
@@ -2627,7 +2627,280 @@ async function toCanvas(node, options = {}) {
 	return canvas;
 }
 //#endregion
-//#region scene-poc-03/runtime-package/src/displacement-renderer.ts
+//#region packages/revyme-runtime-scene/src/vhs-renderer.ts
+const vertex = "#version 300 es\n" + [
+	"out vec2 uv;",
+	"void main() {",
+	"  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);",
+	"  uv = vec2(p.x, 1. - p.y);",
+	"  gl_Position = vec4(p * 2. - 1., 0., 1.);",
+	"}"
+].join("\n");
+const fragment = "#version 300 es\n" + [
+	"precision highp float;",
+	"in vec2 uv;",
+	"out vec4 pixel;",
+	"uniform sampler2D surface;",
+	"uniform vec2 size;",
+	"uniform float time, amount;",
+	"uniform vec4 transport, image;",
+	"float noise(vec2 p) {",
+	"  vec3 q = fract(vec3(p.xyx) * .1031);",
+	"  q += dot(q, q.yzx + 33.33);",
+	"  return fract((q.x + q.y) * q.z);",
+	"}",
+	"void main() {",
+	"  float line = floor(uv.y * size.y);",
+	"  float frame = floor(time * 30.);",
+	"  float wave = sin(uv.y * 18. + time * 4.) * 3.4 + sin(uv.y * 44. - time * 2.) * 1.2;",
+	"  float jitter = (noise(vec2(line, frame)) - .5) * 4.;",
+	"  float crease = 1. - smoothstep(.005, .039, abs(uv.y - fract(.18 + time * .63)));",
+	"  float head = smoothstep(.947, .99, uv.y);",
+	"  float bend = wave * transport.x + jitter * transport.y + crease * jitter * 7. * transport.z",
+	"    + head * (8. + jitter * 6.) * transport.w;",
+	"  vec2 tap = vec2(clamp(uv.x + bend * amount / size.x, .001, .999), uv.y);",
+	"  vec4 base = texture(surface, tap);",
+	"  vec2 bleed = vec2(image.x * amount / size.x, 0.);",
+	"  vec3 rgb = vec3(texture(surface, tap + bleed).r, base.g, texture(surface, tap - bleed * 1.4).b);",
+	"  float grain = noise(floor(uv * size) + vec2(frame * 11., frame * 7.)) - .5;",
+	"  float scan = .5 + .5 * cos(uv.y * size.y * 3.14159265);",
+	"  float edge = dot(uv - .5, uv - .5) * 1.55;",
+	"  rgb *= 1. - amount * (image.z * scan * .42 + image.w * edge);",
+	"  rgb += (grain * (image.y + head * transport.w * .55 + crease * transport.z * .18)",
+	"    + sin(uv.y * 12. - time * 4.) * .028) * amount * base.a;",
+	"  pixel = vec4(clamp(rgb, vec3(0.), vec3(base.a)), base.a);",
+	"}"
+].join("\n");
+/** One program and one bounded texture for the lifetime of a stage. */
+function createVhsRenderer(canvas) {
+	const gl = canvas.getContext("webgl2", {
+		alpha: true,
+		antialias: false,
+		depth: false
+	});
+	if (!gl?.texElementSubImage2D) return null;
+	const program = gl.createProgram();
+	const texture = gl.createTexture();
+	if (!program || !texture) {
+		gl.deleteProgram(program);
+		gl.deleteTexture(texture);
+		return null;
+	}
+	for (const [kind, source] of [[gl.VERTEX_SHADER, vertex], [gl.FRAGMENT_SHADER, fragment]]) {
+		const shader = gl.createShader(kind);
+		if (shader) {
+			gl.shaderSource(shader, source);
+			gl.compileShader(shader);
+			gl.attachShader(program, shader);
+			gl.deleteShader(shader);
+		}
+	}
+	gl.linkProgram(program);
+	if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+		gl.deleteProgram(program);
+		gl.deleteTexture(texture);
+		return null;
+	}
+	const uniforms = Object.fromEntries([
+		"size",
+		"time",
+		"amount",
+		"transport",
+		"image"
+	].map((name) => [name, gl.getUniformLocation(program, name)]));
+	gl.useProgram(program);
+	gl.bindTexture(gl.TEXTURE_2D, texture);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+	gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, canvas.width, canvas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+	gl.viewport(0, 0, canvas.width, canvas.height);
+	let uploaded = false;
+	return {
+		upload(element, crop) {
+			gl.texElementSubImage2D(gl.TEXTURE_2D, 0, 0, 0, element, {
+				...crop,
+				width: canvas.width,
+				height: canvas.height
+			});
+			if (!uploaded && gl.getError() !== gl.NO_ERROR) throw Error("VHS drawable texture upload failed");
+			uploaded = true;
+		},
+		draw(config, cssWidth, cssHeight, seconds, amount) {
+			if (!uploaded) return;
+			gl.uniform2f(uniforms.size, cssWidth, cssHeight);
+			gl.uniform1f(uniforms.time, seconds * config.speed);
+			gl.uniform1f(uniforms.amount, amount);
+			gl.uniform4f(uniforms.transport, config.wave, config.jitter, config.crease, config.switching);
+			gl.uniform4f(uniforms.image, config.chroma, config.grain, config.scanlines, config.vignette);
+			gl.drawArrays(gl.TRIANGLES, 0, 3);
+		},
+		destroy() {
+			gl.deleteTexture(texture);
+			gl.deleteProgram(program);
+		}
+	};
+}
+//#endregion
+//#region packages/revyme-runtime-scene/src/vhs-stage.ts
+const activeObjects = /* @__PURE__ */ new Set();
+function stopVhsObjects() {
+	activeObjects.forEach((stop) => stop());
+}
+/** Move only the stable presentation host. React continues to own its children. */
+function openVhsStage(anchor, mode) {
+	const doc = anchor.ownerDocument;
+	const win = doc.defaultView;
+	const content = anchor.querySelector(":scope > [data-revyme-vhs-content]");
+	const target = content?.firstElementChild;
+	if (!win || !content || !target || !anchor.isConnected || doc.hidden) return null;
+	if (mode === "object" && activeObjects.size >= 2) return null;
+	const canvas = doc.createElement("canvas");
+	canvas.setAttribute("content", "drawable");
+	if (canvas.content !== "drawable" || !canvas.requestPaint || !canvas.updateElementGeometry || typeof canvas.moveBefore !== "function" || typeof anchor.moveBefore !== "function") return null;
+	const page = mode === "page";
+	const css = win.getComputedStyle(target);
+	const box = target.getBoundingClientRect();
+	const width = page ? doc.documentElement.clientWidth : target instanceof HTMLElement ? target.offsetWidth : parseFloat(css.width) || box.width;
+	const height = page ? win.innerHeight : target instanceof HTMLElement ? target.offsetHeight : parseFloat(css.height) || box.height;
+	if (!width || !height) return null;
+	const ratio = Math.min(win.devicePixelRatio || 1, 1.5, Math.sqrt(15e5 / (width * height)), 4096 / Math.max(width, height));
+	canvas.width = Math.max(1, Math.round(width * ratio));
+	canvas.height = Math.max(1, Math.round(height * ratio));
+	canvas.dataset.revymeEffectOverlay = "";
+	canvas.dataset.revymeVhsStage = mode;
+	if (page) canvas.style.cssText = "position:fixed;inset:0;z-index:2147483646;display:block";
+	else {
+		canvas.style.display = css.display.startsWith("inline") ? "inline-block" : "block";
+		for (const key of [
+			"position",
+			"top",
+			"right",
+			"bottom",
+			"left",
+			"margin",
+			"grid-area",
+			"order",
+			"align-self",
+			"justify-self",
+			"vertical-align",
+			"z-index",
+			"transform",
+			"transform-origin"
+		]) canvas.style.setProperty(key, css.getPropertyValue(key));
+		canvas.style.flex = "0 0 auto";
+	}
+	canvas.style.width = width + "px";
+	canvas.style.height = height + "px";
+	canvas.style.boxSizing = "border-box";
+	const renderer = createVhsRenderer(canvas);
+	if (!renderer) return null;
+	const style = doc.createElement("style");
+	style.textContent = [
+		"canvas[data-revyme-vhs-stage=\"object\"] > [drawable] > :first-child {",
+		"  position: relative !important; inset: auto !important; margin: 0 !important;",
+		"  width: 100% !important; height: 100% !important; transform: none !important;",
+		"  box-sizing: border-box !important;",
+		"}"
+	].join("\n");
+	const spacer = doc.createElement("div");
+	if (page) {
+		spacer.style.height = doc.documentElement.scrollHeight + "px";
+		spacer.setAttribute("aria-hidden", "true");
+	}
+	const originalStyle = content.style.cssText;
+	let closed = false;
+	let dirty = false;
+	let cropY = page ? win.scrollY : 0;
+	let geometryY;
+	let pendingPaint;
+	const paint = (event) => {
+		const changed = event.changedElements;
+		if (!changed || changed.includes(content) || pendingPaint) dirty = true;
+		pendingPaint?.();
+	};
+	function destroy() {
+		if (closed) return;
+		closed = true;
+		activeObjects.delete(destroy);
+		canvas.removeEventListener("paint", paint);
+		canvas.removeEventListener("webglcontextlost", destroy);
+		win.removeEventListener("resize", destroy);
+		doc.removeEventListener("visibilitychange", onVisibility);
+		if (content.parentNode === canvas) if (anchor.isConnected) anchor.moveBefore(content, canvas);
+		else anchor.insertBefore(content, canvas);
+		content.style.cssText = originalStyle;
+		content.removeAttribute("drawable");
+		canvas.remove();
+		style.remove();
+		spacer.remove();
+		renderer.destroy();
+		pendingPaint?.();
+	}
+	const onVisibility = () => {
+		if (doc.hidden) destroy();
+	};
+	try {
+		if (page) anchor.append(spacer);
+		else anchor.append(style);
+		anchor.append(canvas);
+		content.style.cssText = "display:block;box-sizing:border-box;width:" + width + "px;" + (page ? "min-height:" + height + "px" : "height:" + height + "px");
+		content.setAttribute("drawable", "");
+		canvas.moveBefore(content, null);
+		if (!page) activeObjects.add(destroy);
+		canvas.addEventListener("paint", paint);
+		canvas.addEventListener("webglcontextlost", destroy);
+		win.addEventListener("resize", destroy);
+		doc.addEventListener("visibilitychange", onVisibility);
+	} catch {
+		destroy();
+		return null;
+	}
+	return {
+		canvas,
+		get closed() {
+			return closed;
+		},
+		nextPaint() {
+			if (closed) return Promise.resolve(false);
+			return new Promise((resolve) => {
+				const finish = (ready) => {
+					win.clearTimeout(timeout);
+					pendingPaint = void 0;
+					resolve(ready && !closed);
+				};
+				const timeout = win.setTimeout(() => finish(false), 400);
+				pendingPaint = () => finish(true);
+				canvas.requestPaint();
+			});
+		},
+		draw(config, time, amount) {
+			if (closed) return;
+			const y = page ? win.scrollY : 0;
+			if (dirty || y !== cropY) {
+				renderer.upload(content, {
+					sx: 0,
+					sy: y,
+					swidth: width,
+					sheight: height
+				});
+				cropY = y;
+				dirty = false;
+				if (geometryY !== y) {
+					canvas.updateElementGeometry(content, { canvasTransform: new DOMMatrix().translate(0, -y) });
+					geometryY = y;
+				}
+				canvas.dataset.revymeVhsPainted = "true";
+			}
+			renderer.draw(config, width, height, time, amount);
+		},
+		destroy
+	};
+}
+//#endregion
+//#region packages/revyme-runtime-scene/src/displacement-renderer.ts
 function createDisplacement(canvas, onLost) {
 	const gl = canvas.getContext("webgl2", {
 		alpha: true,
@@ -2716,8 +2989,8 @@ function createDisplacement(canvas, onLost) {
 	};
 }
 //#endregion
-//#region scene-poc-03/runtime-package/src/displacement-config.ts
-var DEFAULT_DISPLACEMENT = {
+//#region packages/revyme-runtime-scene/src/displacement-config.ts
+const DEFAULT_DISPLACEMENT = {
 	version: 1,
 	duration: 1.4,
 	strength: .035,
@@ -2740,7 +3013,7 @@ function normalizeDisplacement(value) {
 	};
 }
 //#endregion
-//#region scene-poc-03/runtime-package/src/displacement-navigation.ts
+//#region packages/revyme-runtime-scene/src/displacement-navigation.ts
 /** Snapshot enhancement for route navigation. Does not depend on HTML-in-Canvas.
 * Unsupported surfaces retain normal navigation. No global DOM transforms. */
 async function runDisplacementNavigation(options) {
@@ -2802,23 +3075,31 @@ async function runDisplacementNavigation(options) {
 	}
 	async function capture() {
 		check();
-		if ([...document.body.querySelectorAll("canvas,video,iframe")].some((el) => !overlay?.contains(el))) throw Error("unsupported-surface");
+		if ([...document.body.querySelectorAll("canvas,video,iframe")].some((el) => !overlay?.contains(el) && !el.hasAttribute("data-revyme-effect-overlay"))) throw Error("unsupported-surface");
 		if (document.body.querySelectorAll("*").length > 1600) throw Error("capture-budget");
 		const width = innerWidth, height = innerHeight;
 		const pixelRatio = Math.min(1, Math.sqrt(2e6 / Math.max(1, width * height)));
-		return bounded(toCanvas(document.body, {
-			width,
-			height,
-			pixelRatio,
-			cacheBust: false,
-			filter: (node) => !(node instanceof Element && node.hasAttribute("data-revyme-displacement-overlay")),
-			style: {
-				margin: "0",
-				transform: `translate(${-scrollX}px, ${-scrollY}px)`,
-				transformOrigin: "0 0"
-			},
-			backgroundColor: getComputedStyle(document.body).backgroundColor === "rgba(0, 0, 0, 0)" ? "#ffffff" : getComputedStyle(document.body).backgroundColor
-		}), 1800);
+		const particles = [...document.querySelectorAll("[data-revyme-particle-active=\"true\"]")];
+		particles.forEach((el) => el.removeAttribute("data-revyme-particle-active"));
+		try {
+			return await bounded(toCanvas(document.body, {
+				width,
+				height,
+				pixelRatio,
+				cacheBust: false,
+				filter: (node) => !(node instanceof Element && (node.hasAttribute("data-revyme-displacement-overlay") || node.hasAttribute("data-revyme-effect-overlay"))),
+				style: {
+					margin: "0",
+					transform: `translate(${-scrollX}px, ${-scrollY}px)`,
+					transformOrigin: "0 0"
+				},
+				backgroundColor: getComputedStyle(document.body).backgroundColor === "rgba(0, 0, 0, 0)" ? "#ffffff" : getComputedStyle(document.body).backgroundColor
+			}), 1800);
+		} finally {
+			particles.forEach((el) => {
+				if (el.isConnected && el.getAttribute("data-revyme-particle-ready") === "true") el.setAttribute("data-revyme-particle-active", "true");
+			});
+		}
 	}
 	const cleanup = () => {
 		if (disposed) return;
@@ -2849,12 +3130,13 @@ async function runDisplacementNavigation(options) {
 	document.addEventListener("visibilitychange", hidden);
 	try {
 		check();
+		stopVhsObjects();
 		if (!config) throw Error("invalid-config");
 		if (motion.matches) throw Error("reduced-motion");
 		const canvas = document.createElement("canvas");
 		canvas.setAttribute("aria-hidden", "true");
 		canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none";
-		renderer = createDisplacement(canvas, () => abort("context-lost"));
+		renderer = (options.renderer ?? createDisplacement)(canvas, () => abort("context-lost"));
 		emit("capturing-old");
 		const old = await capture();
 		check();
@@ -2921,4 +3203,1906 @@ async function runDisplacementNavigation(options) {
 	}
 }
 //#endregion
-export { CursorPortal, DEFAULT_DISPLACEMENT, Override, RevymeSplitText, RevymeTicker, createDisplacement, createStore, hostCompat, localizeRows, normalizeDisplacement, playSketchDraw, runDisplacementNavigation, useStaticCanvas, withCursor, withResponsiveProps };
+//#region packages/revyme-runtime-scene/src/glitch-config.ts
+const DEFAULT_GLITCH = {
+	version: 1,
+	intensity: 1,
+	interval: 3,
+	duration: .4,
+	slices: 24,
+	shift: 30,
+	rgbShift: 4,
+	blocks: .5,
+	noise: .35
+};
+function normalizeGlitch(value) {
+	if (!value || typeof value !== "object" || value.version !== 1) return null;
+	const input = value;
+	const bound = (key, min, max) => {
+		const v = input[key];
+		return typeof v === "number" && Number.isFinite(v) ? Math.max(min, Math.min(max, v)) : DEFAULT_GLITCH[key];
+	};
+	return {
+		version: 1,
+		intensity: bound("intensity", 0, 2),
+		interval: bound("interval", 0, 30),
+		duration: bound("duration", .05, 4),
+		slices: Math.round(bound("slices", 3, 100)),
+		shift: bound("shift", 0, 200),
+		rgbShift: bound("rgbShift", 0, 40),
+		blocks: bound("blocks", 0, 1),
+		noise: bound("noise", 0, 1)
+	};
+}
+//#endregion
+//#region packages/revyme-runtime-scene/src/glitch-renderer.ts
+/** Snapshot shader authored for Revyme. All distances are in CSS pixels. */
+function createGlitchRenderer(canvas, config, onLost) {
+	const gl = canvas.getContext("webgl2", {
+		alpha: true,
+		premultipliedAlpha: true,
+		antialias: false
+	});
+	if (!gl) throw Error("WebGL2 unavailable");
+	const compile = (kind, source) => {
+		const shader = gl.createShader(kind);
+		if (!shader) throw Error("Shader allocation failed");
+		gl.shaderSource(shader, source);
+		gl.compileShader(shader);
+		if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+			const error = gl.getShaderInfoLog(shader);
+			gl.deleteShader(shader);
+			throw Error(error || "Shader error");
+		}
+		return shader;
+	};
+	const vertex = compile(gl.VERTEX_SHADER, `#version 300 es
+    out vec2 uv;
+    void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);uv=p;gl_Position=vec4(p*2.-1.,0.,1.);}`);
+	const fragment = compile(gl.FRAGMENT_SHADER, `#version 300 es
+    precision highp float;
+    in vec2 uv; out vec4 color;
+    uniform sampler2D a; uniform sampler2D b;
+    uniform float progress, frame, amount, slices, shift, rgb, blocks, noise;
+    uniform vec2 size;
+    float rand(vec2 p){return fract(sin(dot(p,vec2(41.13,289.73)))*18347.731);}
+    vec4 samplePage(vec2 p, float mixAmount){return mix(texture(a,clamp(p,0.,1.)),texture(b,clamp(p,0.,1.)),mixAmount);}
+    void main(){
+      vec2 p=vec2(uv.x,1.-uv.y); float phase=clamp(progress,0.,1.);
+      float envelope=sin(phase*3.14159265)*amount;
+      float band=floor(p.y*slices); float chance=rand(vec2(band,frame));
+      float jump=(rand(vec2(band+9.,frame+7.))-.5)*2.;
+      p.x+=step(.72,chance)*jump*shift*envelope/size.x;
+      vec2 cell=floor(p*vec2(16.,slices*.65));
+      float corrupt=step(1.-.16*blocks,rand(cell+frame));
+      p+=corrupt*vec2(rand(cell+frame+3.)-.5,rand(cell+frame+7.)-.5)*vec2(.08,.025)*envelope;
+      float split=rgb*envelope/size.x;
+      vec4 c=samplePage(p,phase); vec4 left=samplePage(p+vec2(split,0.),phase); vec4 right=samplePage(p-vec2(split,0.),phase);
+      vec3 chroma=vec3(left.r,c.g,right.b);
+      float grain=(rand(floor(uv*size)+frame)-.5)*noise*envelope*.2;
+      color=vec4(clamp(chroma+grain*c.a,0.,1.),c.a);
+    }`);
+	const program = gl.createProgram();
+	if (!program) throw Error("Program allocation failed");
+	gl.attachShader(program, vertex);
+	gl.attachShader(program, fragment);
+	gl.linkProgram(program);
+	gl.deleteShader(vertex);
+	gl.deleteShader(fragment);
+	if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+		const error = gl.getProgramInfoLog(program);
+		gl.deleteProgram(program);
+		throw Error(error || "Link error");
+	}
+	const textures = [gl.createTexture(), gl.createTexture()];
+	if (!textures[0] || !textures[1]) throw Error("Texture allocation failed");
+	let currentConfig = config;
+	const uploaded = [null, null];
+	let textureUnits = [textures[0], textures[1]];
+	let dimensions = null;
+	const maxDimension = Math.min(8192, gl.getParameter(gl.MAX_RENDERBUFFER_SIZE));
+	function setSize(cssWidth, cssHeight) {
+		if (cssWidth <= 0 || cssHeight <= 0) return;
+		const dpr = Math.min(devicePixelRatio || 1, 2, Math.sqrt(4e6 / (cssWidth * cssHeight)), maxDimension / Math.max(cssWidth, cssHeight));
+		const width = Math.max(1, Math.round(cssWidth * dpr));
+		const height = Math.max(1, Math.round(cssHeight * dpr));
+		if (canvas.width !== width || canvas.height !== height) {
+			canvas.width = width;
+			canvas.height = height;
+		}
+		dimensions = {
+			width,
+			height,
+			dpr
+		};
+	}
+	const locations = Object.fromEntries([
+		"a",
+		"b",
+		"progress",
+		"frame",
+		"amount",
+		"slices",
+		"shift",
+		"rgb",
+		"blocks",
+		"noise",
+		"size"
+	].map((name) => [name, gl.getUniformLocation(program, name)]));
+	let ready = false, lost = false;
+	const loss = (event) => {
+		event.preventDefault();
+		lost = true;
+		ready = false;
+		canvas.hidden = true;
+		onLost();
+	};
+	canvas.addEventListener("webglcontextlost", loss);
+	return {
+		setSize,
+		setConfig(next) {
+			currentConfig = next;
+		},
+		setImages(images) {
+			if (lost) return;
+			textureUnits = images[0] === images[1] ? [textures[0], textures[0]] : [textures[0], textures[1]];
+			images.forEach((image, i) => {
+				if (i === 1 && images[0] === images[1]) return;
+				if (uploaded[i] === image) return;
+				gl.activeTexture(gl.TEXTURE0 + i);
+				gl.bindTexture(gl.TEXTURE_2D, textures[i]);
+				gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+				gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+				uploaded[i] = image;
+			});
+			if (gl.getError() !== gl.NO_ERROR) throw Error("Texture upload failed");
+			ready = true;
+		},
+		render(progress, _seed, _strength, _columns) {
+			if (!ready || lost) return;
+			if (!dimensions) {
+				const rect = canvas.getBoundingClientRect();
+				setSize(rect.width, rect.height);
+			}
+			if (!dimensions) return;
+			const { width, height, dpr } = dimensions;
+			gl.viewport(0, 0, width, height);
+			gl.useProgram(program);
+			textureUnits.forEach((texture, i) => {
+				gl.activeTexture(gl.TEXTURE0 + i);
+				gl.bindTexture(gl.TEXTURE_2D, texture);
+			});
+			const f = (name, value) => gl.uniform1f(locations[name], value);
+			gl.uniform1i(locations.a, 0);
+			gl.uniform1i(locations.b, 1);
+			f("progress", progress);
+			f("frame", Math.floor(performance.now() / 42));
+			f("amount", currentConfig.intensity);
+			f("slices", currentConfig.slices);
+			f("shift", currentConfig.shift * dpr);
+			f("rgb", currentConfig.rgbShift * dpr);
+			f("blocks", currentConfig.blocks);
+			f("noise", currentConfig.noise);
+			gl.uniform2f(locations.size, width, height);
+			gl.drawArrays(gl.TRIANGLES, 0, 3);
+		},
+		ready: () => ready && !lost,
+		destroy() {
+			canvas.removeEventListener("webglcontextlost", loss);
+			if (!lost) {
+				textures.forEach((texture) => gl.deleteTexture(texture));
+				gl.deleteProgram(program);
+			}
+			ready = false;
+		}
+	};
+}
+//#endregion
+//#region packages/revyme-runtime-scene/src/glitch-navigation.ts
+/** A single Glitch burst spanning a route change. */
+async function runGlitchNavigation(options) {
+	const config = normalizeGlitch(options.config);
+	if (!config) {
+		await options.navigate();
+		return {
+			mode: "fallback",
+			reason: "invalid-config"
+		};
+	}
+	return runDisplacementNavigation({
+		config: {
+			version: 1,
+			duration: config.duration,
+			seed: 0,
+			columns: 18,
+			strength: 0
+		},
+		navigate: options.navigate,
+		signal: options.signal,
+		renderer: (canvas, onLost) => createGlitchRenderer(canvas, config, onLost)
+	});
+}
+//#endregion
+//#region packages/revyme-runtime-scene/src/effect-observer.ts
+/** Re-scan only when a mutation can add, remove, or change an effect target. */
+function effectTargetsChanged(records) {
+	return records.some((record) => {
+		if (record.type === "attributes") return true;
+		return [...record.addedNodes, ...record.removedNodes].some((node) => node instanceof Element && (node.matches("[data-canvas-effect]") || !!node.querySelector("[data-canvas-effect]")));
+	});
+}
+//#endregion
+//#region packages/revyme-runtime-scene/src/glitch-elements.ts
+function configFor(el) {
+	const read = (name) => {
+		const raw = el.getAttribute(`data-glitch-${name.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase())}`);
+		return raw === null || raw.trim() === "" ? DEFAULT_GLITCH[name] : Number(raw);
+	};
+	return normalizeGlitch({
+		version: 1,
+		intensity: read("intensity"),
+		interval: read("interval"),
+		duration: read("duration"),
+		slices: read("slices"),
+		shift: read("shift"),
+		rgbShift: read("rgbShift"),
+		blocks: read("blocks"),
+		noise: read("noise")
+	});
+}
+/** Enhance marked elements while retaining their live, interactive DOM. */
+function attachGlitchElements(root = document) {
+	const doc = root instanceof Document ? root : root.ownerDocument;
+	if (!doc.defaultView) return () => {};
+	const win = doc.defaultView;
+	const motion = win.matchMedia("(prefers-reduced-motion: reduce)");
+	const items = /* @__PURE__ */ new Map();
+	let stopped = false;
+	function bind(el) {
+		if (items.has(el)) return;
+		let timer = 0, raf = 0, disposed = false, visible = true, generation = 0;
+		let canvas = null;
+		let renderer = null;
+		let cachedImage = null;
+		let contentVersion = 0, capturedVersion = -1, capturePending = null, lastCapture = 0;
+		let animated = false, lastAnimationCheck = 0;
+		let config = configFor(el);
+		const initialDelay = () => {
+			const value = Number(el.getAttribute("data-canvas-delay") || 0);
+			return Number.isFinite(value) ? Math.max(0, value) * 1e3 : 0;
+		};
+		const stop = (release) => {
+			generation++;
+			win.clearTimeout(timer);
+			win.cancelAnimationFrame(raf);
+			timer = 0;
+			raf = 0;
+			if (canvas) canvas.style.display = "none";
+			if (release) {
+				renderer?.destroy();
+				renderer = null;
+				canvas?.remove();
+				canvas = null;
+				cachedImage = null;
+				capturedVersion = -1;
+			}
+		};
+		const schedule = (delay) => {
+			win.clearTimeout(timer);
+			if (!disposed && !motion.matches && visible && !doc.hidden) timer = win.setTimeout(() => {
+				timer = 0;
+				play();
+			}, delay);
+		};
+		const capture = async () => {
+			if (capturePending) return capturePending;
+			if (cachedImage && capturedVersion === contentVersion) return cachedImage;
+			if (el.querySelector("canvas,video,iframe") || el.querySelectorAll("*").length > 500) throw Error("unsupported-surface");
+			const bounds = el.getBoundingClientRect();
+			if (!bounds.width || !bounds.height || bounds.width * bounds.height > 4e6) throw Error("capture-budget");
+			const version = contentVersion;
+			lastCapture = performance.now();
+			const pending = toCanvas(el, {
+				pixelRatio: Math.min(1, Math.sqrt(1e6 / (bounds.width * bounds.height))),
+				cacheBust: false
+			});
+			capturePending = pending;
+			try {
+				const image = await pending;
+				if (!disposed && visible && !motion.matches && !doc.hidden) {
+					cachedImage = image;
+					capturedVersion = version;
+				}
+				return image;
+			} finally {
+				if (capturePending === pending) capturePending = null;
+			}
+		};
+		const updateBounds = () => {
+			if (!canvas) return;
+			const bounds = el.getBoundingClientRect();
+			canvas.style.left = `${bounds.left}px`;
+			canvas.style.top = `${bounds.top}px`;
+			canvas.style.width = `${bounds.width}px`;
+			canvas.style.height = `${bounds.height}px`;
+			renderer?.setSize(bounds.width, bounds.height);
+		};
+		const checkAnimations = () => {
+			try {
+				animated = typeof el.getAnimations === "function" && el.getAnimations({ subtree: true }).some((animation) => animation.playState === "running");
+			} catch {
+				animated = false;
+			}
+		};
+		async function refreshImage(token) {
+			try {
+				const image = await capture();
+				if (image && token === generation && renderer && !disposed && visible && !motion.matches && !doc.hidden) renderer.setImages([image, image]);
+			} catch {}
+		}
+		async function play() {
+			if (disposed || motion.matches || !visible || !el.isConnected || doc.hidden) return;
+			const token = ++generation;
+			try {
+				const image = await capture();
+				if (!image || disposed || token !== generation || motion.matches || !visible || doc.hidden || !el.isConnected) return;
+				if (!canvas) {
+					canvas = doc.createElement("canvas");
+					canvas.setAttribute("aria-hidden", "true");
+					canvas.setAttribute("data-revyme-effect-overlay", "");
+					canvas.style.cssText = "position:fixed;pointer-events:none;z-index:2147483645";
+					renderer = createGlitchRenderer(canvas, config, () => {
+						stop(true);
+					});
+					doc.body.append(canvas);
+				}
+				updateBounds();
+				renderer.setConfig(config);
+				renderer.setImages([image, image]);
+				canvas.style.display = "block";
+				const start = performance.now();
+				let lastPaint = 0;
+				const frame = (now) => {
+					if (disposed || token !== generation || !renderer || !visible || doc.hidden || motion.matches) return;
+					const progress = Math.min(1, (now - start) / (config.duration * 1e3));
+					if (now - lastPaint >= 32 || config.interval > 0 && progress === 1) {
+						renderer.render(config.interval === 0 ? .5 : progress);
+						lastPaint = now;
+						if (now - lastAnimationCheck >= 1e3) {
+							checkAnimations();
+							lastAnimationCheck = now;
+						}
+						if (animated && now - lastCapture >= 1e3 && contentVersion === capturedVersion) contentVersion++;
+						if (contentVersion !== capturedVersion && !capturePending && now - lastCapture >= 1e3) refreshImage(token);
+					}
+					if (config.interval === 0 || progress < 1) raf = win.requestAnimationFrame(frame);
+					else {
+						raf = 0;
+						if (canvas) canvas.style.display = "none";
+						schedule(config.interval * 1e3);
+					}
+				};
+				raf = win.requestAnimationFrame(frame);
+			} catch {
+				if (token === generation) stop(true);
+			}
+		}
+		const configKeys = new Set([
+			"data-canvas-effect",
+			"data-canvas-delay",
+			"data-glitch-intensity",
+			"data-glitch-interval",
+			"data-glitch-duration",
+			"data-glitch-slices",
+			"data-glitch-shift",
+			"data-glitch-rgb-shift",
+			"data-glitch-blocks",
+			"data-glitch-noise"
+		]);
+		const observer = new MutationObserver((records) => {
+			const settingsChanged = records.some((r) => r.target === el && r.type === "attributes" && configKeys.has(r.attributeName ?? ""));
+			if (records.some((r) => !(r.target === el && r.type === "attributes" && configKeys.has(r.attributeName ?? "")))) contentVersion++;
+			if (settingsChanged) {
+				config = configFor(el);
+				stop(false);
+				schedule(initialDelay() + 100);
+			}
+		});
+		observer.observe(el, {
+			attributes: true,
+			childList: true,
+			characterData: true,
+			subtree: true
+		});
+		const contentChanged = () => {
+			contentVersion++;
+		};
+		const onMovement = (event) => {
+			if (event.type === "scroll" && event.target instanceof Node && (event.target === el || el.contains(event.target))) contentVersion++;
+			updateBounds();
+		};
+		const onMotion = () => {
+			stop(true);
+			if (!motion.matches) schedule(initialDelay() + 100);
+		};
+		const onVisibility = () => {
+			stop(true);
+			if (!doc.hidden) schedule(initialDelay() + 100);
+		};
+		const intersection = typeof IntersectionObserver !== "undefined" ? new IntersectionObserver((entries) => {
+			visible = entries[0]?.isIntersecting ?? true;
+			stop(true);
+			if (visible) schedule(initialDelay() + 100);
+		}) : null;
+		const resize = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => {
+			contentVersion++;
+			updateBounds();
+		}) : null;
+		intersection?.observe(el);
+		resize?.observe(el);
+		el.addEventListener("input", contentChanged, true);
+		el.addEventListener("change", contentChanged, true);
+		el.addEventListener("load", contentChanged, true);
+		win.addEventListener("scroll", onMovement, true);
+		win.addEventListener("resize", onMovement);
+		motion.addEventListener("change", onMotion);
+		doc.addEventListener("visibilitychange", onVisibility);
+		schedule(initialDelay() + 600);
+		items.set(el, () => {
+			disposed = true;
+			stop(true);
+			observer.disconnect();
+			intersection?.disconnect();
+			resize?.disconnect();
+			el.removeEventListener("input", contentChanged, true);
+			el.removeEventListener("change", contentChanged, true);
+			el.removeEventListener("load", contentChanged, true);
+			win.removeEventListener("scroll", onMovement, true);
+			win.removeEventListener("resize", onMovement);
+			motion.removeEventListener("change", onMotion);
+			doc.removeEventListener("visibilitychange", onVisibility);
+		});
+	}
+	const scan = () => {
+		if (stopped) return;
+		const present = new Set(root.querySelectorAll("[data-canvas-effect=\"glitch\"]"));
+		for (const [el, cleanup] of items) if (!present.has(el)) {
+			cleanup();
+			items.delete(el);
+		}
+		present.forEach(bind);
+	};
+	scan();
+	const observer = new MutationObserver((records) => {
+		if (effectTargetsChanged(records)) scan();
+	});
+	observer.observe(root instanceof Document ? root.documentElement : root, {
+		subtree: true,
+		childList: true,
+		attributes: true,
+		attributeFilter: ["data-canvas-effect"]
+	});
+	return () => {
+		stopped = true;
+		observer.disconnect();
+		items.forEach((cleanup) => cleanup());
+		items.clear();
+	};
+}
+//#endregion
+//#region packages/revyme-runtime-scene/src/glyph-rain.ts
+const DEFAULT_GLYPH_RAIN = {
+	version: 1,
+	cell: 15,
+	speed: .2,
+	density: .15,
+	trail: .65,
+	glow: 1.75,
+	dim: .5,
+	light: 2.8,
+	lightRadius: 240,
+	stir: .7,
+	color: "#4474ff",
+	headColor: "#87beff",
+	charset: "アイウエオカキクケコサシスセソタチツテトナニヌネノ0123456789"
+};
+function normalizeGlyphRain(input) {
+	if (!input || typeof input !== "object" || input.version !== 1) return null;
+	const v = input;
+	const n = (key, min, max) => typeof v[key] === "number" && Number.isFinite(v[key]) ? Math.min(max, Math.max(min, v[key])) : DEFAULT_GLYPH_RAIN[key];
+	const color = (key) => typeof v[key] === "string" && /^#[0-9a-f]{6}$/i.test(v[key]) ? v[key] : DEFAULT_GLYPH_RAIN[key];
+	return {
+		version: 1,
+		cell: Math.round(n("cell", 8, 64)),
+		speed: n("speed", .05, 3),
+		density: n("density", 0, 1),
+		trail: n("trail", .2, 3),
+		glow: n("glow", 0, 3),
+		dim: n("dim", 0, 1),
+		light: n("light", 0, 3),
+		lightRadius: n("lightRadius", 20, 600),
+		stir: n("stir", 0, 1),
+		color: color("color"),
+		headColor: color("headColor"),
+		charset: typeof v.charset === "string" && v.charset.length ? Array.from(v.charset).slice(0, 128).join("") : DEFAULT_GLYPH_RAIN.charset
+	};
+}
+/** Mount an independent overlay only on marked elements; the original DOM keeps input and focus. */
+function attachGlyphRainElements(root = document) {
+	const doc = root instanceof Document ? root : root.ownerDocument;
+	if (!doc.defaultView) return () => {};
+	const win = doc.defaultView, media = win.matchMedia("(prefers-reduced-motion: reduce)");
+	const mounted = /* @__PURE__ */ new Map();
+	let disposed = false;
+	function mount(el) {
+		if (mounted.has(el)) return;
+		let raf = 0, active = true, visible = true, last = 0;
+		const pointer = {
+			x: -1e4,
+			y: -1e4,
+			time: 0
+		};
+		const read = () => {
+			try {
+				return normalizeGlyphRain(JSON.parse(el.getAttribute("data-glyph-rain") || "")) ?? DEFAULT_GLYPH_RAIN;
+			} catch {
+				return DEFAULT_GLYPH_RAIN;
+			}
+		};
+		const canvas = doc.createElement("canvas");
+		canvas.setAttribute("aria-hidden", "true");
+		canvas.setAttribute("data-revyme-effect-overlay", "");
+		canvas.style.cssText = "position:fixed;pointer-events:none;z-index:2147483645";
+		const ctx = canvas.getContext("2d");
+		if (!ctx) return;
+		doc.body.append(canvas);
+		let config = read();
+		let sprites = [];
+		let spritesKey = "";
+		let lightSprite = null;
+		let lightKey = "";
+		const streams = [];
+		let sizeKey = "";
+		let bounds = el.getBoundingClientRect();
+		const updateBounds = () => {
+			bounds = el.getBoundingClientRect();
+			canvas.style.left = bounds.left + "px";
+			canvas.style.top = bounds.top + "px";
+			canvas.style.width = bounds.width + "px";
+			canvas.style.height = bounds.height + "px";
+			wake();
+		};
+		const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateBounds) : null;
+		resizeObserver?.observe(el);
+		function prepareSprites(cfg) {
+			const key = [
+				cfg.cell,
+				cfg.trail,
+				cfg.glow,
+				cfg.color,
+				cfg.headColor,
+				cfg.charset
+			].join("|");
+			if (key === spritesKey) return;
+			spritesKey = key;
+			const glyphs = Array.from(cfg.charset);
+			const padding = Math.ceil(cfg.glow * 6 + 2);
+			sprites = Array.from({ length: 16 }, (_, variant) => {
+				const count = Math.max(1, Math.floor((4 + variant % 12) * cfg.trail));
+				const sprite = doc.createElement("canvas");
+				sprite.width = cfg.cell + padding * 2;
+				sprite.height = count * cfg.cell + padding * 2;
+				const pen = sprite.getContext("2d");
+				pen.font = `600 ${Math.max(8, cfg.cell * .8)}px monospace`;
+				pen.textAlign = "center";
+				pen.textBaseline = "middle";
+				const headY = padding + (count - .5) * cfg.cell;
+				for (let i = count - 1; i >= 0; i--) {
+					pen.globalAlpha = (1 - i / (count + 1)) * Math.min(1, .28 + cfg.glow * .22);
+					pen.fillStyle = i === 0 ? cfg.headColor : cfg.color;
+					pen.shadowColor = cfg.color;
+					pen.shadowBlur = i === 0 ? cfg.glow * 6 : 0;
+					pen.fillText(glyphs[(variant * 7 + i) % glyphs.length], sprite.width / 2, headY - i * cfg.cell);
+				}
+				return {
+					canvas: sprite,
+					headY,
+					count
+				};
+			});
+		}
+		function prepareLight(cfg) {
+			const key = String(cfg.light);
+			if (key === lightKey && lightSprite) return;
+			lightKey = key;
+			const sprite = doc.createElement("canvas");
+			sprite.width = sprite.height = 256;
+			const pen = sprite.getContext("2d");
+			const grad = pen.createRadialGradient(128, 128, 0, 128, 128, 128);
+			grad.addColorStop(0, `rgba(0,0,0,${Math.min(.95, cfg.light / 3)})`);
+			grad.addColorStop(1, "rgba(0,0,0,0)");
+			pen.fillStyle = grad;
+			pen.fillRect(0, 0, 256, 256);
+			lightSprite = sprite;
+		}
+		function resize(config) {
+			const rect = bounds;
+			const dpr = Math.min(win.devicePixelRatio || 1, 2, Math.sqrt(4e6 / Math.max(1, rect.width * rect.height)));
+			const w = Math.max(1, Math.round(rect.width * dpr)), h = Math.max(1, Math.round(rect.height * dpr));
+			const key = [
+				w,
+				h,
+				config.cell,
+				config.density
+			].join(":");
+			if (key !== sizeKey) {
+				if (canvas.width !== w || canvas.height !== h) {
+					canvas.width = w;
+					canvas.height = h;
+				}
+				sizeKey = key;
+				streams.length = 0;
+				const columns = Math.min(300, Math.ceil(rect.width / config.cell));
+				for (let i = 0; i < columns; i++) if (Math.random() < config.density) streams.push({
+					x: (i + .5) * config.cell,
+					y: Math.random() * rect.height,
+					velocity: .65 + Math.random() * .7,
+					sprite: Math.floor(Math.random() * 16)
+				});
+				ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+			}
+			return rect;
+		}
+		function frame(now) {
+			raf = 0;
+			if (!active || !visible || media.matches || doc.hidden || !el.isConnected) {
+				canvas.style.display = "none";
+				last = 0;
+				return;
+			}
+			if (last && now - last < 32) {
+				raf = win.requestAnimationFrame(frame);
+				return;
+			}
+			canvas.style.display = "block";
+			const cfg = config, rect = resize(cfg), dt = last ? Math.min((now - last) / 1e3, .05) : 0;
+			last = now;
+			prepareSprites(cfg);
+			prepareLight(cfg);
+			ctx.clearRect(0, 0, rect.width, rect.height);
+			ctx.fillStyle = `rgba(0,0,8,${cfg.dim})`;
+			ctx.fillRect(0, 0, rect.width, rect.height);
+			ctx.globalCompositeOperation = "destination-out";
+			for (const s of streams) {
+				const radius = cfg.lightRadius;
+				ctx.drawImage(lightSprite, s.x - radius, s.y - radius, radius * 2, radius * 2);
+			}
+			ctx.globalCompositeOperation = "source-over";
+			for (const s of streams) {
+				const stirred = Math.abs(s.x - pointer.x) < 130 && now - pointer.time < 900 ? cfg.stir * 2 : 0;
+				s.y += dt * rect.height * cfg.speed * s.velocity * (1 + stirred);
+				const sprite = sprites[s.sprite];
+				if (s.y > rect.height + sprite.count * cfg.cell) s.y = -cfg.cell;
+				ctx.drawImage(sprite.canvas, s.x - sprite.canvas.width / 2, s.y - sprite.headY);
+			}
+			if (streams.length) raf = win.requestAnimationFrame(frame);
+		}
+		const wake = () => {
+			if (active && visible && !media.matches && !doc.hidden && !raf) raf = win.requestAnimationFrame(frame);
+			else if (media.matches || doc.hidden) canvas.style.display = "none";
+		};
+		const onPointer = (event) => {
+			pointer.x = event.clientX - bounds.left;
+			pointer.y = event.clientY - bounds.top;
+			pointer.time = performance.now();
+			wake();
+		};
+		const io = typeof IntersectionObserver !== "undefined" ? new IntersectionObserver((entries) => {
+			visible = entries[0]?.isIntersecting ?? true;
+			wake();
+		}) : null;
+		io?.observe(el);
+		const configObserver = new MutationObserver(() => {
+			config = read();
+			wake();
+		});
+		configObserver.observe(el, {
+			attributes: true,
+			attributeFilter: ["data-glyph-rain"]
+		});
+		el.addEventListener("pointermove", onPointer, { passive: true });
+		media.addEventListener("change", wake);
+		doc.addEventListener("visibilitychange", wake);
+		win.addEventListener("resize", updateBounds);
+		win.addEventListener("scroll", updateBounds, true);
+		updateBounds();
+		mounted.set(el, () => {
+			active = false;
+			win.cancelAnimationFrame(raf);
+			io?.disconnect();
+			configObserver.disconnect();
+			resizeObserver?.disconnect();
+			el.removeEventListener("pointermove", onPointer);
+			media.removeEventListener("change", wake);
+			doc.removeEventListener("visibilitychange", wake);
+			win.removeEventListener("resize", updateBounds);
+			win.removeEventListener("scroll", updateBounds, true);
+			canvas.remove();
+		});
+	}
+	const scan = () => {
+		if (disposed) return;
+		const nodes = new Set(root.querySelectorAll("[data-canvas-effect=\"glyph-rain\"]"));
+		for (const [el, cleanup] of mounted) if (!nodes.has(el)) {
+			cleanup();
+			mounted.delete(el);
+		}
+		nodes.forEach(mount);
+	};
+	scan();
+	const observer = new MutationObserver((records) => {
+		if (effectTargetsChanged(records)) scan();
+	});
+	observer.observe(root instanceof Document ? root.documentElement : root, {
+		childList: true,
+		subtree: true,
+		attributes: true,
+		attributeFilter: ["data-canvas-effect"]
+	});
+	return () => {
+		disposed = true;
+		observer.disconnect();
+		mounted.forEach((cleanup) => cleanup());
+		mounted.clear();
+	};
+}
+//#endregion
+//#region packages/revyme-runtime-scene/src/ripple-config.ts
+const DEFAULT_RIPPLE = {
+	version: 1,
+	amplitude: .5,
+	speed: .65,
+	wavelength: 80,
+	rings: 2,
+	decay: 1,
+	refraction: 100,
+	dispersion: .5,
+	shine: .5,
+	trigger: "click",
+	interval: 0
+};
+function normalizeRipple(input) {
+	if (!input || typeof input !== "object" || input.version !== 1) return null;
+	const v = input;
+	const n = (key, min, max) => typeof v[key] === "number" && Number.isFinite(v[key]) ? Math.min(max, Math.max(min, v[key])) : DEFAULT_RIPPLE[key];
+	return {
+		version: 1,
+		amplitude: n("amplitude", 0, 3),
+		speed: n("speed", .1, 3),
+		wavelength: n("wavelength", 10, 300),
+		rings: Math.round(n("rings", 1, 8)),
+		decay: n("decay", .1, 4),
+		refraction: n("refraction", 0, 200),
+		dispersion: n("dispersion", 0, 1),
+		shine: n("shine", 0, 2),
+		trigger: v.trigger === "hover" || v.trigger === "none" || v.trigger === "click" ? v.trigger : "click",
+		interval: n("interval", 0, 30)
+	};
+}
+//#endregion
+//#region packages/revyme-runtime-scene/src/ripple-renderer.ts
+/** Refraction of a captured surface through an expanding radial wave. */
+function createRippleRenderer(canvas, config, origin, onLost) {
+	const gl = canvas.getContext("webgl2", {
+		alpha: true,
+		premultipliedAlpha: true,
+		antialias: false
+	});
+	if (!gl) throw Error("WebGL2 unavailable");
+	function compile(kind, source) {
+		const shader = gl.createShader(kind);
+		if (!shader) throw Error("Shader allocation failed");
+		gl.shaderSource(shader, source);
+		gl.compileShader(shader);
+		if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+			const error = gl.getShaderInfoLog(shader);
+			gl.deleteShader(shader);
+			throw Error(error || "Shader error");
+		}
+		return shader;
+	}
+	const vertex = compile(gl.VERTEX_SHADER, `#version 300 es
+    out vec2 uv; void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);uv=p;gl_Position=vec4(p*2.-1.,0.,1.);}`);
+	const fragment = compile(gl.FRAGMENT_SHADER, `#version 300 es
+    precision highp float;in vec2 uv;out vec4 color;
+    uniform sampler2D a,b;uniform vec2 size,origin;
+    uniform float progress,amplitude,wavelength,rings,decay,refraction,dispersion,shine;
+    vec4 sampleSurface(vec2 p,float mixAmount){return mix(texture(a,clamp(p,0.,1.)),texture(b,clamp(p,0.,1.)),mixAmount);}
+    void main(){
+      vec2 p=vec2(uv.x,1.-uv.y);vec2 relative=(p-origin)*size;float dist=length(relative);
+      float maxRadius=length(size);float front=progress*(maxRadius+rings*wavelength);
+      float behind=front-dist;float within=step(0.,behind)*step(behind,rings*wavelength);
+      float envelope=within*exp(-decay*progress)*sin(3.14159265*clamp(behind/(rings*wavelength),0.,1.));
+      float slope=cos(behind*6.2831853/wavelength)*envelope*amplitude;
+      vec2 direction=dist>.01?relative/dist:vec2(0.);vec2 delta=direction*slope*refraction/size;
+      float mixAmount=smoothstep(.2,.8,progress);
+      vec4 base=sampleSurface(p+delta,mixAmount);
+      vec4 red=sampleSurface(p+delta*(1.+dispersion*.12),mixAmount);
+      vec4 blue=sampleSurface(p+delta*(1.-dispersion*.12),mixAmount);
+      vec3 rgb=vec3(red.r,base.g,blue.b)+max(0.,slope)*shine*.15*base.a;
+      color=vec4(clamp(rgb,0.,1.),base.a);
+    }`);
+	const program = gl.createProgram();
+	if (!program) throw Error("Program allocation failed");
+	gl.attachShader(program, vertex);
+	gl.attachShader(program, fragment);
+	gl.linkProgram(program);
+	gl.deleteShader(vertex);
+	gl.deleteShader(fragment);
+	if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+		const error = gl.getProgramInfoLog(program);
+		gl.deleteProgram(program);
+		throw Error(error || "Link error");
+	}
+	const textures = [gl.createTexture(), gl.createTexture()];
+	if (!textures[0] || !textures[1]) throw Error("Texture allocation failed");
+	let currentConfig = config;
+	let currentOrigin = origin;
+	const uploaded = [null, null];
+	let textureUnits = [textures[0], textures[1]];
+	let dimensions = null;
+	const maxDimension = Math.min(8192, gl.getParameter(gl.MAX_RENDERBUFFER_SIZE));
+	function setSize(cssWidth, cssHeight) {
+		if (cssWidth <= 0 || cssHeight <= 0) return;
+		const dpr = Math.min(devicePixelRatio || 1, 2, Math.sqrt(4e6 / (cssWidth * cssHeight)), maxDimension / Math.max(cssWidth, cssHeight));
+		const width = Math.max(1, Math.round(cssWidth * dpr));
+		const height = Math.max(1, Math.round(cssHeight * dpr));
+		if (canvas.width !== width || canvas.height !== height) {
+			canvas.width = width;
+			canvas.height = height;
+		}
+		dimensions = {
+			width,
+			height,
+			dpr
+		};
+	}
+	const locations = Object.fromEntries([
+		"a",
+		"b",
+		"size",
+		"origin",
+		"progress",
+		"amplitude",
+		"wavelength",
+		"rings",
+		"decay",
+		"refraction",
+		"dispersion",
+		"shine"
+	].map((name) => [name, gl.getUniformLocation(program, name)]));
+	let ready = false, lost = false;
+	const loss = (e) => {
+		e.preventDefault();
+		lost = true;
+		ready = false;
+		canvas.hidden = true;
+		onLost();
+	};
+	canvas.addEventListener("webglcontextlost", loss);
+	return {
+		setSize,
+		setConfig(next, nextOrigin) {
+			currentConfig = next;
+			currentOrigin = nextOrigin;
+		},
+		setImages(images) {
+			if (lost) return;
+			textureUnits = images[0] === images[1] ? [textures[0], textures[0]] : [textures[0], textures[1]];
+			images.forEach((image, i) => {
+				if (i === 1 && images[0] === images[1]) return;
+				if (uploaded[i] === image) return;
+				gl.activeTexture(gl.TEXTURE0 + i);
+				gl.bindTexture(gl.TEXTURE_2D, textures[i]);
+				gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+				gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+				gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+				uploaded[i] = image;
+			});
+			if (gl.getError() !== gl.NO_ERROR) throw Error("Texture upload failed");
+			ready = true;
+		},
+		render(progress, _seed, _strength, _columns) {
+			if (!ready || lost) return;
+			if (!dimensions) {
+				const box = canvas.getBoundingClientRect();
+				setSize(box.width, box.height);
+			}
+			if (!dimensions) return;
+			const { width: w, height: h, dpr } = dimensions;
+			gl.viewport(0, 0, w, h);
+			gl.useProgram(program);
+			textureUnits.forEach((t, i) => {
+				gl.activeTexture(gl.TEXTURE0 + i);
+				gl.bindTexture(gl.TEXTURE_2D, t);
+			});
+			gl.uniform1i(locations.a, 0);
+			gl.uniform1i(locations.b, 1);
+			gl.uniform2f(locations.size, w, h);
+			gl.uniform2f(locations.origin, currentOrigin.x, currentOrigin.y);
+			const f = (name, value) => gl.uniform1f(locations[name], value);
+			f("progress", progress);
+			f("amplitude", currentConfig.amplitude);
+			f("wavelength", currentConfig.wavelength * dpr);
+			f("rings", currentConfig.rings);
+			f("decay", currentConfig.decay);
+			f("refraction", currentConfig.refraction * dpr);
+			f("dispersion", currentConfig.dispersion);
+			f("shine", currentConfig.shine);
+			gl.drawArrays(gl.TRIANGLES, 0, 3);
+		},
+		ready: () => ready && !lost,
+		destroy() {
+			canvas.removeEventListener("webglcontextlost", loss);
+			if (!lost) {
+				textures.forEach((t) => gl.deleteTexture(t));
+				gl.deleteProgram(program);
+			}
+			ready = false;
+		}
+	};
+}
+//#endregion
+//#region packages/revyme-runtime-scene/src/ripple-navigation.ts
+async function runRippleNavigation(options) {
+	const config = normalizeRipple(options.config);
+	if (!config) {
+		await options.navigate();
+		return {
+			mode: "fallback",
+			reason: "invalid-config"
+		};
+	}
+	return runDisplacementNavigation({
+		config: {
+			version: 1,
+			duration: Math.min(4, Math.max(.3, 1.2 / config.speed)),
+			seed: 0,
+			strength: 0,
+			columns: 2
+		},
+		navigate: options.navigate,
+		signal: options.signal,
+		renderer: (canvas, onLost) => createRippleRenderer(canvas, config, {
+			x: Number.isFinite(options.origin?.x) ? Math.max(0, Math.min(1, options.origin.x)) : .5,
+			y: Number.isFinite(options.origin?.y) ? Math.max(0, Math.min(1, options.origin.y)) : .5
+		}, onLost)
+	});
+}
+//#endregion
+//#region packages/revyme-runtime-scene/src/ripple-elements.ts
+/** Apply pointer- or timer-driven ripples without taking ownership of the DOM. */
+function attachRippleElements(root = document) {
+	const doc = root instanceof Document ? root : root.ownerDocument;
+	if (!doc.defaultView) return () => {};
+	const win = doc.defaultView;
+	const media = win.matchMedia("(prefers-reduced-motion: reduce)");
+	const mounted = /* @__PURE__ */ new Map();
+	let stopped = false;
+	function mount(el) {
+		if (mounted.has(el)) return;
+		let active = true, visible = true, raf = 0, timer = 0, generation = 0, lastHover = 0;
+		let renderer = null;
+		let canvas = null, cached = null;
+		let contentVersion = 0, capturedVersion = -1, pending = null;
+		const read = () => {
+			try {
+				return normalizeRipple(JSON.parse(el.getAttribute("data-ripple") || "")) ?? DEFAULT_RIPPLE;
+			} catch {
+				return DEFAULT_RIPPLE;
+			}
+		};
+		const clear = (release) => {
+			generation++;
+			win.clearTimeout(timer);
+			win.cancelAnimationFrame(raf);
+			timer = 0;
+			raf = 0;
+			if (canvas) canvas.style.display = "none";
+			if (release) {
+				renderer?.destroy();
+				renderer = null;
+				canvas?.remove();
+				canvas = null;
+				cached = null;
+				capturedVersion = -1;
+			}
+		};
+		const schedule = () => {
+			win.clearTimeout(timer);
+			const cfg = read();
+			if (active && visible && !media.matches && !doc.hidden && cfg.interval > 0) timer = win.setTimeout(() => {
+				timer = 0;
+				play(Math.random(), Math.random());
+			}, cfg.interval * 1e3);
+		};
+		const capture = async () => {
+			if (pending) return pending;
+			let animated = false;
+			try {
+				animated = typeof el.getAnimations === "function" && el.getAnimations({ subtree: true }).some((animation) => animation.playState === "running");
+			} catch {}
+			if (cached && capturedVersion === contentVersion && !animated) return cached;
+			const box = el.getBoundingClientRect();
+			if (!box.width || !box.height || box.width * box.height > 4e6 || el.querySelector("canvas,video,iframe") || el.querySelectorAll("*").length > 500) throw Error("unsupported-surface");
+			const version = contentVersion;
+			const promise = toCanvas(el, {
+				pixelRatio: Math.min(1, Math.sqrt(1e6 / (box.width * box.height))),
+				cacheBust: false
+			});
+			pending = promise;
+			try {
+				const image = await promise;
+				if (active && visible && !media.matches && !doc.hidden) {
+					cached = image;
+					capturedVersion = version;
+				}
+				return image;
+			} finally {
+				if (pending === promise) pending = null;
+			}
+		};
+		const updateBounds = () => {
+			if (!canvas) return;
+			const box = el.getBoundingClientRect();
+			canvas.style.left = `${box.left}px`;
+			canvas.style.top = `${box.top}px`;
+			canvas.style.width = `${box.width}px`;
+			canvas.style.height = `${box.height}px`;
+			renderer?.setSize(box.width, box.height);
+		};
+		async function play(x, y) {
+			if (!active || !visible || media.matches || doc.hidden || !el.isConnected) return;
+			clear(false);
+			const id = generation, cfg = read();
+			try {
+				const image = await capture();
+				if (!active || id !== generation || !visible || doc.hidden || !el.isConnected || media.matches) return;
+				if (!canvas) {
+					canvas = doc.createElement("canvas");
+					canvas.setAttribute("aria-hidden", "true");
+					canvas.setAttribute("data-revyme-effect-overlay", "");
+					canvas.style.cssText = "position:fixed;pointer-events:none;z-index:2147483645";
+					renderer = createRippleRenderer(canvas, cfg, {
+						x,
+						y
+					}, () => {
+						clear(true);
+					});
+					doc.body.append(canvas);
+				}
+				updateBounds();
+				renderer.setConfig(cfg, {
+					x,
+					y
+				});
+				renderer.setImages([image, image]);
+				canvas.style.display = "block";
+				const start = performance.now(), duration = Math.min(4, Math.max(.3, 1.2 / cfg.speed)) * 1e3;
+				let last = 0;
+				const frame = (now) => {
+					if (!active || id !== generation || !renderer || !visible || doc.hidden || media.matches) return;
+					const progress = Math.min(1, (now - start) / duration);
+					if (now - last >= 32 || progress === 1) {
+						renderer.render(progress);
+						last = now;
+					}
+					if (progress < 1) raf = win.requestAnimationFrame(frame);
+					else {
+						raf = 0;
+						if (canvas) canvas.style.display = "none";
+						schedule();
+					}
+				};
+				raf = win.requestAnimationFrame(frame);
+			} catch {
+				if (id === generation) clear(true);
+			}
+		}
+		const point = (event) => {
+			const box = el.getBoundingClientRect();
+			return {
+				x: Math.max(0, Math.min(1, (event.clientX - box.left) / Math.max(box.width, 1))),
+				y: Math.max(0, Math.min(1, (event.clientY - box.top) / Math.max(box.height, 1)))
+			};
+		};
+		const down = (event) => {
+			if (read().trigger === "click") {
+				const p = point(event);
+				play(p.x, p.y);
+			}
+		};
+		const move = (event) => {
+			if (read().trigger === "hover" && performance.now() - lastHover > 400) {
+				lastHover = performance.now();
+				const p = point(event);
+				play(p.x, p.y);
+			}
+		};
+		const contentChanged = () => {
+			contentVersion++;
+		};
+		const observer = new MutationObserver((records) => {
+			const settingsChanged = records.some((r) => r.target === el && r.type === "attributes" && r.attributeName === "data-ripple");
+			if (records.some((r) => !(r.target === el && r.type === "attributes" && r.attributeName === "data-ripple"))) contentChanged();
+			if (settingsChanged) {
+				clear(false);
+				schedule();
+			}
+		});
+		observer.observe(el, {
+			attributes: true,
+			childList: true,
+			characterData: true,
+			subtree: true
+		});
+		const intersection = typeof IntersectionObserver !== "undefined" ? new IntersectionObserver((entries) => {
+			visible = entries[0]?.isIntersecting ?? true;
+			clear(true);
+			if (visible) schedule();
+		}) : null;
+		const resize = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => {
+			contentChanged();
+			updateBounds();
+		}) : null;
+		const movement = (event) => {
+			if (event.type === "scroll" && event.target instanceof Node && (event.target === el || el.contains(event.target))) contentChanged();
+			updateBounds();
+		};
+		const onMedia = () => {
+			clear(true);
+			if (!media.matches) schedule();
+		};
+		const onVisibility = () => {
+			clear(true);
+			if (!doc.hidden) schedule();
+		};
+		intersection?.observe(el);
+		resize?.observe(el);
+		el.addEventListener("pointerdown", down, { passive: true });
+		el.addEventListener("pointermove", move, { passive: true });
+		el.addEventListener("input", contentChanged, true);
+		el.addEventListener("change", contentChanged, true);
+		el.addEventListener("load", contentChanged, true);
+		win.addEventListener("scroll", movement, true);
+		win.addEventListener("resize", movement);
+		media.addEventListener("change", onMedia);
+		doc.addEventListener("visibilitychange", onVisibility);
+		schedule();
+		mounted.set(el, () => {
+			active = false;
+			clear(true);
+			observer.disconnect();
+			intersection?.disconnect();
+			resize?.disconnect();
+			el.removeEventListener("pointerdown", down);
+			el.removeEventListener("pointermove", move);
+			el.removeEventListener("input", contentChanged, true);
+			el.removeEventListener("change", contentChanged, true);
+			el.removeEventListener("load", contentChanged, true);
+			win.removeEventListener("scroll", movement, true);
+			win.removeEventListener("resize", movement);
+			media.removeEventListener("change", onMedia);
+			doc.removeEventListener("visibilitychange", onVisibility);
+		});
+	}
+	const scan = () => {
+		if (stopped) return;
+		const nodes = new Set(root.querySelectorAll("[data-canvas-effect=\"ripple-water\"]"));
+		for (const [el, cleanup] of mounted) if (!nodes.has(el)) {
+			cleanup();
+			mounted.delete(el);
+		}
+		nodes.forEach(mount);
+	};
+	scan();
+	const observer = new MutationObserver((records) => {
+		if (effectTargetsChanged(records)) scan();
+	});
+	observer.observe(root instanceof Document ? root.documentElement : root, {
+		subtree: true,
+		childList: true,
+		attributes: true,
+		attributeFilter: ["data-canvas-effect"]
+	});
+	return () => {
+		stopped = true;
+		observer.disconnect();
+		mounted.forEach((cleanup) => cleanup());
+		mounted.clear();
+	};
+}
+//#endregion
+//#region packages/revyme-runtime-scene/src/particle-config.ts
+const DEFAULT_PARTICLE = {
+	version: 1,
+	count: 8e3,
+	size: 2.4,
+	sizeVariance: .6,
+	radius: 110,
+	strength: 1,
+	swirl: .6,
+	spring: 1,
+	drift: .6
+};
+function normalizeParticle(input) {
+	if (!input || typeof input !== "object" || input.version !== 1) return null;
+	const v = input;
+	const n = (key, min, max) => typeof v[key] === "number" && Number.isFinite(v[key]) ? Math.max(min, Math.min(max, v[key])) : DEFAULT_PARTICLE[key];
+	return {
+		version: 1,
+		count: Math.round(n("count", 100, 2e4)),
+		size: n("size", .5, 10),
+		sizeVariance: n("sizeVariance", 0, 1),
+		radius: n("radius", 10, 500),
+		strength: n("strength", 0, 3),
+		swirl: n("swirl", 0, 2),
+		spring: n("spring", .1, 4),
+		drift: n("drift", 0, 2)
+	};
+}
+//#endregion
+//#region packages/revyme-runtime-scene/src/particle-elements.ts
+/** Particle reconstruction of existing images and inline SVGs. */
+function attachParticleElements(root = document) {
+	const doc = root instanceof Document ? root : root.ownerDocument;
+	if (!doc.defaultView) return () => {};
+	const win = doc.defaultView;
+	const media = win.matchMedia("(prefers-reduced-motion: reduce)"), mounted = /* @__PURE__ */ new Map();
+	let stopped = false;
+	const style = doc.createElement("style");
+	style.textContent = "[data-revyme-particle-active=\"true\"] { opacity:0 !important; }";
+	doc.head.append(style);
+	function mount(el) {
+		if (mounted.has(el)) return;
+		let active = true, visible = true, raf = 0, gl = null, canvas = null, program = null, buffer = null, objectUrl = "";
+		let uniforms = {};
+		let count = 0, last = 0, builtCount = -1;
+		let bounds = el.getBoundingClientRect();
+		const updateBounds = () => {
+			bounds = el.getBoundingClientRect();
+			if (canvas) {
+				canvas.style.left = bounds.left + "px";
+				canvas.style.top = bounds.top + "px";
+				canvas.style.width = bounds.width + "px";
+				canvas.style.height = bounds.height + "px";
+			}
+			wake();
+		};
+		const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateBounds) : null;
+		resizeObserver?.observe(el);
+		const pointer = {
+			x: -1e4,
+			y: -1e4,
+			amount: 0,
+			target: 0
+		};
+		const read = () => {
+			try {
+				return normalizeParticle(JSON.parse(el.getAttribute("data-particle-object") || "")) ?? DEFAULT_PARTICLE;
+			} catch {
+				return DEFAULT_PARTICLE;
+			}
+		};
+		let config = read();
+		const cleanGpu = () => {
+			win.cancelAnimationFrame(raf);
+			raf = 0;
+			el.removeAttribute("data-revyme-particle-ready");
+			el.removeAttribute("data-revyme-particle-active");
+			if (gl) {
+				if (buffer) gl.deleteBuffer(buffer);
+				if (program) gl.deleteProgram(program);
+			}
+			gl = null;
+			buffer = null;
+			program = null;
+			uniforms = {};
+			canvas?.remove();
+			canvas = null;
+			if (objectUrl) {
+				URL.revokeObjectURL(objectUrl);
+				objectUrl = "";
+			}
+		};
+		let generation = 0;
+		async function initialize() {
+			const token = ++generation;
+			cleanGpu();
+			if (!active || !visible || media.matches || doc.hidden) return;
+			try {
+				let image;
+				if (el instanceof HTMLImageElement) {
+					if (!el.complete) await new Promise((resolve, reject) => {
+						el.addEventListener("load", () => resolve(), { once: true });
+						el.addEventListener("error", () => reject(Error("image load failed")), { once: true });
+					});
+					image = el;
+				} else if (el instanceof SVGElement) {
+					objectUrl = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(el)], { type: "image/svg+xml" }));
+					image = new Image();
+					image.src = objectUrl;
+					await image.decode();
+				} else return;
+				if (!active || token !== generation || media.matches || !el.isConnected) return;
+				const box = el.getBoundingClientRect();
+				if (!box.width || !box.height || box.width * box.height > 4e6) return;
+				const sample = doc.createElement("canvas");
+				const max = 350;
+				sample.width = Math.max(1, Math.round(box.width * Math.min(1, max / Math.max(box.width, box.height))));
+				sample.height = Math.max(1, Math.round(box.height * Math.min(1, max / Math.max(box.width, box.height))));
+				const ctx = sample.getContext("2d", { willReadFrequently: true });
+				if (!ctx) return;
+				const fit = win.getComputedStyle(el).objectFit, iw = image.naturalWidth || sample.width, ih = image.naturalHeight || sample.height;
+				if (fit === "cover" || fit === "contain") {
+					const scale = fit === "cover" ? Math.max(sample.width / iw, sample.height / ih) : Math.min(sample.width / iw, sample.height / ih);
+					const width = iw * scale, height = ih * scale;
+					ctx.drawImage(image, (sample.width - width) / 2, (sample.height - height) / 2, width, height);
+				} else ctx.drawImage(image, 0, 0, sample.width, sample.height);
+				const pixels = ctx.getImageData(0, 0, sample.width, sample.height).data;
+				const candidates = [];
+				for (let i = 0; i < sample.width * sample.height; i++) if (pixels[i * 4 + 3] > 32) candidates.push(i);
+				if (!candidates.length) return;
+				const cfg = config;
+				builtCount = cfg.count;
+				count = Math.min(cfg.count, candidates.length * 2);
+				const data = new Float32Array(count * 6);
+				for (let i = 0; i < count; i++) {
+					const index = candidates[Math.floor(Math.random() * candidates.length)], x = index % sample.width, y = Math.floor(index / sample.width), at = index * 4, j = i * 6;
+					data[j] = (x + Math.random()) / sample.width;
+					data[j + 1] = (y + Math.random()) / sample.height;
+					data[j + 2] = pixels[at] / 255;
+					data[j + 3] = pixels[at + 1] / 255;
+					data[j + 4] = pixels[at + 2] / 255;
+					data[j + 5] = Math.random();
+				}
+				canvas = doc.createElement("canvas");
+				canvas.setAttribute("aria-hidden", "true");
+				canvas.setAttribute("data-revyme-effect-overlay", "");
+				canvas.style.cssText = "position:fixed;pointer-events:none;z-index:2147483645";
+				const authoredStyle = win.getComputedStyle(el);
+				canvas.style.borderRadius = authoredStyle.borderRadius;
+				canvas.style.opacity = authoredStyle.opacity;
+				gl = canvas.getContext("webgl2", {
+					alpha: true,
+					premultipliedAlpha: true,
+					antialias: false
+				});
+				if (!gl) throw Error("WebGL2 unavailable");
+				const compile = (kind, source) => {
+					const shader = gl.createShader(kind);
+					if (!shader) throw Error("shader allocation");
+					gl.shaderSource(shader, source);
+					gl.compileShader(shader);
+					if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw Error(gl.getShaderInfoLog(shader) || "shader");
+					return shader;
+				};
+				const vertex = compile(gl.VERTEX_SHADER, `#version 300 es
+          in vec2 position;in vec3 tint;in float seed;out vec3 rgb;uniform vec2 resolution,pointer;uniform float time,size,variation,radius,strength,swirl,drift,amount;
+          void main(){vec2 p=position*resolution;vec2 d=p-pointer;float distance=length(d);vec2 normal=distance>.01?d/distance:vec2(0.);float field=pow(max(0.,1.-distance/max(radius,1.)),2.)*amount;vec2 tangent=vec2(-normal.y,normal.x);p+=(normal+tangent*swirl)*field*strength*radius*.45;p+=vec2(sin(time*.9+seed*37.),cos(time*.7+seed*29.))*drift;vec2 ndc=p/resolution*2.-1.;gl_Position=vec4(ndc.x,-ndc.y,0.,1.);gl_PointSize=max(1.,size*(1.-variation*.5+seed*variation));rgb=tint;}`);
+				const fragment = compile(gl.FRAGMENT_SHADER, `#version 300 es
+          precision highp float;in vec3 rgb;out vec4 color;void main(){vec2 d=gl_PointCoord-vec2(.5);float alpha=1.-smoothstep(.35,.5,length(d));color=vec4(rgb*alpha,alpha);}`);
+				program = gl.createProgram();
+				if (!program) throw Error("program allocation");
+				gl.attachShader(program, vertex);
+				gl.attachShader(program, fragment);
+				gl.linkProgram(program);
+				gl.deleteShader(vertex);
+				gl.deleteShader(fragment);
+				if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw Error(gl.getProgramInfoLog(program) || "link");
+				uniforms = Object.fromEntries([
+					"resolution",
+					"pointer",
+					"time",
+					"size",
+					"variation",
+					"radius",
+					"strength",
+					"swirl",
+					"drift",
+					"amount"
+				].map((name) => [name, gl.getUniformLocation(program, name)]));
+				buffer = gl.createBuffer();
+				gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+				gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+				gl.useProgram(program);
+				for (const [name, size, offset] of [
+					[
+						"position",
+						2,
+						0
+					],
+					[
+						"tint",
+						3,
+						8
+					],
+					[
+						"seed",
+						1,
+						20
+					]
+				]) {
+					const location = gl.getAttribLocation(program, name);
+					gl.enableVertexAttribArray(location);
+					gl.vertexAttribPointer(location, size, gl.FLOAT, false, 24, offset);
+				}
+				const lost = (e) => {
+					e.preventDefault();
+					generation++;
+					cleanGpu();
+				};
+				canvas.addEventListener("webglcontextlost", lost, { once: true });
+				doc.body.append(canvas);
+				updateBounds();
+				el.setAttribute("data-revyme-particle-ready", "true");
+				el.setAttribute("data-revyme-particle-active", "true");
+				last = 0;
+				wake();
+			} catch {
+				if (token === generation) cleanGpu();
+			}
+		}
+		function frame(now) {
+			raf = 0;
+			if (!active || !visible || media.matches || doc.hidden || !gl || !program || !canvas || !el.isConnected) {
+				if (media.matches || doc.hidden) el.removeAttribute("data-revyme-particle-active");
+				return;
+			}
+			if (last && now - last < 32) {
+				raf = win.requestAnimationFrame(frame);
+				return;
+			}
+			const dt = last ? Math.min((now - last) / 1e3, .05) : 0;
+			last = now;
+			const cfg = config, box = bounds, dpr = Math.min(win.devicePixelRatio || 1, 2, Math.sqrt(4e6 / Math.max(1, box.width * box.height)));
+			const w = Math.max(1, Math.round(box.width * dpr)), h = Math.max(1, Math.round(box.height * dpr));
+			if (canvas.width !== w || canvas.height !== h) {
+				canvas.width = w;
+				canvas.height = h;
+			}
+			pointer.amount += (pointer.target - pointer.amount) * (1 - Math.exp(-dt * cfg.spring * 6));
+			gl.viewport(0, 0, w, h);
+			gl.clearColor(0, 0, 0, 0);
+			gl.clear(gl.COLOR_BUFFER_BIT);
+			gl.useProgram(program);
+			gl.enable(gl.BLEND);
+			gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+			const f = (n, v) => gl.uniform1f(uniforms[n], v);
+			gl.uniform2f(uniforms.resolution, w, h);
+			gl.uniform2f(uniforms.pointer, pointer.x * dpr, pointer.y * dpr);
+			f("time", now / 1e3);
+			f("size", cfg.size * dpr);
+			f("variation", cfg.sizeVariance);
+			f("radius", cfg.radius * dpr);
+			f("strength", cfg.strength);
+			f("swirl", cfg.swirl);
+			f("drift", cfg.drift * dpr);
+			f("amount", pointer.amount);
+			gl.drawArrays(gl.POINTS, 0, count);
+			if (cfg.drift > 0 || Math.abs(pointer.target - pointer.amount) > .001) raf = win.requestAnimationFrame(frame);
+		}
+		function wake() {
+			if (active && visible && !media.matches && !doc.hidden && gl && !raf) raf = win.requestAnimationFrame(frame);
+		}
+		const onMove = (e) => {
+			pointer.x = e.clientX - bounds.left;
+			pointer.y = e.clientY - bounds.top;
+			pointer.target = 1;
+			wake();
+		};
+		const onLeave = () => {
+			pointer.target = 0;
+			wake();
+		};
+		const reset = () => {
+			generation++;
+			cleanGpu();
+			initialize();
+		};
+		const observer = new MutationObserver((records) => {
+			config = read();
+			if (records.some((r) => r.attributeName === "src" || r.attributeName === "srcset") || config.count !== builtCount) reset();
+			else wake();
+		});
+		observer.observe(el, {
+			attributes: true,
+			attributeFilter: [
+				"data-particle-object",
+				"src",
+				"srcset"
+			]
+		});
+		const io = typeof IntersectionObserver !== "undefined" ? new IntersectionObserver((entries) => {
+			visible = entries[0]?.isIntersecting ?? true;
+			if (visible && !gl) initialize();
+			else if (!visible) {
+				generation++;
+				cleanGpu();
+			}
+		}) : null;
+		io?.observe(el);
+		el.addEventListener("pointermove", onMove, { passive: true });
+		el.addEventListener("pointerleave", onLeave);
+		media.addEventListener("change", reset);
+		doc.addEventListener("visibilitychange", reset);
+		win.addEventListener("resize", updateBounds);
+		win.addEventListener("scroll", updateBounds, true);
+		if (!io) initialize();
+		mounted.set(el, () => {
+			active = false;
+			generation++;
+			cleanGpu();
+			observer.disconnect();
+			io?.disconnect();
+			resizeObserver?.disconnect();
+			win.removeEventListener("resize", updateBounds);
+			win.removeEventListener("scroll", updateBounds, true);
+			el.removeEventListener("pointermove", onMove);
+			el.removeEventListener("pointerleave", onLeave);
+			media.removeEventListener("change", reset);
+			doc.removeEventListener("visibilitychange", reset);
+		});
+	}
+	const scan = () => {
+		if (stopped) return;
+		const nodes = new Set(root.querySelectorAll("[data-canvas-effect=\"particle-object\"]"));
+		for (const [el, clean] of mounted) if (!nodes.has(el)) {
+			clean();
+			mounted.delete(el);
+		}
+		nodes.forEach(mount);
+	};
+	scan();
+	const observer = new MutationObserver((records) => {
+		if (effectTargetsChanged(records)) scan();
+	});
+	observer.observe(root instanceof Document ? root.documentElement : root, {
+		subtree: true,
+		childList: true,
+		attributes: true,
+		attributeFilter: ["data-canvas-effect"]
+	});
+	return () => {
+		stopped = true;
+		observer.disconnect();
+		mounted.forEach((clean) => clean());
+		mounted.clear();
+		style.remove();
+	};
+}
+//#endregion
+//#region packages/revyme-runtime-scene/src/vhs-config.ts
+const VHS_CONTROLS = [
+	[
+		"duration",
+		"Duration",
+		.25,
+		4,
+		.05,
+		"s",
+		1.2
+	],
+	[
+		"speed",
+		"Tape speed",
+		.1,
+		3,
+		.05,
+		"",
+		.65
+	],
+	[
+		"wave",
+		"Tape wave",
+		0,
+		3,
+		.05,
+		"",
+		1.1
+	],
+	[
+		"jitter",
+		"Line jitter",
+		0,
+		3,
+		.05,
+		"",
+		.35
+	],
+	[
+		"crease",
+		"Tracking crease",
+		0,
+		3,
+		.05,
+		"",
+		.35
+	],
+	[
+		"switching",
+		"Head noise",
+		0,
+		3,
+		.05,
+		"",
+		.5
+	],
+	[
+		"chroma",
+		"Chroma bleed",
+		0,
+		12,
+		.25,
+		"px",
+		3
+	],
+	[
+		"grain",
+		"Grain",
+		0,
+		1,
+		.05,
+		"",
+		.2
+	],
+	[
+		"scanlines",
+		"Scanlines",
+		0,
+		1,
+		.05,
+		"",
+		.22
+	],
+	[
+		"vignette",
+		"Vignette",
+		0,
+		1,
+		.05,
+		"",
+		.15
+	]
+];
+function normalizeVhs(value) {
+	if (!value || typeof value !== "object" || value.version !== 1) return null;
+	const input = value;
+	return {
+		...Object.fromEntries(VHS_CONTROLS.map(([key, , min, max, , , fallback]) => {
+			const v = input[key];
+			return [key, typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback];
+		})),
+		version: 1,
+		trigger: input.trigger === "hover" ? "hover" : "click"
+	};
+}
+const DEFAULT_VHS = normalizeVhs({ version: 1 });
+//#endregion
+//#region packages/revyme-runtime-scene/src/vhs-surface.tsx
+const contents = { display: "contents" };
+/** Stable presentation hosts keep child state and focus across each playback. */
+function RevymeVhs({ children }) {
+	const ref = useRef(null);
+	useLayoutEffect(() => {
+		const anchor = ref.current;
+		const doc = anchor.ownerDocument;
+		const win = doc.defaultView;
+		const motion = win.matchMedia("(prefers-reduced-motion: reduce)");
+		let stage = null;
+		let frame = 0;
+		let timer = 0;
+		let intersection;
+		let unsupported = false;
+		const stop = () => {
+			win.cancelAnimationFrame(frame);
+			win.clearTimeout(timer);
+			timer = 0;
+			intersection?.disconnect();
+			intersection = void 0;
+			stage?.destroy();
+			stage = null;
+		};
+		async function play(trigger, afterDelay = false) {
+			if (unsupported || stage || timer || motion.matches || doc.hidden) return;
+			const target = anchor.querySelector(":scope > [data-revyme-vhs-content] > :first-child");
+			if (target?.getAttribute("data-canvas-effect") !== "vhs") return;
+			let config = DEFAULT_VHS;
+			try {
+				config = normalizeVhs(JSON.parse(target.getAttribute("data-vhs") ?? "null")) ?? DEFAULT_VHS;
+			} catch {}
+			if (config.trigger !== trigger) return;
+			const delay = Number(target.getAttribute("data-canvas-delay"));
+			if (!afterDelay && Number.isFinite(delay) && delay > 0) {
+				timer = win.setTimeout(() => {
+					timer = 0;
+					play(trigger, true);
+				}, delay * 1e3);
+				return;
+			}
+			const active = openVhsStage(anchor, "object");
+			if (!active) return;
+			stage = active;
+			if (typeof IntersectionObserver !== "undefined") {
+				intersection = new IntersectionObserver((entries) => {
+					if (entries[0] && !entries[0].isIntersecting) stop();
+				});
+				intersection.observe(active.canvas);
+			}
+			if (!await active.nextPaint() || stage !== active) {
+				if (stage === active) stop();
+				return;
+			}
+			const started = win.performance.now();
+			let paintedAt = -Infinity;
+			const tick = (now) => {
+				if (stage !== active) return;
+				const elapsed = (now - started) / 1e3;
+				if (active.closed || elapsed >= config.duration) {
+					stop();
+					return;
+				}
+				if (now - paintedAt >= 32) {
+					const envelope = Math.min(1, elapsed * 15, (config.duration - elapsed) * 8);
+					try {
+						active.draw(config, elapsed, envelope);
+					} catch {
+						unsupported = true;
+						stop();
+						return;
+					}
+					paintedAt = now;
+				}
+				frame = win.requestAnimationFrame(tick);
+			};
+			tick(started);
+		}
+		const owns = (event) => event.target instanceof Element && event.target.closest("[data-revyme-vhs-object]") === anchor;
+		const click = (event) => {
+			if (owns(event)) play("click");
+		};
+		const hover = (event) => {
+			if (owns(event) && (!(event.relatedTarget instanceof Node) || !anchor.contains(event.relatedTarget))) play("hover");
+		};
+		const focus = (event) => {
+			if (owns(event)) play("hover");
+		};
+		anchor.addEventListener("click", click);
+		anchor.addEventListener("pointerover", hover);
+		anchor.addEventListener("focusin", focus);
+		motion.addEventListener("change", stop);
+		return () => {
+			stop();
+			anchor.removeEventListener("click", click);
+			anchor.removeEventListener("pointerover", hover);
+			anchor.removeEventListener("focusin", focus);
+			motion.removeEventListener("change", stop);
+		};
+	}, []);
+	return /* @__PURE__ */ jsx("div", {
+		ref,
+		"data-revyme-vhs-object": "",
+		style: contents,
+		children: /* @__PURE__ */ jsx("div", {
+			"data-revyme-vhs-content": "",
+			style: contents,
+			children
+		})
+	});
+}
+function RevymeVhsPage({ children }) {
+	return /* @__PURE__ */ jsx("div", {
+		"data-revyme-vhs-page": "",
+		style: contents,
+		children: /* @__PURE__ */ jsx("div", {
+			"data-revyme-vhs-content": "",
+			style: contents,
+			children
+		})
+	});
+}
+//#endregion
+//#region packages/revyme-runtime-scene/src/vhs-navigation.ts
+async function runVhsNavigation(options) {
+	const { signal, surface } = options;
+	const config = normalizeVhs(options.config);
+	const motion = matchMedia("(prefers-reduced-motion: reduce)");
+	const emit = (phase, reason) => {
+		document.dispatchEvent(new CustomEvent("revyme:page-transition", { detail: {
+			phase,
+			reason
+		} }));
+	};
+	let navigated = false;
+	async function navigate() {
+		if (navigated || signal?.aborted) return;
+		navigated = true;
+		emit("navigating");
+		await options.navigate();
+	}
+	const fallback = async (reason) => {
+		if (signal?.aborted) return {
+			mode: "cancelled",
+			reason
+		};
+		emit("fallback", reason);
+		try {
+			await navigate();
+		} catch {
+			emit("navigation-error");
+		}
+		return {
+			mode: "fallback",
+			reason
+		};
+	};
+	if (!config || !surface || signal?.aborted || motion.matches) return fallback(motion.matches ? "reduced-motion" : "unavailable");
+	stopVhsObjects();
+	const stage = openVhsStage(surface, "page");
+	if (!stage) return fallback("HTML in WebGL unavailable");
+	const cancel = () => stage.destroy();
+	signal?.addEventListener("abort", cancel, { once: true });
+	motion.addEventListener("change", cancel);
+	const play = (length, incoming) => new Promise((resolve, reject) => {
+		const started = performance.now();
+		let paintedAt = -Infinity;
+		const tick = (now) => {
+			if (stage.closed) {
+				reject(Error("VHS interrupted"));
+				return;
+			}
+			const t = Math.min(1, (now - started) / length);
+			if (now - paintedAt >= 32 || t === 1) {
+				const amount = incoming ? Math.pow(1 - t, 1.5) : Math.pow(t, 1.5);
+				try {
+					stage.draw(config, now / 1e3, amount);
+				} catch (error) {
+					reject(error);
+					return;
+				}
+				paintedAt = now;
+			}
+			if (t < 1) requestAnimationFrame(tick);
+			else resolve();
+		};
+		tick(started);
+	});
+	try {
+		emit("capturing-old");
+		if (!await stage.nextPaint()) throw Error("VHS did not receive the first paint");
+		emit("playing");
+		await play(config.duration * 430, false);
+		await navigate();
+		emit("capturing-new");
+		if (!await stage.nextPaint()) throw Error("VHS did not receive the destination paint");
+		await play(config.duration * 570, true);
+		emit("finished");
+		return { mode: "gpu" };
+	} catch (error) {
+		stage.destroy();
+		return fallback(error instanceof Error ? error.message : "VHS failed");
+	} finally {
+		stage.destroy();
+		signal?.removeEventListener("abort", cancel);
+		motion.removeEventListener("change", cancel);
+	}
+}
+//#endregion
+export { CursorPortal, DEFAULT_DISPLACEMENT, DEFAULT_GLITCH, DEFAULT_GLYPH_RAIN, DEFAULT_PARTICLE, DEFAULT_RIPPLE, DEFAULT_VHS, Override, RevymeSplitText, RevymeTicker, RevymeVhs, RevymeVhsPage, VHS_CONTROLS, attachGlitchElements, attachGlyphRainElements, attachParticleElements, attachRippleElements, createDisplacement, createStore, hostCompat, localizeRows, normalizeDisplacement, normalizeGlitch, normalizeGlyphRain, normalizeParticle, normalizeRipple, normalizeVhs, playSketchDraw, runDisplacementNavigation, runGlitchNavigation, runRippleNavigation, runVhsNavigation, useStaticCanvas, withCursor, withResponsiveProps };

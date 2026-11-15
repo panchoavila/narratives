@@ -41,6 +41,12 @@ export function getBaseRevision(): number | null {
   return baseRevision;
 }
 
+/** Is the realtime room connected? Self-hosted unload uses it: while it is,
+ *  every local write already reached the server (file-sync). */
+export function isRoomConnected(): boolean {
+  return roomConnected;
+}
+
 /** Sent with each save so the room knows whether the saver's copy holds
  *  every relayed write (see the header). */
 export function isRevisionInSync(): boolean {

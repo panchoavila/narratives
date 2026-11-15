@@ -17,6 +17,7 @@
 // (`@/components/Foo`, `./helpers`) compile from ProjectFS the same way.
 
 import * as React from 'react';
+import { jsx, jsxs } from 'react/jsx-runtime';
 import { createRoot } from 'react-dom/client';
 import { captureThumbnail } from './capture-thumbnail';
 import { ThemeProvider as NextThemeProvider, useTheme } from 'next-themes';
@@ -55,6 +56,17 @@ import { runRippleNavigation } from '../../packages/revyme-runtime-scene/src/rip
 import { normalizeRipple } from '../../packages/revyme-runtime-scene/src/ripple-config';
 import { attachRippleElements } from '../../packages/revyme-runtime-scene/src/ripple-elements';
 import { attachParticleElements } from '../../packages/revyme-runtime-scene/src/particle-elements';
+import { normalizeVhs } from '../../packages/revyme-runtime-scene/src/vhs-config';
+import { RevymeVhs, RevymeVhsPage } from '../../packages/revyme-runtime-scene/src/vhs-surface';
+import { runVhsNavigation } from '../../packages/revyme-runtime-scene/src/vhs-navigation';
+import { attachLiquidGlassElements } from '../../packages/revyme-runtime-scene/src/liquid-glass-elements';
+import { RevymeLiquidBackdrop } from '../../packages/revyme-runtime-scene/src/liquid-glass-backdrop';
+import { RevymeCarousel3D } from '../../packages/revyme-runtime-scene/src/carousel-3d';
+import { RevymeFlow } from '../../packages/revyme-runtime-scene/src/editorial/RevymeFlow';
+import { pieceDocument } from '../../packages/revyme-runtime-scene/src/editorial/document';
+import { parseEditorialMarkdown } from '../../packages/revyme-runtime-scene/src/editorial/markdown';
+import { buildEditorialPreset, isEditorialPresetId, EDITORIAL_PRESET_IDS } from '../../packages/revyme-runtime-scene/src/editorial/presets';
+import { DEFAULT_LIQUID_GLASS, normalizeLiquidGlass, parseLiquidGlassAttribute } from '../../packages/revyme-runtime-scene/src/liquid-glass-config';
 
 import { buildRouteTable, resolveRoute, type Route } from './router';
 import { templatePreviewPages } from '@/preview/template-preview';
@@ -148,17 +160,22 @@ function unwrapDocumentTags(type: any, props: any): { handled: true; children: a
 // children — match that here so the preview degrades gracefully instead.
 const PREVIEW_VOID_TAGS = new Set(['input', 'br', 'hr', 'img', 'area', 'base', 'col', 'embed', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 
-function previewJsx(type: any, props: any, key?: any) {
+function previewJsx(type: any, props: any, key?: any, staticChildren = false) {
+  const create = staticChildren ? jsxs : jsx;
   const unwrap = unwrapDocumentTags(type, props);
   if (unwrap.handled) {
-    return React.createElement(React.Fragment, key !== undefined ? { key } : null, unwrap.children);
+    return create(React.Fragment, { children: unwrap.children }, key);
   }
   if (props && props.children != null && typeof type === 'string' && PREVIEW_VOID_TAGS.has(type)) {
     const { children, ...rest } = props;
-    return React.createElement(type, key !== undefined ? { ...rest, key } : rest);
+    return create(type as React.ElementType, rest, key);
   }
-  return React.createElement(type, key !== undefined ? { ...props, key } : props);
+  return create(type, props, key);
 }
+
+// Preserve the compiler's static-sibling contract; createElement(props.children)
+// treated ordinary JSX siblings as a dynamic list and warned about missing keys.
+const previewJsxs = (...args: Parameters<typeof previewJsx>) => previewJsx(args[0], args[1], args[2], true);
 
 // Babel's `_interopRequireDefault(require('mod'))` wraps a non-ESM result
 // in `{ default: result }` — so `import Link from 'next/link'` gets
@@ -172,7 +189,7 @@ function esm<T extends Record<string, any>>(exports: T): T & { __esModule: true 
 
 const MODULE_MAP: Record<string, any> = {
   react: React,
-  'react/jsx-runtime': esm({ jsx: previewJsx, jsxs: previewJsx, Fragment: React.Fragment }),
+  'react/jsx-runtime': esm({ jsx: previewJsx, jsxs: previewJsxs, Fragment: React.Fragment }),
   'react/jsx-dev-runtime': esm({ jsxDEV: previewJsx, Fragment: React.Fragment }),
   'react-dom': esm({ createPortal: (children: any) => children }),
   'next-themes': esm({ ThemeProvider: NextThemeProvider, useTheme: useThemeForPage }),
@@ -223,6 +240,22 @@ const MODULE_MAP: Record<string, any> = {
     normalizeGlitch,
     runRippleNavigation,
     normalizeRipple,
+    normalizeVhs,
+    RevymeVhs,
+    RevymeVhsPage,
+    RevymeLiquidBackdrop,
+    RevymeCarousel3D,
+    RevymeFlow,
+    pieceDocument,
+    parseEditorialMarkdown,
+    buildEditorialPreset,
+    isEditorialPresetId,
+    EDITORIAL_PRESET_IDS,
+    runVhsNavigation,
+    attachLiquidGlassElements: attachLiquidGlassElements,
+    normalizeLiquidGlass: normalizeLiquidGlass,
+    parseLiquidGlassAttribute: parseLiquidGlassAttribute,
+    DEFAULT_LIQUID_GLASS,
     withResponsiveProps: RevymeRuntime.withResponsiveProps,
     withCursor: RevymeRuntime.withCursor,
     CursorPortal: RevymeRuntime.CursorPortal,
@@ -667,8 +700,9 @@ function PreviewApp({ revision }: { revision: number }) {
     const cleanupGlyphRain = attachGlyphRainElements(document);
     const cleanupRipple = attachRippleElements(document);
     const cleanupParticle = attachParticleElements(document);
+    const cleanupGlass = attachLiquidGlassElements(document);
     runPreviewPageTransition(url);
-    return () => { cleanupGlitch(); cleanupGlyphRain(); cleanupRipple(); cleanupParticle(); };
+    return () => { cleanupGlitch(); cleanupGlyphRain(); cleanupRipple(); cleanupParticle(); cleanupGlass(); };
   }, [url, revision]);
 
   // Component-isolation mode short-circuits the route-resolution path. The

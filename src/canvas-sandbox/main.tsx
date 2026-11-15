@@ -3,6 +3,7 @@
 
 import { initSandbox } from './bridge-sandbox';
 import { initSandboxDnd } from './sandbox-dnd-host';
+import { attachLiquidGlassElements } from '../../packages/revyme-runtime-scene/src/liquid-glass-elements';
 
 const root = document.getElementById('sandbox-root')!;
 
@@ -42,3 +43,7 @@ initSandbox(root, contentRoot);
 // Boot canvas-dnd inside the iframe. Drag/select/hover events are emitted
 // to the parent via raw postMessage (handled by bridge-host).
 initSandboxDnd(contentRoot, overlayEl);
+
+// Static authoring shows the optical material without taking over editor gestures.
+const stopGlass = attachLiquidGlassElements(document, { editing: true });
+import.meta.hot?.dispose(stopGlass);

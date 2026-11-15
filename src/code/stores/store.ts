@@ -386,7 +386,9 @@ function deriveAndCacheNodes(code: string, filePath: string, version: number): v
                 : null;
 
               if (!childrenParentId) {
-                trace.error('nodesAtom:layout-no-children', { layoutPath });
+                if (layoutCode.includes('data-id="')) {
+                  trace.error('nodesAtom:layout-no-children', { layoutPath });
+                }
               } else {
                 // Collect original children lists before mutating
                 const origChildren = new Map<string, string[]>();

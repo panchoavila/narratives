@@ -2,6 +2,8 @@ node_modules
 dist
 !packages/revyme-runtime-scene/dist/
 !packages/revyme-runtime-scene/dist/*.d.ts
+!sites/canvas/vendor/revyme-runtime/dist/
+!sites/canvas/vendor/revyme-runtime/dist/*.d.ts
 .env
 .env.local
 debug-trace.json
@@ -35,3 +37,13 @@ before-oss-refactor/
 oss-release-plan/
 
 .DS_Store
+
+# Local publishing credentials and deployment state (never exported)
+.revyme-local/
+
+# Self-hosted collaboration server (bundle and local data)
+dist-server/
+dist-selfhosted/
+.selfhosted/
+.selfhosted-e2e/
+playwright-report-selfhosted/

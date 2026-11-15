@@ -17,6 +17,7 @@
 
 import { liftCodeOverrides, restoreCodeOverrides, pruneUnusedOverrideImports, setCodeOverridesInCode, type CodeOverrideRef } from '../generation/code-override-gen';
 import { liftTickers, restoreTickers, setTickerInCode, type TickerConfig } from '../generation/ticker-gen';
+import { liftVhsSurfaces, wrapVhsSurfaces } from '../generation/vhs-gen';
 import { SCROLL_TARGET_EXPR } from '@/shared/scroll-target';
 import { getAllCachedNodes, getNodeFromCache, canvasInteractingAtom, setPreferCacheSnapshot } from '@/code/stores/store';
 import { registerExternalWriteRefresh } from './external-write-registry';
@@ -150,6 +151,7 @@ import {
   updateSelectCaretRuleInCode,
   removePseudoStyleInCode,
 } from '../generation/generator-styles';
+import { setPageFlowInCode } from '../generation/page-flow-gen';
 import { isFormattedTextNodeInCode, setFormattedTextBranchInCode, type FormattedBranchOp } from '../features/variable-ops';
 import { sanitizeRichMessage } from '@/shared/rich-message';
 import { bindTextNodeToPropInCode, createVariableInCode, createConditionalVariableInCode, removeVariableInCode, createTextVariableInCode, createFormattedTextVariableInCode, removeTextVariableInCode, bindTextNodeAsPageVarInCode, bindTextVariableForVariantInCode, createLinkAttrVariableInCode, removeLinkAttrVariableInCode, setBorderOverlayVariableForVariant, setInlineVariableForVariant, removeVariantStyleVariableInCode, setComponentPropDefaultInCode, createTypedVariableInCode, addBarePropToFunctionInCode, deleteComponentVariableInCode, renameComponentVariableInCode } from '../features/variable-ops';
@@ -491,6 +493,9 @@ export type Mutation =
   | { type: 'removeCssHover'; nodeId: string }
   /** Add or remove a smooth scroll onClick handler on a link element. */
   | { type: 'setSmoothScroll'; nodeId: string; enabled: boolean }
+  /** Turn Page Flow on (from = the gate's lower edge, see pageFlowGates) or off (null) on the page file.
+   *  Writes the horizontal/vertical values and the @pageFlow block in one step. */
+  | { type: 'setPageFlow'; from: number | null }
   // ─── Motion mutations ────────────────────────────────────────────
   /** Set a Motion animation prop (whileHover, whileTap, animate, etc.) on an element. */
   | { type: 'updateMotionProp'; nodeId: string; propName: string; props: Record<string, string>; scope?: import('../animations/animation-scope').ResolvedScope }
@@ -560,7 +565,7 @@ export type Mutation =
   | { type: 'unbindInstanceEvent'; nodeId: string; propName: string }
   // ─── Inline .map() / Repeater mutations ─────────────────────────────────
   /** Convert an element into an inline .map() repeater with data array */
-  | { type: 'bindToCmsCollection'; nodeId: string; collectionSlug: string }
+  | { type: 'bindToCmsCollection'; nodeId: string; collectionSlug: string; stableKey?: boolean }
   | { type: 'unbindFromCmsCollection'; nodeId: string }
   | { type: 'changeCollectionSource'; parentNodeId: string; newSlug: string; fieldRemap?: Record<string, string> }
   /** Unbind a style property from map data: item.fieldName → inline value */
@@ -2007,6 +2012,8 @@ export function syncImports(code: string): string {
     'Override',
     // Ticker effect wrapper — a `@revyme/runtime` export too.
     'RevymeTicker',
+    'RevymeVhs',
+    'RevymeLiquidBackdrop',
     'React', 'Suspense',
     // `MotionLink` is a local `const MotionLink = motion.create(Link)` — NOT a
     // `@/components/MotionLink` file. Excluding it stops the auto-import pass
@@ -2443,6 +2450,15 @@ function healDuplicateLayoutAttrs(code: string): string {
 }
 
 function applyMutation(code: string, mutation: Mutation): string {
+  const plain = code.includes('<RevymeVhs') ? liftVhsSurfaces(code) : code;
+  const next = applyMutationWithOverrides(plain, mutation);
+  if (next === plain) return code;
+  return plain !== code || (next.includes('data-canvas-effect') && next.includes('vhs'))
+    ? wrapVhsSurfaces(next)
+    : next;
+}
+
+function applyMutationWithOverrides(code: string, mutation: Mutation): string {
   // Code overrides: lift every `<Override>` wrapper so generators see the plain
   // JSX they were written for, then put each back around its element (a
   // deleted element drops its wrapper). See code-override-gen.ts.
@@ -3577,6 +3593,9 @@ function applyMutationCore(code: string, mutation: Mutation): string {
       case 'removePseudo':
         return removePseudoStyleInCode(code, mutation.nodeId, mutation.pseudo);
 
+      case 'setPageFlow':
+        return setPageFlowInCode(code, mutation.from);
+
       case 'setSmoothScroll':
         // setSmoothScrollInCode bakes a STATIC handler when the section is
         // resolvable (literal page links). syncSmoothScrollHandler then adds the
@@ -3798,7 +3817,7 @@ function applyMutationCore(code: string, mutation: Mutation): string {
 
       // ─── Inline .map() / Repeater mutations ──────────────────────────────
       case 'bindToCmsCollection':
-        return bindToCmsCollectionInCode(code, mutation.nodeId, mutation.collectionSlug);
+        return bindToCmsCollectionInCode(code, mutation.nodeId, mutation.collectionSlug, mutation.stableKey);
       case 'unbindFromCmsCollection':
         return unbindFromCmsCollectionInCode(code, mutation.nodeId);
       case 'changeCollectionSource': {

@@ -55,6 +55,25 @@ describe('buildLocaleRouteSource', () => {
   });
 });
 
+describe('review 7 — dynamic CMS detail routes keep the original params and metadata exports', () => {
+  it('a dynamic locale copy re-exports the whole original module, so generateStaticParams, dynamicParams and generateMetadata apply', () => {
+    const src = buildLocaleRouteSource('app/[slug]/page.client.tsx', 'fr', CFG);
+    expect(src).toContain("export { default } from '@/app/[slug]/page';");
+    expect(src).toContain("export * from '@/app/[slug]/page';");
+  });
+
+  it('the dynamic copy carries no static metadata of its own (it would shadow the original)', () => {
+    const src = buildLocaleRouteSource('app/blog/[slug]/page.client.tsx', 'it', CFG);
+    expect(src).not.toMatch(/export const metadata/);
+  });
+
+  it('a static page locale copy keeps its default-only shape, with its own metadata', () => {
+    const src = buildLocaleRouteSource('app/(Body)/about/page.client.tsx', 'fr', CFG);
+    expect(src).not.toMatch(/export \*/);
+    expect(src).toContain('export const metadata');
+  });
+});
+
 describe('syncLocaleRoutes', () => {
   beforeEach(() => {
     resetProjectFS(new Map([

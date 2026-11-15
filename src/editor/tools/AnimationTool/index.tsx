@@ -199,9 +199,9 @@ function AnimEntryCard({ type, summary, onEdit, onRemove, dataAttr, labelOverrid
 
 // ─── Main AnimationTool ─────────────────────────────────────────────────────
 
-interface Props { styles: Record<string, string>; onUpdate: (key: string, value: string) => void; glideOnly?: boolean; }
+interface Props { styles: Record<string, string>; onUpdate: (key: string, value: string) => void; glideOnly?: boolean; hidePageTransitions?: boolean; }
 
-export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props) {
+export default function AnimationTool({ styles: s, onUpdate, glideOnly, hidePageTransitions }: Props) {
   const { node, vpWidth } = useControl();
   // Overlay nodes only support Appear (the panel mounts/unmounts with its
   // trigger) — the Add dropdown greys everything else out.
@@ -218,6 +218,9 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
   const setSelectedKeyframeStop = useSetAtom(selectedKeyframeStopAtom);
   const bumpKeyframes = useSetAtom(keyframesBumpAtom);
   const [activePopup, setActivePopup] = useState<string | null>(null);
+  useEffect(() => {
+    if (hidePageTransitions && activePopup?.startsWith('pageTransition:')) setActivePopup(null);
+  }, [hidePageTransitions, activePopup]);
   const [showKfNameModal, setShowKfNameModal] = useState(false);
   const popupAnchorRef = useRef<HTMLDivElement>(null);
   const clickedEntryRef = useRef<HTMLElement | null>(null);
@@ -226,7 +229,7 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
   const activePageFile = useAtomValue(activeFilePathAtom);
   useAtomValue(projectVersionAtom); // recompute page effects when project files change
   const setProjVersion = useSetAtom(projectVersionAtom);
-  const pageEffects = (glideOnly && activePageFile) ? getEffectsForPage(activePageFile) : [];
+  const pageEffects = (glideOnly && activePageFile && !hidePageTransitions) ? getEffectsForPage(activePageFile) : [];
   // Design-master gate for the "+" menu (Glide/Page Transition hidden there) —
   // memoized: isDesignComponentFile reads + regexes the file.
   const inDesignMaster = useMemo(
@@ -922,12 +925,13 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
       case 'glitch':
       case 'glyphRain':
       case 'rippleEffect':
+      case 'vhsEffect':
       case 'particleEffect': {
         if (!ensureGlitchElementRuntime()) {
           toast.error('This effect needs a root layout with a body element.');
           break;
         }
-        const preset = { glitch: 'glitch', glyphRain: 'glyph-rain', rippleEffect: 'ripple-water', particleEffect: 'particle-object' }[type];
+        const preset = { glitch: 'glitch', glyphRain: 'glyph-rain', rippleEffect: 'ripple-water', particleEffect: 'particle-object', vhsEffect: 'vhs' }[type];
         const duration = CANVAS_EFFECT_OPTIONS.find(option => option.value === preset)?.defaultDuration ?? DEFAULT_CANVAS_EFFECT.duration;
         expediteStableAtomSync();
         queueMutation({
@@ -1090,6 +1094,7 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
             'data-glyph-rain': '',
             'data-ripple': '',
             'data-particle-object': '',
+            'data-vhs': '',
           },
         });
         flushNow();
@@ -1391,6 +1396,7 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
           isComponentInstance={!!node?.componentFile}
           appearOnly={isOverlayNode}
           glideOnly={glideOnly}
+          hidePageTransitions={hidePageTransitions}
           noGlide={inDesignMaster}
           canTicker={!!node && !isInstance && !isOverlayNode && !isTextTag(node.type)
             && (s.display === 'flex' || s.display === 'inline-flex')}
@@ -1523,7 +1529,7 @@ export default function AnimationTool({ styles: s, onUpdate, glideOnly }: Props)
                     <span className="flex items-center justify-center w-5 h-5 rounded shrink-0" style={{ backgroundColor: 'var(--accent)' }}>
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="var(--accent-fg)"><path d="M12 2 L22 12 L12 22 L2 12 Z" /></svg>
                     </span>
-                    <span className="truncate flex-1">{pe.preset === 'displacement' ? 'Displacement · ' : pe.preset === 'glitch' ? 'Glitch · ' : pe.preset === 'ripple-water' ? 'Ripple · ' : ''}{label}</span>
+                    <span className="truncate flex-1">{pe.preset === 'displacement' ? 'Displacement · ' : pe.preset === 'glitch' ? 'Glitch · ' : pe.preset === 'ripple-water' ? 'Ripple · ' : pe.preset === 'vhs' ? 'VHS · ' : ''}{label}</span>
                     <RemoveButton onClick={() => removePageEffect(pe.target)} />
                   </ControlActionRow>
                 </ToolRow>,

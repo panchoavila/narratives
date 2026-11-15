@@ -25,6 +25,7 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type D
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
+import { CollectionSlotControl } from './CollectionSlotControl';
 
 interface SlotControlProps {
   /** data-id of the slot-bearing code component instance. */
@@ -33,6 +34,7 @@ interface SlotControlProps {
   label: string;
   /** Max canvas nodes connectable — a number or "infinite". */
   slotMax?: SlotMax;
+  collection?: boolean;
 }
 
 interface SlotRowOption { value: string; label: string }
@@ -77,7 +79,7 @@ function SortableSlotRow({ id, value, options, onChange }: {
   );
 }
 
-export default function SlotControl({ componentId, label, slotMax }: SlotControlProps) {
+export default function SlotControl({ componentId, label, slotMax, collection = false }: SlotControlProps) {
   const nodes = useAtomValue(nodesAtom);
   const code = useAtomValue(codeAtom);
   const [open, setOpen] = useState(false);
@@ -98,6 +100,8 @@ export default function SlotControl({ componentId, label, slotMax }: SlotControl
   );
 
   const nodeName = (id: string) => nodes.get(id)?.name || id;
+  const hasCollection = collection && connected.some(id =>
+    nodes.get(id)?.attrs?.['data-revyme-collection-slot'] !== undefined);
   const connect = (id: string) => {
     trace.action('slot-control:connect', { componentId, canvasNodeId: id });
     queueMutation({ type: 'connectSlot', componentId, canvasNodeId: id });
@@ -155,7 +159,9 @@ export default function SlotControl({ componentId, label, slotMax }: SlotControl
   };
 
   return (
-    <ToolRow label={label}>
+    <>
+    {collection && <CollectionSlotControl componentId={componentId} connected={connected} />}
+    {!hasCollection && <ToolRow label={label}>
       <button
         ref={btnRef}
         onClick={() => setOpen(o => !o)}
@@ -196,6 +202,7 @@ export default function SlotControl({ componentId, label, slotMax }: SlotControl
           </DndContext>
         </div>
       </ToolPopup>
-    </ToolRow>
+    </ToolRow>}
+    </>
   );
 }

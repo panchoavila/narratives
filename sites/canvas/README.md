@@ -8,7 +8,7 @@ Las páginas `app/page.client.tsx` y `app/espacio/page.client.tsx` contienen los
 
 El botón del extremo derecho de la toolbar alterna el mismo canvas de edición entre 2D e isométrico vertical. Todos sus viewports por breakpoint y sus encabezados transicionan en un plano común; los elementos internos se separan por profundidad. El icono usa el botón y los colores del tema de Revyme. No hay ventana ni panel adicional.
 
-Pan y zoom siguen usando la cámara existente. Esc o el mismo botón devuelven el canvas a 2D y restauran la herramienta anterior. El cambio de vista conserva los nodos y no modifica los archivos del proyecto.
+Pan y zoom siguen usando la cámara existente. Esc o el mismo botón devuelven el canvas a 2D. Entrar y salir de 3D conserva la herramienta seleccionada, incluso si se cambia durante la inspección. El cambio de vista conserva los nodos y no modifica los archivos del proyecto.
 
 Seleccionar el viewport permite editar Animation → Page → Displacement: duración, intensidad, semilla y columnas. El efecto también está disponible al añadir Page Transition desde Animation.
 

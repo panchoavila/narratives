@@ -14,11 +14,14 @@
     "app/page.client.tsx",
     "app/page.tsx",
     "app/providers.tsx",
+    "app/revyme-glitch-runtime.tsx",
+    "app/senal/[signal]/page.client.tsx",
+    "app/senal/[signal]/page.tsx",
     "i18n/config.json",
     "messages/en.json",
     "messages/es.json",
     "messages/fr.json"
   ],
   "adobeKit": null,
-  "updatedAt": "2026-11-04T22:33:11.387Z"
+  "updatedAt": "2026-11-07T21:14:11.906Z"
 }

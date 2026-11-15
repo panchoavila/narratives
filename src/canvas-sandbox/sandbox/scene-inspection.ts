@@ -74,8 +74,19 @@ export async function applySceneInspection(root: HTMLElement, options: SceneInsp
     const viewport = JSON.stringify(options.viewportId ?? '').replace(/</g, '\\3c ');
     // No viewport gets an individual rotation. Depth alone separates nested
     // elements; the shared parent carries the upright world projection.
+    // Spatial components keep their own geometry through every intermediate
+    // wrapper. Grouping properties would otherwise flatten that geometry
+    // before the inspector camera can rotate it.
     const css = `
 ${scope}, ${scope} [data-node-id] { transform-style: preserve-3d !important; contain: none !important; overflow: visible !important; }
+${scope}:has([data-revyme-spatial-surface]), ${scope} :has([data-revyme-spatial-surface]) {
+  transform-style: preserve-3d !important; contain: none !important; content-visibility: visible !important;
+  overflow: visible !important; opacity: 1 !important; filter: none !important; isolation: auto !important;
+  clip: auto !important; clip-path: none !important; mask-image: none !important;
+  -webkit-mask-image: none !important; mask-border-source: none !important; mix-blend-mode: normal !important;
+}
+${scope} [data-revyme-spatial-camera] { perspective: none !important; }
+${scope} [data-revyme-spatial-surface] { visibility: visible !important; backface-visibility: visible !important; opacity: 1 !important; }
 ${scope} [data-node-id]:not(svg [data-node-id]) { translate: 0 0 0; transition: translate ${SCENE_TRANSITION_MS}ms ${SCENE_EASING} !important; }
 ${scope}[data-scene-inspection="isometric"] [data-node-id]:not(svg [data-node-id]) { translate: 0 0 ${gap}px !important; }
 ${scope}[data-scene-inspection="isometric"] > [data-node-id], ${scope}[data-scene-inspection="isometric"] [data-viewport] { translate: none !important; }

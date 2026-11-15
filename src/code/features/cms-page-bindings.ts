@@ -14,8 +14,32 @@
 // switching previewed slugs is cheap.
 
 import type { CanvasNode } from '../parsing/parser';
+import type { FilterGroup } from '@/shared/types';
 import { formatBoundStyleValue } from './cms-style-format';
+import { resolveCurrentItemFilter } from '@/canvas/renderer/collection-data';
 import { trace } from '@/shared/debug-trace';
+
+/**
+ * Resolve the currentItem filters of a list's base filter group against the previewed
+ * detail item: `{ valueSource: 'currentItem', valueField: '_id' }` gets the detail item's
+ * `_id` as its value, and `applyChainConfig` evaluates it the way the emitted site code
+ * does. A field the item lacks resolves to `undefined` (the site compares the same
+ * `undefined`), never to a made-up `''`. Non-currentItem filters pass through.
+ * Returns the input group untouched when it has no currentItem filter.
+ */
+export function resolveCurrentItemFilters(
+  fg: FilterGroup,
+  item: Record<string, unknown>,
+): FilterGroup {
+  if (!fg.filters.some(f => f.valueSource === 'currentItem')) return fg;
+  return {
+    combinator: fg.combinator,
+    filters: fg.filters.map(f => {
+      if (f.valueSource !== 'currentItem' || !f.valueField) return f;
+      return resolveCurrentItemFilter(f, item[f.valueField]);
+    }),
+  };
+}
 
 /**
  * Walk the node map and apply field substitutions for any node whose
@@ -91,6 +115,14 @@ export function applyDetailPageBindings(
           cloned.attrs = { ...cloned.attrs, [ob.prop]: String(item[ob.field] ?? '') };
         }
       }
+    }
+
+    // currentItem list filters (`row.desk === item._id`) → resolved against this item.
+    const cl = node.collectionList;
+    if (cl?.filterGroup && cl.filterGroup.filters.some(f => f.valueSource === 'currentItem')) {
+      const base = cloned ?? node;
+      cloned = { ...base, collectionList: { ...cl, filterGroup: resolveCurrentItemFilters(cl.filterGroup, item) } };
+      trace.action('cms-page-bindings:current-item-filter', { nodeId: id });
     }
 
     if (cloned) {

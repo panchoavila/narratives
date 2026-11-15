@@ -2,14 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAtom, useAtomValue, useStore } from 'jotai';
 import { selectedIdsAtom } from '@/code/stores/store';
 import { interactingViewportIdAtom } from '@/code/stores/viewport-store';
-import { toolModeAtom } from '@/code/stores/tool-store';
 import { activeFilePathAtom } from '@/code/project/active-file-store';
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
 import { transformManager } from '@/canvas/transform';
 import { getViewportHeaderPlane, setViewportHeaderInspection, focusViewportHeader } from '@/canvas/ViewportHeaderManager';
 import { applySceneProjection, type SceneViewportBounds } from '@/shared/scene-projection';
 import { trace } from '@/shared/debug-trace';
-import { DEFAULT_SCENE_CAMERA, sceneActiveAtom, sceneBoundsAtom, sceneCameraAtom } from './scene-state';
+import { DEFAULT_SCENE_CAMERA, sceneActiveAtom, sceneBoundsAtom, sceneCameraAtom, sceneSeparationAtom } from './scene-state';
 import { fitSceneViewport } from './scene-layout';
 import './editor-isometric.css';
 
@@ -18,6 +17,7 @@ export function useSceneInspection() {
   const [active, setActive] = useAtom(sceneActiveAtom);
   const [bounds, setBounds] = useAtom(sceneBoundsAtom);
   const [camera, setCamera] = useAtom(sceneCameraAtom);
+  const separation = useAtomValue(sceneSeparationAtom);
   const [error, setError] = useState('');
   const [zoom, setZoom] = useState(() => transformManager.getTransform().scale);
   const referenceScale = useRef(zoom);
@@ -39,13 +39,12 @@ export function useSceneInspection() {
     if (!host || !headers || !bridge.setSceneInspection) { setError('Canvas is not ready'); setActive(false); return; }
     ++generation.current;
     const originalFile = store.get(activeFilePathAtom);
-    const tool = store.get(toolModeAtom), originalCamera = transformManager.getTransform();
+    const originalCamera = transformManager.getTransform();
     const stopCamera = transformManager.subscribe(() => setZoom(transformManager.getTransform().scale));
     setViewportHeaderInspection(headers, true);
     host.dataset.sceneView = 'isometric';
-    store.set(toolModeAtom, 'hand');
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); setActive(false); }
+      if (e.key === 'Escape' && !document.querySelector('[data-tool-popup]')) { e.preventDefault(); e.stopImmediatePropagation(); setActive(false); }
     };
     window.addEventListener('keydown', onKey, true);
     return () => {
@@ -58,7 +57,6 @@ export function useSceneInspection() {
         if (generation.current !== exit) return;
         delete host.dataset.sceneView;
         setViewportHeaderInspection(headers, false);
-        if (store.get(toolModeAtom) === 'hand') store.set(toolModeAtom, tool);
         if (store.get(activeFilePathAtom) === originalFile) transformManager.setTransform(originalCamera);
         trace.action('scene-composer:mode', { isometric: false });
       });
@@ -92,10 +90,10 @@ export function useSceneInspection() {
     if (!host || !headers) return;
     const zoomChanged = appliedZoom.current !== zoom;
     appliedZoom.current = zoom;
-    const options = { enabled: true, viewportId, bounds, separation: 24, selectedId: selected[0] || '', origin: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }, orientation: camera, perspective: camera.perspective, distance: Math.max(1600, bounds.width * 2, bounds.height * 2) * referenceScale.current / Math.max(.01, zoom), instant: camera.dragging || zoomChanged, interacting: camera.dragging, selectionColor: getComputedStyle(host).getPropertyValue('--accent').trim() };
+    const options = { enabled: true, viewportId, bounds, separation, selectedId: selected[0] || '', origin: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }, orientation: camera, perspective: camera.perspective, distance: Math.max(1600, bounds.width * 2, bounds.height * 2) * referenceScale.current / Math.max(.01, zoom), instant: camera.dragging || zoomChanged, interacting: camera.dragging, selectionColor: getComputedStyle(host).getPropertyValue('--accent').trim() };
     focusViewportHeader(headers, viewportId, bounds);
     void Promise.all([applySceneProjection(getViewportHeaderPlane(headers), options), getCanvasBridge().setSceneInspection?.(options)]).catch(cause => { trace.error('scene-composer:projection', cause); setError('Could not change canvas view'); });
-  }, [active, bounds, viewportId, camera, selected, zoom]);
+  }, [active, bounds, viewportId, camera, selected, zoom, separation]);
 
   return { active, error, toggle: useCallback(() => {
     if (!active) { setCamera({ ...DEFAULT_SCENE_CAMERA }); setBounds(null); }

@@ -59,11 +59,13 @@ export interface SideConfig {
 import type { DisplacementConfig } from '@/shared/displacement-config';
 import type { GlitchConfig } from '../../../packages/revyme-runtime-scene/src/glitch-config';
 import type { RippleConfig } from '../../../packages/revyme-runtime-scene/src/ripple-config';
+import type { VhsConfig } from '../../../packages/revyme-runtime-scene/src/vhs-config';
 
 export interface PageEffect {
   displacement?: DisplacementConfig;
   glitch?: GlitchConfig;
   ripple?: RippleConfig;
+  vhs?: VhsConfig;
   preset: string; // 'crossfade' | 'fade-out-in' | 'slide-left' | … | 'custom'
   target: string; // destination route ('/team'), or 'all'
   exit?: SideConfig; // This Page  (omit = page leaves with no animation)

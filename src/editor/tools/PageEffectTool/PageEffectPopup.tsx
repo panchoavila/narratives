@@ -5,12 +5,34 @@
 import { DEFAULT_DISPLACEMENT, normalizeDisplacement } from '@/shared/displacement-config';
 import { DEFAULT_GLITCH, normalizeGlitch } from '../../../../packages/revyme-runtime-scene/src/glitch-config';
 import { DEFAULT_RIPPLE, normalizeRipple } from '../../../../packages/revyme-runtime-scene/src/ripple-config';
+import { DEFAULT_VHS } from '../../../../packages/revyme-runtime-scene/src/vhs-config';
+import { VhsControls } from '../AnimationTool/popups/VhsControls';
 import { ToolInput } from '../../controls';
+import { useEffect } from 'react';
 import { ToolRow, ToolSelect, ControlActionRow, RemoveButton } from '../../controls';
 import { useToolPopup } from '../../ui/ToolPopup';
 import SideEditor from './SideEditor';
-import { PRESET_OPTIONS, applyPreset } from '@/code/generation/view-transition-css';
+import { PRESET_OPTIONS, applyPreset, buildViewTransitionCSS, resolveTiming } from '@/code/generation/view-transition-css';
 import { createDefaultSide, type PageEffect, type SideConfig } from '@/code/project/page-effects-config';
+
+export function previewPageEffectOnCanvas(effect: PageEffect): void {
+  if (typeof document === 'undefined' || !effect.enter || effect.preset === 'displacement') return;
+  const iframe = document.querySelector('iframe[src*="5174"]') as HTMLIFrameElement | null;
+  const doc = iframe?.contentDocument ?? document;
+  if (!doc.head) return;
+  const existing = doc.getElementById('revyme-canvas-vt-preview');
+  if (existing) existing.remove();
+  const tn = resolveTiming(effect.enter.transition);
+  const styleEl = doc.createElement('style');
+  styleEl.id = 'revyme-canvas-vt-preview';
+  styleEl.textContent =
+    buildViewTransitionCSS(effect.exit, effect.enter) +
+    `\n[data-id="root"] { animation: ${tn.duration}s ${tn.easing} ${tn.delay}s both revyme-vt-enter !important; transform-origin: 50% 50% !important; }`;
+  doc.head.appendChild(styleEl);
+  window.setTimeout(() => {
+    styleEl.remove();
+  }, Math.ceil((tn.duration + tn.delay) * 1000) + 120);
+}
 
 /** Small diamond glyph matching the reference's effect icon. */
 function Diamond() {
@@ -28,20 +50,28 @@ export default function PageEffectPopup({ effect, onChange, targetOptions }: {
 }) {
   const { pushPanel } = useToolPopup();
 
+  useEffect(() => {
+    previewPageEffectOnCanvas(effect);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const setPreset = (preset: string) => {
     if (preset === 'displacement') { onChange({ target: effect.target, preset, displacement: { ...DEFAULT_DISPLACEMENT } });return; }
     if (preset === 'glitch') { onChange({ target: effect.target, preset, glitch: { ...DEFAULT_GLITCH } });return; }
     if (preset === 'ripple-water') { onChange({ target: effect.target, preset, ripple: { ...DEFAULT_RIPPLE } });return; }
-    if (preset === 'custom') { onChange({ ...effect, preset, displacement: undefined, glitch: undefined, ripple: undefined }); return; }
+    if (preset === 'vhs') { onChange({ target: effect.target, preset, vhs: { ...DEFAULT_VHS } });return; }
+    if (preset === 'custom') { onChange({ ...effect, preset, displacement: undefined, glitch: undefined, ripple: undefined, vhs: undefined }); return; }
     const sides = applyPreset(preset);
-    const nextEffect: PageEffect = { ...effect, preset, displacement: undefined, glitch: undefined, ripple: undefined, exit: sides.exit, enter: sides.enter };
+    const nextEffect: PageEffect = { ...effect, preset, displacement: undefined, glitch: undefined, ripple: undefined, vhs: undefined, exit: sides.exit, enter: sides.enter };
     onChange(nextEffect);
+    previewPageEffectOnCanvas(nextEffect);
   };
 
   // Editing any side flips the preset to 'custom' (design-tool parity).
   const setSide = (which: 'exit' | 'enter', side: SideConfig | undefined) => {
     const nextEffect: PageEffect = { ...effect, preset: 'custom', [which]: side };
     onChange(nextEffect);
+    previewPageEffectOnCanvas(nextEffect);
   };
 
   const openSide = (which: 'exit' | 'enter') => {
@@ -62,7 +92,10 @@ export default function PageEffectPopup({ effect, onChange, targetOptions }: {
         <label className="w-full"><span className="sr-only">Transition preset</span><ToolSelect value={effect.preset} onChange={setPreset} options={PRESET_OPTIONS} /></label>
       </ToolRow>
 
-      {effect.preset === 'ripple-water' ? <div className="flex flex-col gap-2" data-ripple-controls>
+      {effect.preset === 'vhs' ? <>
+        <VhsControls config={effect.vhs ?? DEFAULT_VHS} onChange={vhs => onChange({ ...effect, vhs })} />
+        <p className="text-[11px] text-[var(--text-secondary)]">Navigate between pages in Preview to play this transition.</p>
+      </> : effect.preset === 'ripple-water' ? <div className="flex flex-col gap-2" data-ripple-controls>
         {([
           ['amplitude', 'Amplitude', 0, 3, .05], ['speed', 'Speed', .1, 3, .05],
           ['wavelength', 'Wavelength (px)', 10, 300, 1], ['rings', 'Rings', 1, 8, 1],

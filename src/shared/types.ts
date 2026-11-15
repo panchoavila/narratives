@@ -273,10 +273,17 @@ export interface FilterConfig {
   value: any;
   /** Dynamic value source (Phase 4 — search field / date picker bound to a page
    *  variable). When set (not 'static'), the predicate reads `valueVar` at runtime
-   *  instead of the literal `value`. */
-  valueSource?: 'static' | 'searchField' | 'dateField';
+   *  instead of the literal `value`.
+   *  'currentItem' (CMS detail pages only): the value is a field of the page's own
+   *  detail item — `valueField` names it — e.g. `row.desk === item._id`. */
+  valueSource?: 'static' | 'searchField' | 'dateField' | 'currentItem';
   /** Page-variable name driving a dynamic filter (when valueSource !== 'static'). */
   valueVar?: string;
+  /** Detail-item field read when valueSource is 'currentItem' (e.g. '_id'). */
+  valueField?: string;
+  /** Canvas only: a currentItem filter whose `value` was filled from the previewed detail item.
+   *  A field, not an outside mark, so it survives the copy to the canvas iframe. */
+  resolvedFromItem?: true;
 }
 
 export interface FilterGroup {

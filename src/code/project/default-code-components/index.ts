@@ -67,6 +67,8 @@ export { MAGNET_BOX_COMPONENT } from './MagnetBox';
 // ─── Effects (slot-based — animate connected canvas nodes) ────────────────
 export { MARQUEE_COMPONENT } from './Marquee';
 export { CAROUSEL_COMPONENT } from './Carousel';
+export { CAROUSEL_3D_COMPONENT, LEGACY_CAROUSEL_3D_COMPONENT } from './Carousel3D';
+export { EDITORIAL_FLOW_COMPONENT } from './EditorialFlow';
 export { RIBBON_MARQUEE_COMPONENT } from './RibbonMarquee';
 export { MARQUEE_3D_COMPONENT } from './Marquee3D';
 export { MOTION_TRAIL_COMPONENT } from './MotionTrail';

@@ -10,6 +10,10 @@
  * it page per page"). `__default` is still READ, so a module written before
  * that decision keeps working, but nothing writes it. The generated
  * controller (smooth-scroll-gen.ts) resolves the active route and runs Lenis.
+ *
+ * `horizontalFrom` is the width gate for a horizontal page: the page scrolls
+ * on X only while the window is at least that many px wide, re-evaluated live.
+ * Absent means "always horizontal" when the orientation is horizontal.
  */
 
 import { trace } from '@/shared/debug-trace';
@@ -28,6 +32,8 @@ export interface SmoothScrollConfig {
   orientation: SmoothScrollOrientation;
   /** Loop the page end back to the top (Lenis `infinite`). */
   infinite: boolean;
+  /** Minimum window width in px at which a horizontal page is horizontal. Absent = always. */
+  horizontalFrom?: number;
 }
 
 export interface SmoothScrollMap {
@@ -51,7 +57,7 @@ export function normalizeSmoothScroll(raw: Partial<SmoothScrollConfig> | undefin
   const d = createDefaultSmoothScroll();
   if (!raw || typeof raw !== 'object') return d;
   const num = Number(raw.intensity);
-  return {
+  const out: SmoothScrollConfig = {
     enabled: raw.enabled !== false,
     intensity: Number.isFinite(num) ? Math.min(100, Math.max(1, num)) : d.intensity,
     smoothWheel: raw.smoothWheel !== false,
@@ -59,6 +65,12 @@ export function normalizeSmoothScroll(raw: Partial<SmoothScrollConfig> | undefin
     orientation: raw.orientation === 'horizontal' ? 'horizontal' : 'vertical',
     infinite: raw.infinite === true,
   };
+  // Kept only as a whole px width of at least 1; anything else leaves the key out.
+  if (typeof raw.horizontalFrom === 'number') {
+    const px = Math.round(raw.horizontalFrom);
+    if (Number.isFinite(px) && px >= 1) out.horizontalFrom = px;
+  }
+  return out;
 }
 
 /** Parse the `export const SMOOTH_SCROLL = {…} as const;` object (pure JSON body). */

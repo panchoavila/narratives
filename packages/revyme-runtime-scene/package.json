@@ -15,7 +15,7 @@
     "dist",
     "src"
   ],
-  "scripts": {},
+  "scripts": { "build": "node build.mjs && tsc -p tsconfig.build.json" },
   "peerDependencies": {
     "framer-motion": ">=11",
     "perfect-freehand": ">=1.2",
@@ -28,6 +28,9 @@
     }
   },
   "devDependencies": {
+    "@chenglou/pretext": "1.0.0",
+    "html-to-image": "1.11.13",
+    "hyphen": "1.14.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",

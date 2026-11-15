@@ -12,9 +12,13 @@ import { ControlLabel, ControlActionRow, RemoveButton, ToolSelect, ToolInput, To
 import ToolRow from '../../controls/ToolRow';
 import ToolPopup, { useToolPopup } from '../../ui/ToolPopup';
 import { collectionDataAtom, collectionSchemasAtom } from '@/code/stores/cms-store';
+import { cmsPageMetaAtom } from '@/code/stores/cms-page-store';
 import { cmsItemLabel } from '@/code/project/cms-ops';
 import type { FilterConfig, FilterGroup, CollectionSchema, FieldDefinition, CollectionItem } from '@/shared/types';
-import { operatorsForFieldType, operatorTakesNoValue, filterSummary, fieldsForSortFilter, COLLECTION_VALUE_CLS } from './cms-filter-utils';
+import {
+  operatorsForFieldType, operatorTakesNoValue, filterSummary, fieldsForSortFilter, COLLECTION_VALUE_CLS,
+  canOfferCurrentItem, currentItemOperators, currentItemFieldOptions,
+} from './cms-filter-utils';
 import CollectionRowIcon from './CollectionRowIcon';
 import PageVariableChip from '../../controls/PageVariableChip';
 import FilterFieldPicker from './FilterFieldPicker';
@@ -34,6 +38,10 @@ interface Props {
    *  the matching dynamic filter. Owns the var name (needs code access), so the
    *  whole dynamic add lives in the parent. */
   onAddSearchField?: (fieldId: string) => void;
+  /** Offer the "Current item" value source (a field of the detail page's item). The
+   *  parent clears it when the list is on a non-base axis / variant / upgraded config;
+   *  it is also gated on the active file being a `@cmsPage` detail page. */
+  allowCurrentItem?: boolean;
 }
 
 const mkGroup = (filters: FilterConfig[], combinator: 'and' | 'or'): FilterGroup | null =>
@@ -48,6 +56,12 @@ interface EditorData {
   fieldType: (id: string) => FieldDefinition['type'] | undefined;
   update: (idx: number, patch: Partial<FilterConfig>) => void;
   changeField: (idx: number, fieldId: string) => void;
+  /** Switch a filter between a literal value and the detail item's field. */
+  setValueSource: (idx: number, src: 'static' | 'currentItem') => void;
+  /** Offer "Current item" in the Value-from selector (detail page, base axis). */
+  allowCurrentItem: boolean;
+  /** Fields of the detail item a currentItem filter can read. */
+  currentItemFields: { value: string; label: string }[];
   onAddPicker: () => void;
   onRemove: (idx: number) => void;
   /** Items of a referenced collection → {value:_slug, label} for a reference field's value select. */
@@ -84,6 +98,10 @@ function FiltersPopupBody({
     // variable, so the Value is the bound variable — not an editable literal.
     if ((f.valueSource === 'searchField' || f.valueSource === 'dateField') && f.valueVar) {
       return <PageVariableChip name={f.valueVar} />;
+    }
+    // CURRENT ITEM: the value is a field of the detail page's own item.
+    if (f.valueSource === 'currentItem') {
+      return <ToolSelect value={f.valueField ?? '_id'} onChange={(v) => d.update(idx, { valueField: v })} options={d.currentItemFields} />;
     }
     const ftype = d.fieldType(f.field);
     if (ftype === 'boolean') {
@@ -141,7 +159,12 @@ function FiltersPopupBody({
           </ToolRow>
           {!inactive && (
             <ToolRow label="Condition">
-              <ToolSelect value={f.operator} onChange={(v) => d.update(idx, { operator: v as FilterConfig['operator'], value: v === 'between' ? ['', ''] : f.value })} options={operatorsForFieldType(d.fieldType(f.field))} />
+              <ToolSelect value={f.operator} onChange={(v) => d.update(idx, { operator: v as FilterConfig['operator'], value: v === 'between' ? ['', ''] : f.value })} options={f.valueSource === 'currentItem' ? currentItemOperators() : operatorsForFieldType(d.fieldType(f.field))} />
+            </ToolRow>
+          )}
+          {!inactive && (d.allowCurrentItem || f.valueSource === 'currentItem') && (!f.valueSource || f.valueSource === 'static' || f.valueSource === 'currentItem') && (
+            <ToolRow label="Value from">
+              <ToolSelect value={f.valueSource === 'currentItem' ? 'currentItem' : 'static'} onChange={(v) => d.setValueSource(idx, v as 'static' | 'currentItem')} options={[{ value: 'static', label: 'Value' }, { value: 'currentItem', label: 'Current item' }]} />
             </ToolRow>
           )}
           {!inactive && !operatorTakesNoValue(f.operator) && (
@@ -206,8 +229,9 @@ function FiltersPopupBody({
   );
 }
 
-export default function FilterControl({ schema, filterGroup, onChange, overridden, onResetOverride, allowDynamic, onAddSearchField }: Props) {
+export default function FilterControl({ schema, filterGroup, onChange, overridden, onResetOverride, allowDynamic, onAddSearchField, allowCurrentItem }: Props) {
   const [open, setOpen] = useState(false);
+  const pageMeta = useAtomValue(cmsPageMetaAtom);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerFrom, setPickerFrom] = useState<'row' | 'add'>('row');
   const [autoEditIdx, setAutoEditIdx] = useState<number | null>(null);
@@ -249,11 +273,23 @@ export default function FilterControl({ schema, filterGroup, onChange, overridde
     setOpen(true);
     setAutoEditIdx(newIdx); // slide straight into the editor for the new filter
   };
-  // Field change resets operator to a valid one for the new type.
+  // Field change resets operator to a valid one for the new type (a currentItem filter
+  // keeps its own operator set, which does not depend on the field type).
   const changeField = (idx: number, fieldId: string) => {
-    const ops = operatorsForFieldType(fieldType(fieldId));
-    const cur = filters[idx].operator;
-    update(idx, { field: fieldId, operator: ops.some(o => o.value === cur) ? cur : ops[0].value, value: '' });
+    const cur = filters[idx];
+    const ops = cur.valueSource === 'currentItem' ? currentItemOperators() : operatorsForFieldType(fieldType(fieldId));
+    update(idx, { field: fieldId, operator: ops.some(o => o.value === cur.operator) ? cur.operator : ops[0].value, value: '' });
+  };
+  // Value source: a literal, or the detail item's field. Rebuilt whole (not merged) so
+  // the currentItem keys never linger on a static filter.
+  const setValueSource = (idx: number, src: 'static' | 'currentItem') => {
+    const f = filters[idx];
+    if (!f) return;
+    trace.action('filter-control:set-value-source', { idx, src });
+    const next: FilterConfig = src === 'currentItem'
+      ? { field: f.field, operator: currentItemOperators().some(o => o.value === f.operator) ? f.operator : 'equals', value: '', valueSource: 'currentItem', valueField: '_id' }
+      : { field: f.field, operator: f.operator, value: '' };
+    onChange(mkGroup(filters.map((x, i) => (i === idx ? next : x)), combinator));
   };
   const openPicker = () => { setPickerFrom('add'); setPickerOpen(true); };
   // Options for a reference field's value select = the referenced collection's
@@ -270,9 +306,18 @@ export default function FilterControl({ schema, filterGroup, onChange, overridde
     }));
   };
 
+  // The detail page's own collection → the fields a currentItem filter can read. The
+  // option is offered only while the active file IS a detail page (cmsPageMetaAtom).
+  const detailSchema = pageMeta?.kind === 'detail' ? (collectionSchemas.get(pageMeta.collection) ?? null) : null;
+  const offerCurrentItem = !!allowCurrentItem && canOfferCurrentItem(pageMeta);
+
   // Keep the editor's live data fresh every render (the pushed panel reads this).
   const dataRef = useRef<EditorData>(null as unknown as EditorData);
-  dataRef.current = { filters, fields, fieldDef, fieldType, update, changeField, onAddPicker: openPicker, onRemove: remove, getRefItems, isInactive };
+  dataRef.current = {
+    filters, fields, fieldDef, fieldType, update, changeField, setValueSource,
+    onAddPicker: openPicker, onRemove: remove, getRefItems, isInactive,
+    allowCurrentItem: offerCurrentItem, currentItemFields: currentItemFieldOptions(detailSchema),
+  };
 
   return (
     <div className="flex items-center justify-between w-full" ref={rowRef}>

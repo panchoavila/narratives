@@ -94,6 +94,9 @@ export function buildTransformPreview(props: Record<string, string>): string {
   if (props.scale && props.scale !== '1') parts.push(`scale(${props.scale})`);
   if (props.scaleX && props.scaleY && (props.scaleX !== '1' || props.scaleY !== '1')) {
     parts.push(`scaleX(${props.scaleX})`, `scaleY(${props.scaleY})`);
+  } else {
+    if (props.scaleX && props.scaleX !== '1') parts.push(`scaleX(${props.scaleX})`);
+    if (props.scaleY && props.scaleY !== '1') parts.push(`scaleY(${props.scaleY})`);
   }
   if (props.scaleZ && props.scaleZ !== '1') parts.push(`scaleZ(${props.scaleZ})`);
   if (props.rotate && props.rotate !== '0') parts.push(`rotate(${props.rotate}deg)`);

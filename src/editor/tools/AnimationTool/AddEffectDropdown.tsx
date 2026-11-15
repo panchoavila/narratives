@@ -13,7 +13,7 @@ import { type AnimEntryType } from './shared';
  *  'scrollAnimation' (the On-Scroll trigger of the `appear` effect — shares
  *  the `appear` entry so it's mutually exclusive with Appear), 'scrollVariant'
  *  (placeholder, disabled), and 'scrollGroup' (the Scroll submenu header). */
-export type AddActionType = AnimEntryType | 'scrollAnimation' | 'scrollVariant' | 'scrollGroup' | 'pageTransition' | 'smoothScroll' | 'glitch' | 'glyphRain' | 'rippleEffect' | 'particleEffect';
+export type AddActionType = AnimEntryType | 'scrollAnimation' | 'scrollVariant' | 'scrollGroup' | 'pageTransition' | 'smoothScroll' | 'glitch' | 'glyphRain' | 'rippleEffect' | 'particleEffect' | 'vhsEffect';
 
 interface AddOption {
   type: AddActionType;
@@ -86,6 +86,7 @@ const ADD_OPTIONS: AddOption[] = [
   { type: 'glitch', label: 'Glitch', desc: 'Glitch bursts on this element.', engines: ['canvasEffect'] },
   { type: 'glyphRain', label: 'Glyph Rain', desc: 'Falling glyphs illuminate this element.', engines: ['canvasEffect'] },
   { type: 'rippleEffect', label: 'Ripple', desc: 'Water ripples refract this element.', engines: ['canvasEffect'] },
+  { type: 'vhsEffect', label: 'VHS', desc: 'Tape wave, chroma bleed and tracking noise.', engines: ['canvasEffect'] },
   { type: 'particleEffect', label: 'Particle Object', desc: 'Rebuild this image or SVG as particles.', engines: ['canvasEffect'] },
   { type: 'keyframe', label: 'Keyframe', desc: '@keyframes block. No JS. Visual scrubber.' },
   // Text
@@ -241,7 +242,7 @@ function EffectSubMenu({ label, desc, children, onSelect }: {
   );
 }
 
-export default function AddEffectDropdown({ onAdd, existing, isTextNode, isSketchNode, isParticleTarget, isComponentInstance, appearOnly, glideOnly, noGlide, canTicker, onApplyKeyframe, pasteItem }: {
+export default function AddEffectDropdown({ onAdd, existing, isTextNode, isSketchNode, isParticleTarget, isComponentInstance, appearOnly, glideOnly, hidePageTransitions, noGlide, canTicker, onApplyKeyframe, pasteItem }: {
   onAdd: (t: AddActionType) => void;
   existing: Set<AnimEntryType>;
   isTextNode?: boolean;
@@ -250,6 +251,8 @@ export default function AddEffectDropdown({ onAdd, existing, isTextNode, isSketc
    *  where Glide ("Flow") is the one meaningful animation (the reference puts Flow on
    *  the page). Every other effect is hidden from the menu there. */
   glideOnly?: boolean;
+  /** Page transitions are grouped in the 3D sidebar while inspecting. */
+  hidePageTransitions?: boolean;
   /** Inside a DESIGN-COMPONENT master, Glide (and Page Transition) are hidden
    *  entirely: every master element is already motion.* with layout + the
    *  variant machine, so the glide shims only nest a second FLIP layer that
@@ -318,6 +321,7 @@ export default function AddEffectDropdown({ onAdd, existing, isTextNode, isSketc
   // node. A submenu group stays visible only while it has at least one addable child.
   const visibleOptions = ADD_OPTIONS.filter(o =>
     !HIDDEN_ADD_TYPES.has(o.type) &&
+    (!hidePageTransitions || o.type !== 'pageTransition') &&
     (!noGlide || (o.type !== 'glide' && o.type !== 'pageTransition' && o.type !== 'smoothScroll')) &&
     // Glide is a CONTAINER effect (children glide when one resizes) — a text
     // node has no element children, so the option never shows there

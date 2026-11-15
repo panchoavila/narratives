@@ -1,5 +1,21 @@
 import { describe, test, expect } from 'vitest';
-import { parseComponentControlsMeta, hasComponentControls, parseCodeComponentDefaultSize } from './controls-parser';
+import { parseComponentControlsMeta, hasComponentControls, parseCodeComponentDefaultSize, findComponentControl } from './controls-parser';
+
+test('grouped props retain their scalar types when the editor looks them up', () => {
+  const controls = {
+    label: { type: 'text' as const, label: 'Label', default: '' },
+    scene: { type: 'group' as const, label: 'Scene', controls: {
+      angle: { type: 'number' as const, label: 'Angle', default: 0 },
+      playback: { type: 'group' as const, label: 'Playback', controls: {
+        autoplay: { type: 'toggle' as const, label: 'Autoplay', default: false },
+      } },
+    } },
+  };
+  expect(findComponentControl(controls, 'label')?.type).toBe('text');
+  expect(findComponentControl(controls, 'angle')?.type).toBe('number');
+  expect(findComponentControl(controls, 'autoplay')?.type).toBe('toggle');
+  expect(findComponentControl(controls, 'missing')).toBeUndefined();
+});
 
 const CODE_COMPONENT_CODE = `'use client';
 

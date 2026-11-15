@@ -25,7 +25,8 @@ import { parsePageVariables } from '@/code/features/page-variables';
 import { isComponentFilePath } from '@/code/project/file-path-kind';
 import { getSortedBreakpointWidths } from '@/code/stores/viewport-store';
 import { paginationStateVar } from '@/code/generation/cms-pagination-gen';
-import type { ResponsiveListConfig } from '@/code/generation/cms-responsive-gen';
+import { listConfigRefusal, type ResponsiveListConfig } from '@/code/generation/cms-responsive-gen';
+import { detailItemVarOf } from '@/code/project/cms-page-meta';
 import type { FilterGroup, SortConfig } from '@/shared/types';
 import { cmsEditorCollectionAtom } from '@/code/stores/cms-editor-store';
 import { trace } from '@/shared/debug-trace';
@@ -157,6 +158,10 @@ function setListConfigOnBreakpoint(args: Record<string, unknown>, ctx: ToolConte
   const variants: Record<string, { filterGroup?: FilterGroup; sort?: SortConfig[] }> = {};
   for (const [k, d] of Object.entries(cl.variantConfigs ?? {})) { const c = clean(d ?? {}); if (Object.keys(c).length) variants[k] = c; }
   const config: ResponsiveListConfig = { base: { filterGroup: cl.filterGroup ?? null, sort: cl.sort ?? [] }, viewport, variants };
+  // The writer refuses this config silently (the file stays as it was); report it instead
+  // of returning ok for a change that did not land.
+  const refusal = listConfigRefusal(config, detailItemVarOf(getToolCode(ctx)));
+  if (refusal) return fail(`The list was not changed: ${refusal}.`);
   ctx.ensureCheckpoint();
   queueToolMutation(ctx, {
     type: 'setListResponsiveConfig', parentId: list.containerId, slug: list.slug, config,

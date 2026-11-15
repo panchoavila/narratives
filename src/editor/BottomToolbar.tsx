@@ -29,7 +29,6 @@ import { useIsViewer, useIsOffline } from '@/code/stores/viewer-mode-store';
 import { isShortcutKey } from '@/shared/shortcut-key';
 
 import { useSceneInspection } from './scene-composer/useSceneInspection';
-import { SceneViewportSelect } from './scene-composer/SceneViewControls';
 
 // ─── Chevron & Check icons ─────────────────────────────────────────────────
 
@@ -805,7 +804,6 @@ export default function BottomToolbar() {
             </button>
           </>
         )}
-        <SceneViewportSelect />
         <ToolButton active={sceneInspection.active} onClick={sceneInspection.toggle} title={sceneInspection.error || (sceneInspection.active ? '2D view (Esc)' : 'Isometric view')}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" />

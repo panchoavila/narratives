@@ -25,7 +25,7 @@ import {
   type ReactNode,
 } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import { CLOUD_ENABLED } from '@/shared/cloud-flag';
+import { COLLAB_ENABLED } from '@/shared/cloud-flag';
 import { getProjectId } from '@/backend/project-id';
 import { projectFS, projectVersionAtom } from '@/code/project/project-fs';
 import {
@@ -47,7 +47,7 @@ import {
   subscribeLocalInteraction,
 } from './collab-locks';
 import { setIsSaveLeader } from '@/backend/autosave';
-import { noteRemoteSaved, noteRoomJoined, noteRoomLeft } from '@/backend/save-revision';
+import { getBaseRevision, noteRemoteSaved, noteRoomJoined, noteRoomLeft, setLoadedRevision } from '@/backend/save-revision';
 import { useSetAtom, getDefaultStore } from 'jotai';
 import { trace } from '@/shared/debug-trace';
 import { listCollaborators } from '@/backend/revyme-backend';
@@ -115,8 +115,9 @@ export function useCollaboration(): CollaborationContextValue {
 export function CollaborationProvider({ children }: { children: ReactNode }) {
   // In standalone mode, short-circuit with the no-op context so no
   // socket connection is ever attempted. Cheaper than rendering the
-  // full provider with a dead socket.
-  if (!CLOUD_ENABLED) {
+  // full provider with a dead socket. Cloud and self-hosted modes both
+  // run the live room.
+  if (!COLLAB_ENABLED) {
     return <CollaborationContext.Provider value={noopValue}>{children}</CollaborationContext.Provider>;
   }
   return <CloudProvider>{children}</CloudProvider>;
@@ -297,11 +298,34 @@ function CloudProvider({ children }: { children: ReactNode }) {
       trace.action('collab:socket-connect', { socketId: socket.id });
       socket.emit(
         'join',
-        { websiteId },
-        (res: { ok: boolean; users?: ActiveUser[]; leader?: string | null; revision?: number | null; fileSeqs?: Record<string, number>; error?: string }) => {
+        // `baseRevision`: the revision this tab's copy is based on. The
+        // self-hosted server (server/realtime.ts) uses it to tell a copy that
+        // its replay can bring current from one that must reload.
+        { websiteId, baseRevision: getBaseRevision() },
+        (res: {
+          ok: boolean;
+          users?: ActiveUser[];
+          leader?: string | null;
+          revision?: number | null;
+          fileSeqs?: Record<string, number>;
+          error?: string;
+          /** Self-hosted: this copy predates the room — reload it. */
+          reload?: boolean;
+          /** Self-hosted: the replay after this ack makes the copy current at `revision`. */
+          adoptRevision?: boolean;
+        }) => {
           if (!res?.ok) {
+            if (res?.reload) {
+              trace.action('collab:join-stale-reload', { websiteId, baseRevision: getBaseRevision() });
+              window.location.reload();
+              return;
+            }
             trace.error('collab:join-failed', { error: res?.error });
             return;
+          }
+          if (res.adoptRevision && typeof res.revision === 'number') {
+            setLoadedRevision(res.revision);
+            trace.action('collab:join-adopted-revision', { revision: res.revision });
           }
           // Our copy of every file = the room's current version of it (a
           // server without `fileSeqs` predates ordered sync → legacy sends).

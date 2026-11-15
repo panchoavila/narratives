@@ -24,6 +24,11 @@ import {
 import { getCanvasBridge } from '@/canvas/canvas-bridge';
 import { getViewportPrefix } from '@/canvas/node-ops';
 import { trace } from '@/shared/debug-trace';
+import { previewPageEffectOnCanvas } from '@/editor/tools/PageEffectTool/PageEffectPopup';
+import { getEffectsForPage } from '@/code/project/page-effects-ops';
+import { activeFilePathAtom } from '@/code/project/active-file-store';
+import { parseCanvasEffectFromAttrs } from '@/shared/canvas-effects';
+import { normalizeVhs } from '../../../packages/revyme-runtime-scene/src/vhs-config';
 import {
   computeTimelineSnap,
   roundSec,
@@ -412,6 +417,7 @@ export default function AnimationTimeline() {
   const [playhead, setPlayhead] = useAtom(timelinePlayheadAtom);
   const tracks = useAtomValue(timelineTracksAtom);
   const nodes = useAtomValue(nodesAtom);
+  const activeFile = useAtomValue(activeFilePathAtom) || 'app/page.client.tsx';
   const [selectedIds, setSelectedIds] = useAtom(selectedIdsAtom);
   const [playing, setPlaying] = useState(false);
   const [activeSnap, setActiveSnap] = useState<ActiveSnapState | null>(null);
@@ -497,6 +503,7 @@ export default function AnimationTimeline() {
     setPlaying(true);
     const prefix = getViewportPrefix('desktop');
     const bridge = getCanvasBridge();
+    let hasPageTransition = false;
     for (const t of filteredTracks) {
       if (t.styleProp === 'animation') {
         const node = nodes.get(t.nodeId);
@@ -505,6 +512,14 @@ export default function AnimationTimeline() {
           bridge.patchStyles(t.nodeId, prefix, { animation: 'none' });
           bridge.patchStyles(t.nodeId, prefix, { animation: animStr });
         }
+      } else if (t.kind === 'page-transition') {
+        hasPageTransition = true;
+      }
+    }
+    if (hasPageTransition) {
+      const effects = getEffectsForPage(activeFile);
+      if (effects[0]) {
+        previewPageEffectOnCanvas(effects[0]);
       }
     }
     trace.action('animation-timeline:replay-all', { count: filteredTracks.length });
@@ -515,6 +530,7 @@ export default function AnimationTimeline() {
     if (!node || !track.styleProp) return;
 
     if (track.styleProp === 'canvas-effect') {
+      const vhs = parseCanvasEffectFromAttrs(node.attrs)?.vhs;
       expediteStableAtomSync();
       queueMutation({
         type: 'updateHtmlAttrs',
@@ -523,6 +539,7 @@ export default function AnimationTimeline() {
           'data-canvas-delay': String(nextDelay),
           'data-canvas-duration': String(nextDuration),
           ...(node.attrs?.['data-canvas-effect'] === 'glitch' ? { 'data-glitch-duration': String(nextDuration) } : {}),
+          ...(vhs ? { 'data-vhs': JSON.stringify(normalizeVhs({ ...vhs, duration: nextDuration })) } : {}),
         },
       });
       flushNow();

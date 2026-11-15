@@ -11,6 +11,7 @@ import { cleanJsxText } from '@/shared/jsx-whitespace';
 import { tickerFromJsxAttributes, type TickerConfig } from '@/shared/ticker-config';
 import { formattedBranchesOfDangerAttr, type FormattedBranches } from '@/shared/rich-message';
 import { parsePageVariables } from '../features/page-variables';
+import { CMS_DETAIL_ITEM_VAR } from '@/code/project/cms-page-meta';
 
 // Handle ESM/CJS interop
 const traverse = (typeof _traverse === 'function' ? _traverse : (_traverse as any).default) as typeof _traverse;
@@ -29,7 +30,7 @@ const INLINE_TAGS = new Set(['span', 'strong', 'em', 'br', 'a', 'u', 's', 'mark'
 // data-glide, …) so a declarative Loop's marker survives copy/paste — the
 // paste engine re-emits attrs from the parsed node, and anything missing
 // here silently vanishes from the pasted copy.
-const PARSED_HTML_ATTRS = ['id', 'src', 'alt', 'href', 'target', 'rel', 'type', 'placeholder', 'aria-label', 'role', 'aria-hidden', 'tabindex', 'data-overlay', 'data-overlay-trigger', 'data-smooth-scroll', 'data-keep-params', 'data-sketch', 'data-revyme-track', 'data-slot-pos', 'data-pinned', 'data-replica-solo', 'data-alt-duplicate', 'data-scroll-fx', 'data-glide', 'data-loop', 'data-canvas-effect', 'data-canvas-duration', 'data-canvas-delay', 'data-canvas-intensity', 'data-glitch-intensity', 'data-glitch-interval', 'data-glitch-duration', 'data-glitch-slices', 'data-glitch-shift', 'data-glitch-rgb-shift', 'data-glitch-blocks', 'data-glitch-noise', 'data-glyph-rain', 'data-ripple', 'data-particle-object', 'poster', 'controls', 'autoplay', 'loop', 'muted', 'preload',
+const PARSED_HTML_ATTRS = ['id', 'src', 'alt', 'href', 'target', 'rel', 'type', 'placeholder', 'aria-label', 'role', 'aria-hidden', 'tabindex', 'data-overlay', 'data-overlay-trigger', 'data-smooth-scroll', 'data-keep-params', 'data-sketch', 'data-revyme-track', 'data-slot-pos', 'data-pinned', 'data-replica-solo', 'data-alt-duplicate', 'data-scroll-fx', 'data-glide', 'data-loop', 'data-canvas-effect', 'data-canvas-duration', 'data-canvas-delay', 'data-canvas-intensity', 'data-glitch-intensity', 'data-glitch-interval', 'data-glitch-duration', 'data-glitch-slices', 'data-glitch-shift', 'data-glitch-rgb-shift', 'data-glitch-blocks', 'data-glitch-noise', 'data-glyph-rain', 'data-ripple', 'data-particle-object', 'data-vhs', 'data-liquid-glass', 'data-flow', 'data-revyme-collection-slot', 'poster', 'controls', 'autoplay', 'loop', 'muted', 'preload',
   // Form controls (input/textarea/select/option/button) + the <form> itself.
   // React JSX names (camelCase) so the generated .tsx is React-correct.
   // Also captured on CANVAS nodes: a form/search input dragged or pasted onto
@@ -1842,7 +1843,7 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
     try {
       const meta = JSON.parse(cmsPageMatch[1]);
       if (meta.kind === 'detail' && typeof meta.collection === 'string') {
-        ctx.detailPageContext = { itemVar: 'item', source: meta.collection };
+        ctx.detailPageContext = { itemVar: CMS_DETAIL_ITEM_VAR, source: meta.collection };
         trace.action('parser:detail-page-context', { source: meta.collection });
       }
     } catch {
@@ -1910,6 +1911,7 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
         }
         // Ticker-effect wrapper: transparent the same way. Its frame may itself
         // carry an `<Override>` (written inside the ticker).
+        if (tagName === 'RevymeVhs' || tagName === 'RevymeLiquidBackdrop') return;
         if (tagName === 'RevymeTicker') {
           const ticker = tickerFromOpening(opening);
           for (const child of el.children) {
@@ -1933,7 +1935,7 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
             // override wrapper (and a ticker wrapper outside it).
             let wrapperTag = resolveTagName(innerEl.openingElement);
             let lost = false;
-            while (wrapperTag === 'RevymeTicker' || wrapperTag === 'Override') {
+            while (wrapperTag === 'RevymeTicker' || wrapperTag === 'Override' || wrapperTag === 'RevymeVhs') {
               const wrapped = innerEl.children.find((c: any) => c.type === 'JSXElement');
               if (!wrapped) { lost = true; break; }
               innerEl = wrapped as typeof innerEl;
@@ -2594,7 +2596,8 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
         if (tagName === 'AnimatePresence' || tagName === 'LayoutGroup'
             || tagName === 'MotionConfig' || tagName === 'Fragment'
             || tagName === 'style' || tagName === 'PageTransitions'
-            || tagName === 'Override' || tagName === 'RevymeTicker') {
+            || tagName === 'Override' || tagName === 'RevymeTicker' || tagName === 'RevymeVhs'
+            || tagName === 'RevymeLiquidBackdrop') {
           return;
         }
         // Glide wrappers (`<motion.div data-glide-item>`) are skipped on enter
@@ -2641,7 +2644,13 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
           && SAFE_CHAIN.has(cursor.callee.property.name)) {
           const method = cursor.callee.property.name;
           if (method === 'filter') {
-            parsedFilter = parseFilterCallback(cursor.arguments?.[0]);
+            // A list nested in another list whose .map() parameter is the detail item's name
+            // (`pieces.map(item => … authors.filter(row => row.id === item._id))`): there `item`
+            // is the OUTER row, so the detail item is shadowed and no currentItem is read.
+            const detailVar = ctx.detailPageContext?.itemVar ?? null;
+            const shadowedByOuterRow = !!detailVar && ctx.collectionContextStack.some(c => c.itemVar === detailVar);
+            if (shadowedByOuterRow) trace.action('parser:currentItem-shadowed-by-outer-row', { detailVar });
+            parsedFilter = parseFilterCallback(cursor.arguments?.[0], shadowedByOuterRow ? null : detailVar);
           } else if (method === 'sort') {
             parsedSort = parseSortCallback(cursor.arguments?.[0]);
           } else if (method === 'slice') {
@@ -2935,7 +2944,7 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
       }
       // Element wrappers (code override, Ticker effect) are transparent: their
       // one element parents to the wrapper's parent, as in the main walker.
-      if (tagName === 'Override' || tagName === 'RevymeTicker') {
+      if (tagName === 'Override' || tagName === 'RevymeTicker' || tagName === 'RevymeVhs' || tagName === 'RevymeLiquidBackdrop') {
         for (const child of el.children) {
           if (child.type === 'JSXElement') visitCanvasJSXElement(child);
         }
@@ -3693,7 +3702,12 @@ function parseSortCallback(arg: any): import('@/shared/types').SortConfig[] | nu
   return keys.length > 0 ? keys : null;
 }
 
-function parseFilterCallback(arg: any): import('@/shared/types').FilterGroup | null {
+function parseFilterCallback(
+  arg: any,
+  /** The detail item variable when the file is a `@cmsPage` detail page (else null).
+   *  Enables reading `<row>.<field> === <detailVar>.<valueField>` as a currentItem filter. */
+  detailItemVar: string | null = null,
+): import('@/shared/types').FilterGroup | null {
   // Generator shape: `(item) => item.<field> <op> <value> [&& / ||] ...`
   // We only support a flat `&&`-joined or `||`-joined list of comparisons
   // that maps to FilterConfig — same surface the UI exposes.
@@ -3703,6 +3717,30 @@ function parseFilterCallback(arg: any): import('@/shared/types').FilterGroup | n
 
   const filters: import('@/shared/types').FilterConfig[] = [];
   let combinator: 'and' | 'or' = 'and';
+
+  // The callback's own parameter name (`row` in `(row) => row.desk …`). A currentItem
+  // comparison must read its LEFT side off this name — any other object is not a field
+  // of the row being filtered.
+  const rowParam: string | null = arg.params?.[0]?.type === 'Identifier' ? arg.params[0].name : null;
+  // Inside the callback a parameter named like the detail item SHADOWS it: then
+  // `item._id` is the row's own field, not the page's item, so it is not a currentItem.
+  const detailShadowed = !!detailItemVar && detailItemVar === rowParam;
+  // `<detailVar>.<field>` / `<detailVar>["<field>"]` → the field name, else null.
+  const currentItemField = (n: any): string | null => {
+    if (!detailItemVar || detailShadowed) return null;
+    if (n?.type !== 'MemberExpression' || n.object?.type !== 'Identifier' || n.object.name !== detailItemVar) return null;
+    if (!n.computed && n.property?.type === 'Identifier') return n.property.name;
+    if (n.computed && n.property?.type === 'StringLiteral') return n.property.value;
+    return null;
+  };
+  // `<row>.<field>` (the row parameter's own member) → the field name, else null.
+  const rowFieldName = (n: any): string | null => {
+    if (!rowParam || n?.type !== 'MemberExpression' || n.object?.type !== 'Identifier' || n.object.name !== rowParam) return null;
+    return n.property?.type === 'Identifier' && !n.computed ? n.property.name : null;
+  };
+  const CURRENT_ITEM_OPS: Record<string, import('@/shared/types').FilterConfig['operator']> = {
+    '===': 'equals', '==': 'equals', '!==': 'not_equals', '!=': 'not_equals',
+  };
 
   // Peel the coercion wrappers the generator emits: `.slice(0, 10)` (date-only
   // day comparison), `String(X).toLowerCase()` → X, `X.toLowerCase()` → X, and
@@ -3737,6 +3775,12 @@ function parseFilterCallback(arg: any): import('@/shared/types').FilterGroup | n
       if (fieldNode?.type === 'MemberExpression' && fieldNode.property?.type === 'Identifier') {
         const field = fieldNode.property.name;
         const v = unwrapStringCoerce(node.arguments?.[0]);
+        // currentItem contains: `String(row.F).toLowerCase().includes(String(item.K).toLowerCase())`.
+        const cf = currentItemField(v);
+        if (cf !== null) {
+          if (rowFieldName(fieldNode) === null) return null;
+          return { field, operator: 'contains', value: '', valueSource: 'currentItem', valueField: cf };
+        }
         const value = v?.type === 'StringLiteral' || v?.type === 'NumericLiteral' ? v.value : '';
         return { field, operator: 'contains', value };
       }
@@ -3749,6 +3793,20 @@ function parseFilterCallback(arg: any): import('@/shared/types').FilterGroup | n
       return null;
     }
     if (node.type === 'BinaryExpression') {
+      // currentItem comparison (detail pages only), canonical `row.F === item.K` or the
+      // reversed `item.K === row.F` (the same predicate, sides swapped). The row side
+      // MUST be the row parameter's field; the operator must be one the panel offers.
+      // Anything else with a detail-item side is not a field filter at all.
+      const detailOnRight = currentItemField(node.right) !== null;
+      const detailOnLeft = !detailOnRight && currentItemField(node.left) !== null;
+      if (detailOnRight || detailOnLeft) {
+        const rowSide = unwrapStringCoerce(detailOnRight ? node.left : node.right);
+        const cf = currentItemField(detailOnRight ? node.right : node.left) as string;
+        const op = CURRENT_ITEM_OPS[node.operator];
+        const field = rowFieldName(rowSide);
+        if (!op || field === null) return null;
+        return { field, operator: op, value: '', valueSource: 'currentItem', valueField: cf };
+      }
       // Unwrap a date-day LHS (`String(item.field).slice(0, 10) === "2026-06-15"`)
       // back to the bare member so the date filter round-trips like any other.
       const left = unwrapStringCoerce(node.left);

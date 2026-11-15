@@ -3,6 +3,8 @@ import { DEFAULT_GLITCH, normalizeGlitch, type GlitchConfig } from '../../../../
 import { DEFAULT_GLYPH_RAIN, normalizeGlyphRain } from '../../../../../packages/revyme-runtime-scene/src/glyph-rain';
 import { DEFAULT_RIPPLE, normalizeRipple, type RippleConfig } from '../../../../../packages/revyme-runtime-scene/src/ripple-config';
 import { DEFAULT_PARTICLE, normalizeParticle } from '../../../../../packages/revyme-runtime-scene/src/particle-config';
+import { DEFAULT_VHS } from '../../../../../packages/revyme-runtime-scene/src/vhs-config';
+import { VhsControls } from './VhsControls';
 import { ensureGlitchElementRuntime } from '@/code/project/glitch-ops';
 import { ControlLabel, ToolSelect, ToolInput } from '../../../controls';
 import { SliderRow } from '../shared';
@@ -45,6 +47,7 @@ export function CanvasEffectPopup({
         ...(next.preset === 'glyph-rain' ? { 'data-glyph-rain': JSON.stringify(next.glyphRain ?? DEFAULT_GLYPH_RAIN).replace(/[&'<]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`) } : {}),
         ...(next.preset === 'ripple-water' ? { 'data-ripple': JSON.stringify(next.ripple ?? DEFAULT_RIPPLE) } : {}),
         ...(next.preset === 'particle-object' ? { 'data-particle-object': JSON.stringify(next.particle ?? DEFAULT_PARTICLE) } : {}),
+        ...(next.preset === 'vhs' ? { 'data-vhs': JSON.stringify(next.vhs ?? DEFAULT_VHS) } : {}),
       },
     });
     flushNow();
@@ -68,6 +71,7 @@ export function CanvasEffectPopup({
                 ...(preset === 'glyph-rain' ? { glyphRain: { ...DEFAULT_GLYPH_RAIN } } : {}),
                 ...(preset === 'ripple-water' ? { ripple: { ...DEFAULT_RIPPLE } } : {}),
                 ...(preset === 'particle-object' ? { particle: { ...DEFAULT_PARTICLE } } : {}),
+                ...(preset === 'vhs' ? { vhs: { ...DEFAULT_VHS } } : {}),
               });
             }}
             options={CANVAS_EFFECT_OPTIONS.filter(o => o.value !== 'particle-object' || isParticleTarget).map((o) => ({
@@ -78,7 +82,9 @@ export function CanvasEffectPopup({
         </div>
       </div>
 
-      {config.preset === 'particle-object' ? (
+      {config.preset === 'vhs' ? (
+        <VhsControls showTrigger config={config.vhs ?? DEFAULT_VHS} onChange={vhs => update({ vhs, duration: vhs.duration })} />
+      ) : config.preset === 'particle-object' ? (
         <>
           {([
             ['count', 'Particles', 100, 20000, 100, ''],

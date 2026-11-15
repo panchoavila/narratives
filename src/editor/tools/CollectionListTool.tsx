@@ -8,7 +8,7 @@ import { useControl } from '../controls/ControlProvider';
 import { ToolSection, ToolSelect, ToolInput, ControlLabel, ControlActionRow } from '../controls';
 import { queueMutation, flushNow, syncQueueCode } from '@/code/mutation/mutation-queue';
 import { forceCanvasRender } from '@/canvas/node-ops';
-import { codeAtom, isComponentFileAtom } from '@/code/stores/store';
+import { codeAtom, isComponentFileAtom, nodesAtom } from '@/code/stores/store';
 import { isReplicaViewportAtom, interactingViewportWidthAtom, isComponentVariantViewportAtom, activeComponentVariantAtom, getSortedBreakpointWidths } from '@/code/stores/viewport-store';
 import { useStore } from 'jotai';
 import { listCollections, getCollectionSchema } from '@/code/project/cms-ops';
@@ -20,7 +20,7 @@ import type { FilterConfig, FilterGroup, SortConfig, CollectionSchema, Paginatio
 import { trace } from '@/shared/debug-trace';
 import FilterControl from './CollectionList/FilterControl';
 import SortControl from './CollectionList/SortControl';
-import { COLLECTION_VALUE_CLS, fieldsForSortFilter } from './CollectionList/cms-filter-utils';
+import { COLLECTION_VALUE_CLS, fieldsForSortFilter, collectionFieldRemap, isNestedInCollectionList } from './CollectionList/cms-filter-utils';
 import PaginationControl from './CollectionList/PaginationControl';
 
 // Mirrors the Animation/Layout tool add-dropdown item styling.
@@ -89,6 +89,7 @@ export default function CollectionListTool() {
   const activeVariant = useAtomValue(activeComponentVariantAtom);
   const isReplica = useAtomValue(isReplicaViewportAtom);
   const vpWidth = useAtomValue(interactingViewportWidthAtom);
+  const nodes = useAtomValue(nodesAtom);
 
   if (!node?.collectionList) return null;
 
@@ -135,6 +136,8 @@ export default function CollectionListTool() {
       initialLimit={initLimit != null ? String(initLimit) : ''}
       initialOffset={initOffset != null && initOffset > 0 ? String(initOffset) : ''}
       pagination={pagination ?? null}
+      collectionSlot={node.attrs?.['data-revyme-collection-slot'] !== undefined}
+      nestedInList={isNestedInCollectionList(nodes, node.id)}
     />
   );
 }
@@ -166,9 +169,12 @@ interface InnerProps {
   initialLimit: string;
   initialOffset: string;
   pagination: PaginationConfig | null;
+  collectionSlot?: boolean;
+  /** This list sits inside another list's template (its row parameter shadows the detail item). */
+  nestedInList?: boolean;
 }
 
-function CollectionListToolInner({ nodeId, source, schema, schemas, axis, axisKey, variantArg, vpWidths, baseFilterGroup, baseSort, responsive, variantConfigs, initialFilters, initialCombinator, initialSort, initialLimit, initialOffset, pagination }: InnerProps) {
+function CollectionListToolInner({ nodeId, source, schema, schemas, axis, axisKey, variantArg, vpWidths, baseFilterGroup, baseSort, responsive, variantConfigs, initialFilters, initialCombinator, initialSort, initialLimit, initialOffset, pagination, collectionSlot = false, nestedInList = false }: InnerProps) {
   // Seed local state from the parser's read-back so the panel reflects
   // what's actually in the JSX. Re-mount key in the wrapper resets these
   // when the user switches source — fresh slate per collection.
@@ -223,35 +229,7 @@ function CollectionListToolInner({ nodeId, source, schema, schemas, axis, axisKe
     if (!newSlug || newSlug === source) return;
     const oldSchema = schemas.get(source);
     const newSchema = schemas.get(newSlug);
-    const remap: Record<string, string> = {};
-    if (oldSchema && newSchema) {
-      const typeBucket = (t: string): string => {
-        if (t === 'text' || t === 'textarea' || t === 'richtext' || t === 'slug') return 'text';
-        if (t === 'image' || t === 'file') return 'image';
-        if (t === 'link' || t === 'url') return 'link';
-        return t;
-      };
-      const consumed = new Set<string>();
-      for (const oldField of oldSchema.fields) {
-        // Prefer same id if it exists with a compatible type (the user
-        // probably meant the same thing).
-        const sameId = newSchema.fields.find(
-          f => f.id === oldField.id && typeBucket(f.type) === typeBucket(oldField.type),
-        );
-        if (sameId) {
-          remap[oldField.id] = sameId.id;
-          consumed.add(sameId.id);
-          continue;
-        }
-        const candidate = newSchema.fields.find(
-          f => typeBucket(f.type) === typeBucket(oldField.type) && !consumed.has(f.id),
-        );
-        if (candidate) {
-          remap[oldField.id] = candidate.id;
-          consumed.add(candidate.id);
-        }
-      }
-    }
+    const remap = collectionFieldRemap(oldSchema, newSchema);
     trace.action('collection-list-tool:change-source', { nodeId, from: source, to: newSlug, remap });
     syncQueueCode(jotaiStore.get(codeAtom));
     queueMutation({ type: 'changeCollectionSource', parentNodeId: nodeId, newSlug, fieldRemap: remap });
@@ -437,6 +415,9 @@ function CollectionListToolInner({ nodeId, source, schema, schemas, axis, axisKe
     : axis === 'viewport' ? responsive?.[axisKey] : undefined;
   const filterOverridden = !!activeOverride && 'filterGroup' in activeOverride;
   const sortOverridden = !!activeOverride && 'sort' in activeOverride;
+  // A currentItem filter cannot live in the per-viewport/variant JSON config
+  // (the writer refuses it), so once the list is in the upgraded shape it is not offered.
+  const isResponsiveUpgraded = (!!responsive && Object.keys(responsive).length > 0) || (!!variantConfigs && Object.keys(variantConfigs).length > 0);
 
   // Reset = drop the dim from the active axis (empty → inherits base) + restore
   // the displayed buffer to base so the popup reflects the revert immediately.
@@ -500,6 +481,7 @@ function CollectionListToolInner({ nodeId, source, schema, schemas, axis, axisKe
         onResetOverride={filterOverridden ? resetFilterOverride : undefined}
         allowDynamic={axis === 'base' && !variantArg}
         onAddSearchField={handleAddSearchField}
+        allowCurrentItem={axis === 'base' && !variantArg && !isResponsiveUpgraded && !nestedInList}
       />
 
       {/* Sort — popup with N type-aware sort rules (precedence = order). */}
@@ -513,7 +495,7 @@ function CollectionListToolInner({ nodeId, source, schema, schemas, axis, axisKe
 
       {/* Pagination — Load More / Infinite Scroll. PRIMARY-ONLY (add/remove on the
           primary; read-only on a replica/variant, where it only appears if set on primary). */}
-      <PaginationControl pagination={pagination} onSet={handleSetPagination} onRemove={handleRemovePagination} editable={isPrimaryContext} />
+      {!collectionSlot && <PaginationControl pagination={pagination} onSet={handleSetPagination} onRemove={handleRemovePagination} editable={isPrimaryContext} />}
 
       {/* Limit to — added via the section + (hidden by default). */}
       {showLimit && (

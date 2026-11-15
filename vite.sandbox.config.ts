@@ -128,6 +128,9 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ['framer-motion', '@react-spring/web'],
+    // The editorial flow's measuring chunk loads these lazily; pre-bundled so the first flow on
+    // the canvas does not make Vite re-optimise and reload the sandbox.
+    include: ['@chenglou/pretext', '@chenglou/pretext/rich-inline', 'hyphen/en-us', 'hyphen/es', 'hyphen/fr'],
   },
   define: {
     'process.env': {},

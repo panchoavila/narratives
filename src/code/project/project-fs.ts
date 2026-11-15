@@ -84,6 +84,9 @@ import {
   MAGNET_BOX_COMPONENT,
   MARQUEE_COMPONENT,
   CAROUSEL_COMPONENT,
+  CAROUSEL_3D_COMPONENT,
+  LEGACY_CAROUSEL_3D_COMPONENT,
+  EDITORIAL_FLOW_COMPONENT,
   RIBBON_MARQUEE_COMPONENT,
   MARQUEE_3D_COMPONENT,
   MOTION_TRAIL_COMPONENT,
@@ -2548,6 +2551,9 @@ const BUILT_IN_COMPONENTS: [string, string][] = [
   // Effect code components — multi-slot containers that animate connected nodes.
   ['components/Marquee.tsx', MARQUEE_COMPONENT],
   ['components/Carousel.tsx', CAROUSEL_COMPONENT],
+  ['components/Carousel3D.tsx', CAROUSEL_3D_COMPONENT],
+  // Long-form text laid out like a magazine (editorial flow engine in the runtime).
+  ['components/EditorialFlow.tsx', EDITORIAL_FLOW_COMPONENT],
   ['components/RibbonMarquee.tsx', RIBBON_MARQUEE_COMPONENT],
   ['components/Marquee3D.tsx', MARQUEE_3D_COMPONENT],
   ['components/MotionTrail.tsx', MOTION_TRAIL_COMPONENT],
@@ -2622,6 +2628,8 @@ const BUILT_IN_COMPONENTS: [string, string][] = [
  * distinguish "stale template" from "user's own version", so the only safe
  * policy is: a modified file belongs to the user — leave it alone. Template
  * fixes reach fresh installs via `installBuiltInCodeComponent`.
+ * The exact original stock Carousel3D source is explicitly recognized and
+ * upgraded for Gap/CMS controls. Customizations keep their own source.
  */
 export function syncBuiltInCodeComponents(fs: InMemoryProjectFS): void {
   let skippedModified = 0;
@@ -2630,6 +2638,11 @@ export function syncBuiltInCodeComponents(fs: InMemoryProjectFS): void {
     // `readFile` returns null/undefined for missing files. Skip both — only
     // consider files the user actually has in their project.
     if (existing == null) continue;
+    if (path === 'components/Carousel3D.tsx' && existing === LEGACY_CAROUSEL_3D_COMPONENT) {
+      fs.writeFile(path, CAROUSEL_3D_COMPONENT);
+      trace.action('project-fs:upgrade-stock-carousel', { path });
+      continue;
+    }
     if (existing !== template) skippedModified++;
   }
   if (skippedModified > 0) {
@@ -2664,7 +2677,14 @@ export function installBuiltInCodeComponent(fs: InMemoryProjectFS, tag: string):
   const entry = BUILT_IN_COMPONENTS.find(([p]) => p === path);
   if (!entry) return null; // not a built-in we know about
   // `readFile` returns null/undefined for missing files — both mean install.
-  if (fs.readFile(path) != null) return false; // already installed
+  const installed = fs.readFile(path);
+  if (installed != null) {
+    if (path === 'components/Carousel3D.tsx' && installed === LEGACY_CAROUSEL_3D_COMPONENT) {
+      fs.writeFile(path, CAROUSEL_3D_COMPONENT);
+      trace.action('project-fs:upgrade-stock-carousel', { path });
+    }
+    return false;
+  }
   fs.writeFile(path, entry[1]);
   trace.action('project-fs:install-built-in-code-component', { tag, path });
   return true;

@@ -16,6 +16,8 @@ import {
 import type { WorkspaceFont } from '@/backend/types';
 import { loadCustomFont } from '@/shared/font-loader';
 import { refreshWorkspaceFonts } from '@/code/stores/workspace-fonts-store';
+import { SELF_HOSTED } from '@/shared/cloud-flag';
+import { trace } from '@/shared/debug-trace';
 
 type DashboardMode = 'websites' | 'settings';
 type SettingsScope = 'account' | 'workspace';
@@ -64,6 +66,25 @@ export default function SitesDashboard() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
+  // Self-hosted: only the admin creates projects (the server refuses anyone
+  // else), so members never see the create actions.
+  const [canCreate, setCanCreate] = useState(!SELF_HOSTED);
+  useEffect(() => {
+    if (!SELF_HOSTED) return;
+    let active = true;
+    fetch('/api/auth/session')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((session: { user?: { isAdmin?: boolean } | null } | null) => {
+        if (!active) return;
+        const isAdmin = !!session?.user?.isAdmin;
+        setCanCreate(isAdmin);
+        trace.action('dashboard:can-create', { isAdmin });
+      })
+      .catch((err) => trace.error('dashboard:session', { error: String(err) }));
+    return () => {
+      active = false;
+    };
+  }, []);
   const [error, setError] = useState<string | null>(null);
   const newSiteInputRef = useRef<HTMLInputElement>(null);
 
@@ -398,6 +419,7 @@ export default function SitesDashboard() {
         </div>
 
         {/* + New Website Button */}
+        {canCreate && (
         <button
           type="button"
           onClick={openCreatePrompt}
@@ -410,6 +432,7 @@ export default function SitesDashboard() {
           <span className="text-[15px] leading-none font-normal">+</span>
           <span>New Website</span>
         </button>
+        )}
 
         {/* Divider */}
         <div
@@ -466,6 +489,7 @@ export default function SitesDashboard() {
             <span>Archive</span>
           </button>
 
+          {canCreate && (
           <button
             type="button"
             onClick={openCreatePrompt}
@@ -479,6 +503,7 @@ export default function SitesDashboard() {
             </span>
             <span>New Folder...</span>
           </button>
+          )}
         </nav>
       </aside>
 
@@ -535,6 +560,7 @@ export default function SitesDashboard() {
               ))}
 
               {/* Create Website Card */}
+              {canCreate && (
               <div
                 className="flex flex-col justify-between rounded-[10px] p-5"
                 style={{
@@ -592,6 +618,7 @@ export default function SitesDashboard() {
                   <span>{creating ? 'Creating…' : 'Create Website'}</span>
                 </button>
               </div>
+              )}
             </div>
           )}
 

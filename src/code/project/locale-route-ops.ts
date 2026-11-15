@@ -78,11 +78,16 @@ ${languages}
   },
 };
 `;
+  // A dynamic route also re-exports the rest of the original server module:
+  // generateStaticParams / dynamicParams (which 404 unknown slugs) and generateMetadata
+  // (per-item SEO). `export *` carries exactly what the original exports, so a legacy
+  // detail page without generateMetadata still builds.
+  const passThrough = isDynamic ? `\nexport * from '@/${pageDir}/page';\n` : '';
   return `/** ${LOCALE_ROUTE_MARKER} ${locale} — GENERATED route for ${localeUrl}.
  *  Content lives in ${pageClientPath}; app/providers.tsx resolves the locale
  *  from the URL. The editor regenerates this file on locale/page changes.
  *  Do not edit. */
-export { default } from '@/${pageDir}/page';
+export { default } from '@/${pageDir}/page';${passThrough}
 ${metadata}`;
 }
 

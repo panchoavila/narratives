@@ -6,6 +6,11 @@ import { simpleHash } from '@/shared/hash-utils';
 import React, { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect, useReducer, useContext, createContext, forwardRef, memo, lazy, Suspense, Fragment } from 'react';
 import * as motionRuntime from 'framer-motion';
 import * as revymeRuntime from '@revyme/runtime';
+import { RevymeCarousel3D } from '../../packages/revyme-runtime-scene/src/carousel-3d';
+import { RevymeFlow } from '../../packages/revyme-runtime-scene/src/editorial/RevymeFlow';
+import { pieceDocument } from '../../packages/revyme-runtime-scene/src/editorial/document';
+import { parseEditorialMarkdown } from '../../packages/revyme-runtime-scene/src/editorial/markdown';
+import { buildEditorialPreset, isEditorialPresetId, EDITORIAL_PRESET_IDS } from '../../packages/revyme-runtime-scene/src/editorial/presets';
 import * as ReactJSXRuntime from 'react/jsx-runtime';
 import * as motionOne from '@motionone/dom';
 import { trace } from '@/shared/debug-trace';
@@ -157,6 +162,18 @@ const nextIntlStub = {
     React.createElement(React.Fragment, null, children),
 };
 
+// Exports only the workspace build of @revyme/runtime has (the npm package the canvas imports
+// does not): the 3D carousel and the editorial flow. Spread over the package in both maps below.
+const WORKSPACE_RUNTIME_EXTRAS = {
+  RevymeCarousel3D,
+  RevymeFlow,
+  pieceDocument,
+  parseEditorialMarkdown,
+  buildEditorialPreset,
+  isEditorialPresetId,
+  EDITORIAL_PRESET_IDS,
+};
+
 // Module scope for Code component code execution — pre-loaded ES modules
 const MODULE_MAP: Record<string, any> = {
   'react': { ...React, default: React, useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect, useReducer, useContext, createContext, forwardRef, memo, lazy, Suspense, Fragment, createElement: React.createElement },
@@ -178,7 +195,7 @@ const MODULE_MAP: Record<string, any> = {
   // receives it. The package version drops the ref. No-op for the plain-function
   // design components (never handed a ref). Live preview / export use the
   // package version directly (this MODULE_MAP only feeds the canvas sandbox).
-  '@revyme/runtime': { ...revymeRuntime, useStaticCanvas: () => true, withResponsiveProps },
+  '@revyme/runtime': { ...revymeRuntime, ...WORKSPACE_RUNTIME_EXTRAS, useStaticCanvas: () => true, withResponsiveProps },
   // Legacy entries — older user projects still have `import withResponsiveProps
   // from '@/lib/withResponsiveProps'`. Resolve these to the same function so
   // they keep working without a project codemod. Old projects can migrate
@@ -435,7 +452,7 @@ export function compileCodeComponent(
       // `@revyme/runtime` is mapped above to a spread of the real package +
       // `useStaticCanvas: () => true`. Re-spread here with `() => false` so
       // preview-pane code components animate normally.
-      '@revyme/runtime': { ...revymeRuntime, useStaticCanvas: () => false },
+      '@revyme/runtime': { ...revymeRuntime, ...WORKSPACE_RUNTIME_EXTRAS, useStaticCanvas: () => false },
     } : {};
 
     const extraModules = opts?.extraModules || {};

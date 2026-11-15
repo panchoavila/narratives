@@ -122,14 +122,96 @@ const MOTION_TRANSFORM_KEYS = new Set([
 ]);
 
 /**
+ * Parse a CSS `transform` value into MotionPropsEditor keys (`x`, `y`, `scale`, `rotate`, etc.).
+ */
+function parseTransformToMotionProps(transform: string, out: Record<string, string>): void {
+  const fnRe = /([a-zA-Z0-9]+)\(([^)]*)\)/g;
+  let match: RegExpExecArray | null;
+  while ((match = fnRe.exec(transform)) !== null) {
+    const fn = match[1];
+    const rawArgs = match[2].split(',').map((s) => s.trim());
+    const stripPx = (v: string) => v.replace(/px$/i, '');
+    const stripDeg = (v: string) => v.replace(/deg$/i, '');
+    switch (fn) {
+      case 'perspective':
+        if (rawArgs[0]) out.perspective = stripPx(rawArgs[0]);
+        break;
+      case 'translateX':
+        if (rawArgs[0]) {
+          if (rawArgs[0].endsWith('%')) out.xPercent = rawArgs[0].slice(0, -1);
+          else out.x = stripPx(rawArgs[0]);
+        }
+        break;
+      case 'translateY':
+        if (rawArgs[0]) {
+          if (rawArgs[0].endsWith('%')) out.yPercent = rawArgs[0].slice(0, -1);
+          else out.y = stripPx(rawArgs[0]);
+        }
+        break;
+      case 'translateZ':
+        if (rawArgs[0]) out.z = stripPx(rawArgs[0]);
+        break;
+      case 'translate':
+        if (rawArgs[0]) {
+          if (rawArgs[0].endsWith('%')) out.xPercent = rawArgs[0].slice(0, -1);
+          else out.x = stripPx(rawArgs[0]);
+        }
+        if (rawArgs[1]) {
+          if (rawArgs[1].endsWith('%')) out.yPercent = rawArgs[1].slice(0, -1);
+          else out.y = stripPx(rawArgs[1]);
+        }
+        break;
+      case 'scale':
+        if (rawArgs.length === 1 && rawArgs[0]) {
+          out.scale = rawArgs[0];
+        } else if (rawArgs.length >= 2) {
+          out.scaleX = rawArgs[0];
+          out.scaleY = rawArgs[1];
+        }
+        break;
+      case 'scaleX':
+        if (rawArgs[0]) out.scaleX = rawArgs[0];
+        break;
+      case 'scaleY':
+        if (rawArgs[0]) out.scaleY = rawArgs[0];
+        break;
+      case 'scaleZ':
+        if (rawArgs[0]) out.scaleZ = rawArgs[0];
+        break;
+      case 'rotate':
+        if (rawArgs[0]) out.rotate = stripDeg(rawArgs[0]);
+        break;
+      case 'rotateX':
+        if (rawArgs[0]) out.rotateX = stripDeg(rawArgs[0]);
+        break;
+      case 'rotateY':
+        if (rawArgs[0]) out.rotateY = stripDeg(rawArgs[0]);
+        break;
+      case 'skewX':
+        if (rawArgs[0]) out.skewX = stripDeg(rawArgs[0]);
+        break;
+      case 'skewY':
+        if (rawArgs[0]) out.skewY = stripDeg(rawArgs[0]);
+        break;
+      case 'skew':
+        if (rawArgs[0]) out.skewX = stripDeg(rawArgs[0]);
+        if (rawArgs[1]) out.skewY = stripDeg(rawArgs[1]);
+        break;
+    }
+  }
+}
+
+/**
  * Convert CSS kebab-case stop properties to camelCase motion props
  * (the format MotionPropsEditor expects).
  */
 function cssToMotionProps(css: Record<string, string>): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [key, val] of Object.entries(css)) {
-    // Skip raw CSS `transform` — MotionPropsEditor manages x/y/scale/rotate instead
-    if (key === 'transform') continue;
+    if (key === 'transform') {
+      parseTransformToMotionProps(val, result);
+      continue;
+    }
     const camel = key.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
     result[camel] = val;
   }

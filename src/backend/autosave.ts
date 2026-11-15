@@ -2,12 +2,12 @@
 // Uses getDefaultStore() to update saveStatusAtom outside of React.
 
 import { getDefaultStore } from 'jotai';
-import { CLOUD_ENABLED } from '@/shared/cloud-flag';
+import { CLOUD_ENABLED, SELF_HOSTED } from '@/shared/cloud-flag';
 import { backend } from './index';
 import { getProjectId } from './project-id';
 import { saveErrorAtom, saveStatusAtom } from './save-store';
 import { SaveConflictError, type ProjectData } from './types';
-import { adoptForOverwrite, getBaseRevision, isRevisionInSync, setLoadedRevision } from './save-revision';
+import { adoptForOverwrite, getBaseRevision, isRevisionInSync, isRoomConnected, setLoadedRevision } from './save-revision';
 import { projectFS } from '../code/project/project-fs';
 import { trace } from '@/shared/debug-trace';
 
@@ -428,6 +428,21 @@ function onBeforeUnloadSave(e: BeforeUnloadEvent): void {
       trace.action('autosave:beacon-skipped', { reason: 'unresolved project id' });
       return;
     }
+    if (SELF_HOSTED && id !== 'local') {
+      // Self-hosted: no beacon. Each local write reaches the server through
+      // the room (file-sync) within ~50 ms, and the server writes a room's
+      // live edits to disk once everyone has left (server/realtime.ts). Only
+      // a tab cut off from the room holds work the server has not seen.
+      if (isRoomConnected()) {
+        trace.action('autosave:unload-self-hosted', { id, roomConnected: true });
+        return;
+      }
+      trace.action('autosave:unload-self-hosted', { id, roomConnected: false });
+      e.preventDefault();
+      e.returnValue = '';
+      return;
+    }
+
     const data = buildProjectData();
 
     if (!CLOUD_ENABLED) {

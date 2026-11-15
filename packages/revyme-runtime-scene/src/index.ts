@@ -55,3 +55,25 @@ export { DEFAULT_RIPPLE, normalizeRipple, type RippleConfig } from './ripple-con
 export { attachRippleElements } from './ripple-elements';
 export { DEFAULT_PARTICLE, normalizeParticle, type ParticleConfig } from './particle-config';
 export { attachParticleElements } from './particle-elements';
+export { DEFAULT_VHS, normalizeVhs, VHS_CONTROLS, type VhsConfig } from './vhs-config';
+export { RevymeVhs, RevymeVhsPage } from './vhs-surface';
+export { runVhsNavigation } from './vhs-navigation';
+export { attachLiquidGlassElements } from './liquid-glass-elements';
+export { RevymeLiquidBackdrop } from './liquid-glass-backdrop';
+export { RevymeCarousel3D, type Carousel3DProps } from './carousel-3d';
+export { DEFAULT_LIQUID_GLASS, normalizeLiquidGlass, parseLiquidGlassAttribute, type LiquidGlassConfig } from './liquid-glass-config';
+
+// Editorial flow: long-form text laid out like a magazine. The measuring half of the engine
+// (Pretext, hyphenation patterns) is a lazy chunk that `RevymeFlow` loads in the browser.
+export { RevymeFlow, type RevymeFlowProps } from './editorial/RevymeFlow';
+export { pieceDocument, type EditorialPiece, type EditorialHero } from './editorial/document';
+export { parseEditorialMarkdown } from './editorial/markdown';
+export {
+  buildEditorialPreset,
+  isEditorialPresetId,
+  EDITORIAL_PRESET_IDS,
+  type EditorialPresetId,
+  type EditorialTheme,
+  type EditorialFont,
+} from './editorial/presets';
+export type { FlowDocument, FlowLayout, FlowMode, FlowSpec } from './editorial/types';

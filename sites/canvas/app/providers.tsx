@@ -32,9 +32,9 @@ const RTL_TEXT_CSS = ":where(p,h1,h2,h3,h4,h5,h6,li,blockquote,label,figcaption,
 // navigation. Modified clicks, other buttons, new-tab links and cross-origin
 // links are never touched.
 const SMOOTH_KEY = 'revyme:smooth-target';
-function revymeNavClick(e, nav) {
+function revymeNavClick(e: MouseEvent, nav: { push: (href: string) => void }) {
   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-  const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+  const a = e.target instanceof Element ? e.target.closest<HTMLAnchorElement>('a[href]') : null;
   if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
   let url;
   try { url = new URL(a.getAttribute('href') || '', window.location.href); } catch { return; }

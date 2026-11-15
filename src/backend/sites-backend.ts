@@ -7,9 +7,25 @@
 // delegates to `LocalBackend` so all existing tests continue to work unchanged.
 
 import type { ProjectBackend, ProjectData, RevymeUser, WorkspaceFont } from './types';
-import { isKnownProjectFormat } from './types';
+import { isKnownProjectFormat, SaveConflictError } from './types';
 import { LocalBackend } from './local-backend';
+import { getBaseRevision, isRevisionInSync, noteSaved, setLoadedRevision } from './save-revision';
+import { SELF_HOSTED } from '@/shared/cloud-flag';
 import { trace } from '@/shared/debug-trace';
+
+/** `GET /api/sites/:id` body. The self-hosted server adds the caller's
+ *  `role` and the save `revision`; the local Vite plugin sends neither. */
+interface SitePayload {
+  id: string;
+  name?: string;
+  project?: ProjectData;
+  revision?: number;
+  role?: 'owner' | 'editor' | 'viewer';
+}
+
+/** How long one site fetch answers every boot getter that asks for it
+ *  (ProjectLoader asks for project, role and name at once). */
+const SITE_FETCH_TTL_MS = 3000;
 
 export interface LocalSiteSummary {
   id: string;
@@ -49,9 +65,50 @@ export async function createLocalSite(name: string, id?: string): Promise<{ id: 
 export class SitesBackend implements ProjectBackend {
   private readonly fallback = new LocalBackend();
   private readonly nameCache = new Map<string, string>();
+  private readonly siteFetches = new Map<string, { at: number; payload: Promise<SitePayload | null> }>();
+
+  /** `GET /api/sites/:id`. Self-hosted: one request shared by the boot
+   *  getters that ask at once (project, role); a failure is not kept, and a
+   *  save drops the entry. Local mode fetches fresh every time, as before. */
+  private fetchSite(id: string): Promise<SitePayload | null> {
+    const cached = SELF_HOSTED ? this.siteFetches.get(id) : undefined;
+    if (cached && Date.now() - cached.at < SITE_FETCH_TTL_MS) return cached.payload;
+    const payload = (async () => {
+      try {
+        const res = await fetch(`/api/sites/${encodeURIComponent(id)}`);
+        if (!res.ok) {
+          trace.error('sites-backend:load-status', { id, status: res.status });
+          return null;
+        }
+        return (await res.json()) as SitePayload;
+      } catch (err) {
+        trace.error('sites-backend:load-error', { id, error: String(err) });
+        return null;
+      }
+    })();
+    if (SELF_HOSTED) {
+      this.siteFetches.set(id, { at: Date.now(), payload });
+      void payload.then((p) => {
+        if (p === null && this.siteFetches.get(id)?.payload === payload) this.siteFetches.delete(id);
+      });
+    }
+    return payload;
+  }
 
   async getUser(): Promise<RevymeUser | null> {
-    return this.fallback.getUser();
+    if (!SELF_HOSTED) return this.fallback.getUser();
+    try {
+      const res = await fetch('/api/auth/session', { credentials: 'same-origin' });
+      if (!res.ok) return null;
+      const session = (await res.json()) as { user?: RevymeUser | null };
+      if (!session.user) return null;
+      const { id, name, email, image, isAdmin } = session.user;
+      trace.action('backend:get-user', { id, email, isAdmin: !!isAdmin, source: 'self-hosted' });
+      return { id, name, email, image: image ?? undefined, isAdmin: !!isAdmin };
+    } catch (err) {
+      trace.error('sites-backend:get-user', { error: String(err) });
+      return null;
+    }
   }
 
   async loadProject(id: string): Promise<ProjectData | null> {
@@ -59,9 +116,12 @@ export class SitesBackend implements ProjectBackend {
       return this.fallback.loadProject(id);
     }
     try {
-      const res = await fetch(`/api/sites/${encodeURIComponent(id)}`);
-      if (!res.ok) return null;
-      const payload = (await res.json()) as { id: string; name?: string; project?: ProjectData };
+      const payload = await this.fetchSite(id);
+      // The save base (self-hosted): every save names it and the server
+      // refuses one based on an older revision (save-revision.ts). A failed
+      // load leaves no base, so a save from a blank seeded tab is refused.
+      setLoadedRevision(payload?.revision);
+      if (!payload) return null;
       if (payload.name) {
         this.nameCache.set(id, payload.name);
       }
@@ -83,14 +143,31 @@ export class SitesBackend implements ProjectBackend {
     if (isEphemeralId(id)) {
       return this.fallback.saveProject(id, data);
     }
+    // Self-hosted server: the save names the revision this tab is based on
+    // (409 when another member saved first). The local Vite plugin ignores
+    // these two fields and never has a base revision.
+    const baseRevision = getBaseRevision();
+    const body = baseRevision !== null ? { ...data, baseRevision, inSync: isRevisionInSync() } : data;
     const res = await fetch(`/api/sites/${encodeURIComponent(id)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
+      body: JSON.stringify(body),
     });
-    if (!res.ok) {
-      throw new Error(`Failed to save site "${id}" (${res.status})`);
+    if (res.status === 409) {
+      const payload = (await res.json().catch(() => null)) as { error?: { details?: { revision?: number } } } | null;
+      const serverRevision = payload?.error?.details?.revision;
+      trace.error('sites-backend:save-conflict', { id, baseRevision, serverRevision });
+      throw new SaveConflictError(typeof serverRevision === 'number' ? serverRevision : null);
     }
+    if (!res.ok) {
+      // The plugin answers `{ error: string }`, the self-hosted server `{ error: { message } }`.
+      const parsed = (await res.json().catch(() => null)) as { error?: { message?: string } | string } | null;
+      const message = typeof parsed?.error === 'string' ? parsed.error : parsed?.error?.message ?? '';
+      throw new Error(`Failed to save site "${id}" (${res.status})${message ? `: ${message}` : ''}`);
+    }
+    const saved = (await res.json().catch(() => null)) as { revision?: number } | null;
+    noteSaved(saved?.revision);
+    this.siteFetches.delete(id);
     trace.action('backend:save-project', {
       id,
       source: 'sites-disk',
@@ -163,8 +240,12 @@ export class SitesBackend implements ProjectBackend {
     return this.fallback.fetchMediaBytes(remoteUrl);
   }
 
-  async getWebsiteRole(_id: string): Promise<'owner' | 'editor' | 'viewer'> {
-    return 'owner';
+  async getWebsiteRole(id: string): Promise<'owner' | 'editor' | 'viewer'> {
+    if (!SELF_HOSTED || isEphemeralId(id)) return 'owner';
+    // Unknown role = read-only: the server refuses writes anyway, and a
+    // tab that could not load the site must not look editable.
+    const payload = await this.fetchSite(id);
+    return payload?.role ?? 'viewer';
   }
 
   async getWebsiteClosedSource(_id: string): Promise<boolean> {

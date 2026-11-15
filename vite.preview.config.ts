@@ -90,7 +90,7 @@ export default defineConfig({
     // Vite cold-compiles them on first request, which can throw 504
     // "Outdated Optimize Dep" errors when other Vite servers in the
     // workspace re-trigger optimize-dep passes.
-    include: ['next-themes', 'react', 'react-dom', 'motion/react', 'next-intl', '@revyme/runtime'],
+    include: ['next-themes', 'react', 'react-dom', 'motion/react', 'next-intl', '@revyme/runtime', '@chenglou/pretext', '@chenglou/pretext/rich-inline', 'hyphen/en-us', 'hyphen/es', 'hyphen/fr'],
   },
   define: {
     'process.env': {},

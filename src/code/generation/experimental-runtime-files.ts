@@ -6,6 +6,10 @@ const runtimeFiles = import.meta.glob<string>([
   '../../../packages/revyme-runtime-scene/package.json',
   '../../../packages/revyme-runtime-scene/tsconfig.build.json',
   '../../../packages/revyme-runtime-scene/HTML-TO-IMAGE-LICENSE',
+  '../../../packages/revyme-runtime-scene/LIQUIDGL-LICENSE',
+  '../../../packages/revyme-runtime-scene/PRETEXT-LICENSE',
+  '../../../packages/revyme-runtime-scene/HYPHEN-LICENSE',
+  '../../../packages/revyme-runtime-scene/build.mjs',
   '../../../packages/revyme-runtime-scene/EXPERIMENT.md',
 ], { query: '?raw', import: 'default', eager: true });
 

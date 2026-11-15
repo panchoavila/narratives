@@ -17,6 +17,7 @@ import type { Plugin } from 'vite';
 import type { WorkspaceFont } from '../backend/types';
 import { inspectFontBinary } from './font-binary-inspector';
 import { fetchAdobeTypekitKits, ingestAdobeFontsLowLevel } from './adobe-fonts-lowlevel';
+import { createPublishingMiddleware } from './site-publishing';
 
 const MANAGED_TOP_DIRS = new Set([
   'app',
@@ -30,7 +31,7 @@ const MANAGED_TOP_DIRS = new Set([
   '_meta',
 ]);
 
-const SITE_ID_RE = /^[a-z0-9][a-z0-9-_]{0,62}$/;
+export const SITE_ID_RE = /^[a-z0-9][a-z0-9-_]{0,62}$/;
 
 export interface SiteAdobeKitMeta {
   kitId: string;
@@ -61,7 +62,7 @@ export interface SiteSummary {
   updatedAt: string;
 }
 
-const MIME_TYPES: Record<string, string> = {
+export const MIME_TYPES: Record<string, string> = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -80,14 +81,14 @@ const MIME_TYPES: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
 };
 
-function isManagedProjectPath(relPath: string): boolean {
+export function isManagedProjectPath(relPath: string): boolean {
   const normalized = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
   if (!normalized || normalized.includes('..')) return false;
   const top = normalized.split('/')[0] ?? '';
   return MANAGED_TOP_DIRS.has(top);
 }
 
-function walkManagedFiles(siteDir: string): Record<string, string> {
+export function walkManagedFiles(siteDir: string): Record<string, string> {
   const files: Record<string, string> = {};
   for (const topDir of MANAGED_TOP_DIRS) {
     const absTop = path.join(siteDir, topDir);
@@ -126,7 +127,7 @@ function removeEmptyDirs(dir: string, stopAt: string): void {
   }
 }
 
-function readSiteMeta(siteDir: string, siteId: string): SiteMetaFile {
+export function readSiteMeta(siteDir: string, siteId: string): SiteMetaFile {
   const metaPath = path.join(siteDir, '_revyme', 'project-meta.json');
   if (fs.existsSync(metaPath)) {
     try {
@@ -254,7 +255,7 @@ function ensureNextScaffold(siteDir: string, siteId: string, siteName: string, r
   fs.mkdirSync(path.join(siteDir, 'public'), { recursive: true });
 }
 
-function listAllSites(sitesRoot: string): SiteSummary[] {
+export function listAllSites(sitesRoot: string): SiteSummary[] {
   if (!fs.existsSync(sitesRoot)) return [];
   const summaries: SiteSummary[] = [];
   for (const entry of fs.readdirSync(sitesRoot, { withFileTypes: true })) {
@@ -382,7 +383,14 @@ function materializeSiteWorkspaceFonts(sitesRoot: string, siteDir: string, incom
   }
 }
 
-function createStaticAssetMiddleware(repoRoot: string) {
+export interface StaticAssetOptions {
+  /** Which sites' `public/` this request may read. Default: every site (the
+   *  single-user local editor). The self-hosted server limits it to the
+   *  signed-in member's sites. */
+  allowSite?: (req: IncomingMessage, siteId: string) => boolean;
+}
+
+export function createStaticAssetMiddleware(repoRoot: string, options: StaticAssetOptions = {}) {
   const sitesRoot = path.join(repoRoot, 'sites');
   return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
@@ -423,6 +431,7 @@ function createStaticAssetMiddleware(repoRoot: string) {
 
     for (const entry of fs.readdirSync(sitesRoot, { withFileTypes: true })) {
       if (!entry.isDirectory() || !SITE_ID_RE.test(entry.name)) continue;
+      if (options.allowSite && !options.allowSite(req, entry.name)) continue;
       const candidate = path.join(sitesRoot, entry.name, 'public', pathname);
       if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
         const ext = path.extname(candidate).toLowerCase();
@@ -442,17 +451,113 @@ function createStaticAssetMiddleware(repoRoot: string) {
   };
 }
 
-function createSitesApiMiddleware(repoRoot: string) {
-  const sitesRoot = path.join(repoRoot, 'sites');
-  let runtimeRange = '^0.0.32';
+/** `@revyme/runtime` range new site scaffolds depend on: the editor's own. */
+export function readRuntimeRange(repoRoot: string): string {
   try {
     const rootPkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf-8'));
     if (rootPkg?.dependencies?.['@revyme/runtime']) {
-      runtimeRange = rootPkg.dependencies['@revyme/runtime'];
+      return rootPkg.dependencies['@revyme/runtime'];
     }
   } catch {
     // keep fallback
   }
+  return '^0.0.32';
+}
+
+export interface SiteProjectPayload {
+  id: string;
+  name: string;
+  project: {
+    format: SiteMetaFile['format'];
+    files: Record<string, string>;
+    branches?: Record<string, unknown>;
+    activeBranchId?: string;
+    mainBranchId?: string;
+    settings?: Record<string, unknown>;
+  };
+}
+
+/** The `GET /api/sites/:id` body, or null when the site does not exist. */
+export function readSiteProject(sitesRoot: string, siteId: string): SiteProjectPayload | null {
+  if (!SITE_ID_RE.test(siteId)) return null;
+  const siteDir = path.join(sitesRoot, siteId);
+  if (!fs.existsSync(siteDir) || !fs.statSync(siteDir).isDirectory()) return null;
+  const meta = readSiteMeta(siteDir, siteId);
+  const files = walkManagedFiles(siteDir);
+  return {
+    id: siteId,
+    name: meta.name,
+    project: {
+      format: meta.format || 'revyme-v1',
+      files,
+      ...(meta.branches ? { branches: meta.branches } : {}),
+      ...(meta.activeBranchId ? { activeBranchId: meta.activeBranchId } : {}),
+      ...(meta.mainBranchId ? { mainBranchId: meta.mainBranchId } : {}),
+      ...(meta.settings ? { settings: meta.settings } : {}),
+    },
+  };
+}
+
+/**
+ * Persist a saved project envelope (`PUT /api/sites/:id` body) to disk:
+ * writes every managed file, deletes managed files the envelope no longer
+ * lists, keeps the scaffold and metadata current. Returns the file count.
+ */
+export function writeSiteProject(sitesRoot: string, siteId: string, data: any, runtimeRange: string): number {
+  if (!SITE_ID_RE.test(siteId)) throw new Error(`Invalid site ID: ${siteId}`);
+  const siteDir = path.join(sitesRoot, siteId);
+  const incomingFiles: Record<string, string> = data?.files && typeof data.files === 'object' ? data.files : {};
+  fs.mkdirSync(siteDir, { recursive: true });
+
+  const prevMeta = readSiteMeta(siteDir, siteId);
+  const existingDiskFiles = walkManagedFiles(siteDir);
+  const previousSet = new Set<string>([
+    ...(prevMeta.managedFiles ?? []),
+    ...Object.keys(existingDiskFiles),
+  ]);
+
+  // Write incoming files
+  const nextManaged: string[] = [];
+  for (const [relPath, content] of Object.entries(incomingFiles)) {
+    if (!isManagedProjectPath(relPath)) continue;
+    const cleanRel = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
+    const absFile = path.join(siteDir, cleanRel);
+    fs.mkdirSync(path.dirname(absFile), { recursive: true });
+    fs.writeFileSync(absFile, String(content), 'utf-8');
+    nextManaged.push(cleanRel);
+    previousSet.delete(cleanRel);
+  }
+
+  // Remove deleted managed files
+  for (const removedRel of previousSet) {
+    if (!isManagedProjectPath(removedRel)) continue;
+    const absRemoved = path.join(siteDir, removedRel);
+    if (fs.existsSync(absRemoved) && fs.statSync(absRemoved).isFile()) {
+      fs.rmSync(absRemoved, { force: true });
+      removeEmptyDirs(path.dirname(absRemoved), siteDir);
+    }
+  }
+
+  ensureNextScaffold(siteDir, siteId, prevMeta.name, runtimeRange);
+  materializeSiteWorkspaceFonts(sitesRoot, siteDir, incomingFiles);
+  writeSiteMeta(siteDir, {
+    id: siteId,
+    name: prevMeta.name,
+    format: data?.format || prevMeta.format || 'revyme-v1',
+    branches: data?.branches,
+    activeBranchId: data?.activeBranchId,
+    mainBranchId: data?.mainBranchId,
+    settings: data?.settings,
+    managedFiles: nextManaged.sort(),
+    adobeKit: prevMeta.adobeKit ?? null,
+    updatedAt: new Date().toISOString(),
+  });
+  return nextManaged.length;
+}
+
+export function createSitesApiMiddleware(repoRoot: string) {
+  const sitesRoot = path.join(repoRoot, 'sites');
+  const runtimeRange = readRuntimeRange(repoRoot);
 
   return async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     const rawUrl = req.url ?? '/';
@@ -507,78 +612,20 @@ function createSitesApiMiddleware(repoRoot: string) {
 
       // GET /api/sites/:id
       if (segments.length === 3 && req.method === 'GET') {
-        if (!fs.existsSync(siteDir) || !fs.statSync(siteDir).isDirectory()) {
+        const payload = readSiteProject(sitesRoot, siteId);
+        if (!payload) {
           sendJson(res, 404, { error: 'Site not found' });
           return;
         }
-        const meta = readSiteMeta(siteDir, siteId);
-        const files = walkManagedFiles(siteDir);
-        sendJson(res, 200, {
-          id: siteId,
-          name: meta.name,
-          project: {
-            format: meta.format || 'revyme-v1',
-            files,
-            ...(meta.branches ? { branches: meta.branches } : {}),
-            ...(meta.activeBranchId ? { activeBranchId: meta.activeBranchId } : {}),
-            ...(meta.mainBranchId ? { mainBranchId: meta.mainBranchId } : {}),
-            ...(meta.settings ? { settings: meta.settings } : {}),
-          },
-        });
+        sendJson(res, 200, payload);
         return;
       }
 
       // PUT /api/sites/:id
       if (segments.length === 3 && req.method === 'PUT') {
         const data = await readJsonBody(req);
-        const incomingFiles: Record<string, string> = data?.files && typeof data.files === 'object' ? data.files : {};
-        fs.mkdirSync(siteDir, { recursive: true });
-
-        const prevMeta = readSiteMeta(siteDir, siteId);
-        const existingDiskFiles = walkManagedFiles(siteDir);
-        const previousSet = new Set<string>([
-          ...(prevMeta.managedFiles ?? []),
-          ...Object.keys(existingDiskFiles),
-        ]);
-
-        // Write incoming files
-        const nextManaged: string[] = [];
-        for (const [relPath, content] of Object.entries(incomingFiles)) {
-          if (!isManagedProjectPath(relPath)) continue;
-          const cleanRel = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
-          const absFile = path.join(siteDir, cleanRel);
-          fs.mkdirSync(path.dirname(absFile), { recursive: true });
-          fs.writeFileSync(absFile, String(content), 'utf-8');
-          nextManaged.push(cleanRel);
-          previousSet.delete(cleanRel);
-        }
-
-        // Remove deleted managed files
-        for (const removedRel of previousSet) {
-          if (!isManagedProjectPath(removedRel)) continue;
-          const absRemoved = path.join(siteDir, removedRel);
-          if (fs.existsSync(absRemoved) && fs.statSync(absRemoved).isFile()) {
-            fs.rmSync(absRemoved, { force: true });
-            removeEmptyDirs(path.dirname(absRemoved), siteDir);
-          }
-        }
-
-        ensureNextScaffold(siteDir, siteId, prevMeta.name, runtimeRange);
-        materializeSiteWorkspaceFonts(sitesRoot, siteDir, incomingFiles);
-        writeSiteMeta(siteDir, {
-          id: siteId,
-          name: prevMeta.name,
-          format: data?.format || prevMeta.format || 'revyme-v1',
-          branches: data?.branches,
-          activeBranchId: data?.activeBranchId,
-          mainBranchId: data?.mainBranchId,
-          settings: data?.settings,
-          managedFiles: nextManaged.sort(),
-          adobeKit: prevMeta.adobeKit ?? null,
-          updatedAt: new Date().toISOString(),
-        });
-
-        sendJson(res, 200, { ok: true, fileCount: nextManaged.length });
+        const fileCount = writeSiteProject(sitesRoot, siteId, data, runtimeRange);
+        sendJson(res, 200, { ok: true, fileCount });
         return;
       }
 
@@ -718,7 +765,7 @@ function createSitesApiMiddleware(repoRoot: string) {
   };
 }
 
-function createWorkspaceApiMiddleware(repoRoot: string) {
+export function createWorkspaceApiMiddleware(repoRoot: string) {
   const sitesRoot = path.join(repoRoot, 'sites');
   const wsFontsDir = path.join(sitesRoot, '.workspace', 'fonts');
 
@@ -924,12 +971,17 @@ function createWorkspaceApiMiddleware(repoRoot: string) {
 export function sitesApiPlugin(repoRoot: string): Plugin {
   return {
     name: 'websites-sites-api',
+    config() {
+      return { server: { fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/.revyme-local/**'] } } };
+    },
     configureServer(server) {
+      server.middlewares.use(createPublishingMiddleware(repoRoot));
       server.middlewares.use(createWorkspaceApiMiddleware(repoRoot));
       server.middlewares.use(createSitesApiMiddleware(repoRoot));
       server.middlewares.use(createStaticAssetMiddleware(repoRoot));
     },
     configurePreviewServer(server) {
+      server.middlewares.use(createPublishingMiddleware(repoRoot));
       server.middlewares.use(createWorkspaceApiMiddleware(repoRoot));
       server.middlewares.use(createSitesApiMiddleware(repoRoot));
       server.middlewares.use(createStaticAssetMiddleware(repoRoot));
@@ -940,6 +992,9 @@ export function sitesApiPlugin(repoRoot: string): Plugin {
 export function sitesStaticAssetsPlugin(repoRoot: string): Plugin {
   return {
     name: 'websites-static-assets',
+    config() {
+      return { server: { fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/.revyme-local/**'] } } };
+    },
     configureServer(server) {
       server.middlewares.use(createStaticAssetMiddleware(repoRoot));
     },

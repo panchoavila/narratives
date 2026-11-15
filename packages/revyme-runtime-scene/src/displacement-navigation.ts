@@ -1,4 +1,5 @@
 import { toCanvas } from 'html-to-image';
+import { stopVhsObjects } from './vhs-stage';
 import { createDisplacement } from './displacement-renderer';
 import { normalizeDisplacement, type DisplacementConfig } from './displacement-config';
 
@@ -60,7 +61,8 @@ export async function runDisplacementNavigation(options: DisplacementNavigationO
     check();
     // Canvas/video/iframe snapshots cannot be promised by this adapter. A future
     // compositor may instead supply its already-owned textures to the renderer.
-    const unsupported = [...document.body.querySelectorAll('canvas,video,iframe')].some(el => !overlay?.contains(el) && !el.hasAttribute('data-revyme-effect-overlay'));
+    const unsupported = [...document.body.querySelectorAll('canvas,video,iframe')].some(el => !overlay?.contains(el) &&
+      (!el.hasAttribute('data-revyme-effect-overlay') || el.hasAttribute('data-revyme-liquid-canvas')));
     if (unsupported) throw Error('unsupported-surface');
     if (document.body.querySelectorAll('*').length > 1600) throw Error('capture-budget');
     const width = innerWidth, height = innerHeight;
@@ -95,6 +97,7 @@ export async function runDisplacementNavigation(options: DisplacementNavigationO
   window.addEventListener('resize', resized);motion.addEventListener('change', reduced);document.addEventListener('visibilitychange', hidden);
   try {
     check();
+    stopVhsObjects();
     if (!config) throw Error('invalid-config');
     if (motion.matches) throw Error('reduced-motion');
     const canvas = document.createElement('canvas');canvas.setAttribute('aria-hidden', 'true');

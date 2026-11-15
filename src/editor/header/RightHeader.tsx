@@ -21,6 +21,7 @@ import ConfirmDialog from '@/design-system/ConfirmDialog';
 import { settingsOverlayOpenAtom, settingsSectionAtom, websiteMetaAtom } from '@/code/stores/website-settings-store';
 import { isComponentFileAtom } from '@/code/stores/store';
 import { LiveDropdown } from './LiveDropdown';
+import LocalPublishDropdown from './LocalPublishDropdown';
 import { ExportDropdown, type ExportFormat } from './ExportDropdown';
 import ExportConfirmModal, { TRANSFORMATIVE_FORMATS } from '../ui/ExportConfirmModal';
 import { exportProject } from './export-project';
@@ -47,6 +48,7 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
   const isClosedSource = useIsClosedSource();
   const [exportTipOpen, setExportTipOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [localPublishing, setLocalPublishing] = useState(false);
   const [publishSuccess, setPublishSuccess] = useState(false);
   // Publish failures used to go through window.alert(), which is unstyled,
   // blocks the tab, and gives a plan-limit rejection no way to act on itself.
@@ -252,7 +254,6 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
   // The dropdown's outside-click handler skips clicks on
   // `[data-live-trigger]` so this toggle wins cleanly.
   const handleLiveClick = useCallback(() => {
-    if (!CLOUD_ENABLED) return;
     setOpen((prev) => !prev);
     trace.action('header:live-toggle');
   }, []);
@@ -390,10 +391,10 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
               />
             )}
             <span className="relative tabular-nums">
-              {publishing && !open ? `${Math.round(progress * 100)}%` : 'Publish'}
+              {publishing && !open ? `${Math.round(progress * 100)}%` : localPublishing && !open ? 'Building…' : 'Publish'}
             </span>
           </Button>
-          <LiveDropdown
+          {CLOUD_ENABLED ? <LiveDropdown
             open={open}
             meta={meta}
             publishing={publishing}
@@ -416,7 +417,7 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
               setSettingsSection('staging');
               setSettingsOpen(true);
             }}
-          />
+          /> : <LocalPublishDropdown open={open} onClose={() => setOpen(false)} onBusyChange={setLocalPublishing} />}
         </div>
       </div>
 

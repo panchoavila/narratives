@@ -232,6 +232,7 @@ export const PRESET_OPTIONS: { value: string; label: string }[] = [
   { value: 'displacement', label: 'Displacement' },
   { value: 'glitch', label: 'Glitch' },
   { value: 'ripple-water', label: 'Ripple' },
+  { value: 'vhs', label: 'VHS' },
   { value: 'custom', label: 'Custom' },
 ];
 

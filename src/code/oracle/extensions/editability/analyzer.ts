@@ -39,6 +39,8 @@ const TRANSPARENT_TAGS_LOCAL = new Set([
   // override and the Ticker effect. Never nodes, never carry a data-id.
   'Override',
   'RevymeTicker',
+  'RevymeVhs',
+  'RevymeLiquidBackdrop',
 ]);
 
 // Tags that are not nodes the editor ever manages. <style> is just a CSS

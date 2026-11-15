@@ -12,6 +12,9 @@
 import React from 'react';
 import type { CanvasNode } from '@/code/parsing/parser';
 import { jsxStyleToHTML } from '@/shared/css-utils';
+import type { CollectionItem } from '@/shared/types';
+import { applyNodeCmsBindings } from './renderer/bindings';
+import { applyChainConfig } from './renderer/collection-data';
 
 /** A JSON-serializable snapshot of a connected canvas-node subtree. */
 export interface SerializedSlotNode {
@@ -25,6 +28,12 @@ export interface SerializedSlotNode {
    *  2026-07-26). Mirrors the Renderer's `shouldUseInnerHTML` branch. */
   hasMixedContent?: boolean;
   children: SerializedSlotNode[];
+  bindings?: Pick<CanvasNode, 'id' | 'binding' | 'attrBindings' | 'styleBindings' | 'responsiveBindings' | 'variantBindings' | 'componentVariant' | 'responsiveVariantMap' | 'responsiveVariantBp'>;
+  collection?: {
+    config: NonNullable<CanvasNode['collectionList']>;
+    data: CollectionItem[];
+    templates: Record<string, SerializedSlotNode>;
+  };
 }
 
 /** IDs of every node ABOVE `nodeId` in the tree (parent, grandparent, …).
@@ -71,6 +80,7 @@ function serializeSlotNode(
   id: string,
   nodes: Map<string, CanvasNode>,
   slotConnections?: Map<string, string[]>,
+  collections?: Map<string, CollectionItem[]>,
   visited: Set<string> = new Set(),
 ): SerializedSlotNode | null {
   const n = nodes.get(id);
@@ -78,8 +88,18 @@ function serializeSlotNode(
   if (visited.has(id)) return null;
   visited.add(id);
 
+  if (n.collectionList && n.attrs?.['data-revyme-collection-slot'] !== undefined) {
+    const templates: Record<string, SerializedSlotNode> = {};
+    for (const [layout, templateId] of Object.entries(n.collectionList.templateIds)) {
+      const template = serializeSlotNode(templateId, nodes, slotConnections, collections, new Set(visited));
+      if (template) templates[layout] = template;
+    }
+    return { type: 'div', styles: {}, attrs: { 'data-revyme-collection-slot': '' }, children: [],
+      collection: { config: n.collectionList, data: collections?.get(n.collectionList.source) ?? [], templates } };
+  }
+
   const inlineChildren = (n.children || [])
-    .map(c => serializeSlotNode(c, nodes, slotConnections, visited))
+    .map(c => serializeSlotNode(c, nodes, slotConnections, collections, visited))
     .filter((c): c is SerializedSlotNode => c !== null);
 
   // If this node has its OWN slot connections (it's a slot-bearing component
@@ -101,7 +121,7 @@ function serializeSlotNode(
   const slotKids = slotConnections?.get(id) ?? [];
   const slotChildren = slotKids
     .map(cid => {
-      const sn = serializeSlotNode(cid, nodes, slotConnections, visited);
+      const sn = serializeSlotNode(cid, nodes, slotConnections, collections, visited);
       if (!sn) return null;
       const stripped = { ...sn.styles };
       delete stripped.position;
@@ -120,6 +140,11 @@ function serializeSlotNode(
     textContent: n.textContent,
     hasMixedContent: n.hasMixedContent,
     children: [...inlineChildren, ...slotChildren],
+    ...(n.binding || n.attrBindings?.length || n.styleBindings?.length || n.responsiveBindings || n.variantBindings ? {
+      bindings: { id: n.id, binding: n.binding, attrBindings: n.attrBindings, styleBindings: n.styleBindings,
+        responsiveBindings: n.responsiveBindings, variantBindings: n.variantBindings,
+        componentVariant: n.componentVariant, responsiveVariantMap: n.responsiveVariantMap, responsiveVariantBp: n.responsiveVariantBp },
+    } : {}),
   };
 }
 
@@ -131,9 +156,10 @@ export function serializeSlotChildren(
   connectedIds: string[],
   nodes: Map<string, CanvasNode>,
   slotConnections?: Map<string, string[]>,
+  collections?: Map<string, CollectionItem[]>,
 ): SerializedSlotNode[] {
   return connectedIds
-    .map(cid => serializeSlotNode(cid, nodes, slotConnections))
+    .map(cid => serializeSlotNode(cid, nodes, slotConnections, collections))
     .filter((c): c is SerializedSlotNode => c !== null);
 }
 
@@ -145,7 +171,16 @@ export function serializeSlotChildren(
  * own `left/top`, which is real in-frame positioning — stripping those
  * would freeze nested children at the wrong spot.
  */
-function buildOne(sn: SerializedSlotNode, key: string, isRoot: boolean): React.ReactElement {
+function buildOne(sn: SerializedSlotNode, key: string, isRoot: boolean, vpWidth?: number, row?: CollectionItem): React.ReactElement {
+  if (sn.collection) {
+    const { config, data, templates } = sn.collection;
+    const rows = applyChainConfig(data, config, vpWidth);
+    const children = rows.map((item, index) => {
+      const template = templates[String(item._layout)] ?? templates.default ?? Object.values(templates)[0];
+      return template ? buildOne(template, String(item._id ?? index), true, vpWidth, item) : null;
+    });
+    return React.createElement('div', { key, 'data-revyme-collection-slot': '' }, children);
+  }
   const style: Record<string, any> = { ...sn.styles };
   if (isRoot) {
     delete style.position;
@@ -158,14 +193,29 @@ function buildOne(sn: SerializedSlotNode, key: string, isRoot: boolean): React.R
   const props: Record<string, any> = { key, style };
   for (const [k, v] of Object.entries(sn.attrs)) {
     // Strip editor-only data-* attrs so the ghost carries no data-id
-    // (no selection collision with the real floating copy).
-    if (k.startsWith('data-')) continue;
+    // (no selection collision with the real floating copy). `data-flow` is
+    // content, not editor state: an Editorial Flow reads it to place the ghost.
+    if (k.startsWith('data-') && k !== 'data-flow') continue;
     props[k] = v;
   }
 
   // Only plain HTML tags render as ghosts; component-instance slot children
   // fall back to a div (rare — slot content is normally frames).
   const tag = /^[a-z]/.test(sn.type) ? sn.type : 'div';
+
+  if (row && sn.bindings) {
+    // Apply the same binding semantics as the native CMS renderer to a
+    // detached element. No canvas DOM or layout measurements are involved.
+    const probe = document.createElement('div');
+    const result = applyNodeCmsBindings(probe, { ...sn.bindings, styles: sn.styles } as CanvasNode,
+      row, vpWidth, undefined, { resetEmptyStyleToDefault: true, skipHref: true });
+    for (const name of result.styleKeys) style[name] = (probe.style as unknown as Record<string, string>)[name] || '';
+    for (const attr of Array.from(probe.attributes)) if (attr.name !== 'style') props[attr.name] = attr.value;
+    if (result.textApplied) {
+      if (probe.children.length) props.dangerouslySetInnerHTML = { __html: probe.innerHTML };
+      return React.createElement(tag, props, props.dangerouslySetInnerHTML ? undefined : probe.textContent);
+    }
+  }
 
   // RICH TEXT — `textContent` holds raw inner JSX, so convert it to HTML and
   // inject as markup. As a plain text child React escaped it and the ghost
@@ -179,15 +229,15 @@ function buildOne(sn: SerializedSlotNode, key: string, isRoot: boolean): React.R
   }
 
   const kids = sn.children.length > 0
-    ? sn.children.map((c, i) => buildOne(c, String(i), false))
+    ? sn.children.map((c, i) => buildOne(c, String(i), false, vpWidth, row))
     : (sn.textContent || undefined);
 
   return React.createElement(tag, props, kids);
 }
 
 /** Rebuild serialized slot children as React ghost elements. */
-export function buildSlotChildren(serialized: SerializedSlotNode[]): React.ReactNode[] {
-  return serialized.map((sn, i) => buildOne(sn, String(i), true));
+export function buildSlotChildren(serialized: SerializedSlotNode[], vpWidth?: number): React.ReactNode[] {
+  return serialized.map((sn, i) => buildOne(sn, String(i), true, vpWidth));
 }
 
 /**

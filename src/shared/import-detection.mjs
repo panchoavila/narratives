@@ -129,6 +129,8 @@ export function buildAutoImports(body) {
   // in this list — see runtime-exports-covered.test.ts, which fails when one
   // is missing.
   if (/\blocalizeRows\b/.test(body)) revymeRuntime.push('localizeRows');
+  if (/\bRevymeCarousel3D\b/.test(body)) revymeRuntime.push('RevymeCarousel3D');
+  if (/\bRevymeFlow\b/.test(body)) revymeRuntime.push('RevymeFlow');
   // Code overrides: the page-side wrapper, and the store / host stand-ins
   // that override files (`overrides/*.tsx`) import.
   // Skipped when the file declares its own binding of the same name.
@@ -136,6 +138,9 @@ export function buildAutoImports(body) {
   if (/\bOverride\b/.test(body) && !declares('Override')) revymeRuntime.push('Override');
   if (/\bcreateStore\b/.test(body) && !declares('createStore')) revymeRuntime.push('createStore');
   if (/\bhostCompat\b/.test(body)) revymeRuntime.push('hostCompat');
+  for (const name of ['attachLiquidGlassElements', 'normalizeLiquidGlass', 'parseLiquidGlassAttribute', 'DEFAULT_LIQUID_GLASS']) {
+    if (new RegExp(`\\b${name}\\b`).test(body) && !declares(name)) revymeRuntime.push(name);
+  }
   if (revymeRuntime.length > 0) {
     lines.push(`import { ${revymeRuntime.join(', ')} } from '@revyme/runtime';`);
   }

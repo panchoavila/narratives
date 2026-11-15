@@ -8,6 +8,9 @@ import { parsePageEffects, serializePageEffects, upsertEffectInMap } from './pag
 import { resolvePageEffect } from '../generation/view-transition-css';
 import { buildSourceExport } from './source-export';
 import controller from '../generation/page-displacement-controller.tsx.txt?raw';
+import { liftVhsSurfaces, wrapVhsSurfaces } from '../generation/vhs-gen';
+import { updateHtmlAttrsInCode } from '../generation/generator-attrs';
+import { parseJSXToNodes } from '@/code/parsing/parser';
 
 describe('Glitch authoring and export', () => {
   it('bounds invalid values without losing zero as a valid continuous interval', () => {
@@ -49,6 +52,19 @@ describe('Glitch authoring and export', () => {
   it('round-trips Ripple page effects', () => {
     const map = upsertEffectInMap({ pages: {} }, '/', { target: '/about', preset: 'ripple-water', ripple: { ...DEFAULT_RIPPLE, wavelength: 120 } });
     expect(resolvePageEffect(parsePageEffects(serializePageEffects(map)), '/', '/about')?.ripple?.wavelength).toBe(120);
+  });
+  it('keeps a VHS object editable and includes its WebGL runtime in an object-only export', async () => {
+    const plain = 'export default () => <main data-id="root"><button data-id="tape" data-canvas-effect="vhs" data-vhs=\'{"version":1,"duration":1.7}\'>Play</button></main>;';
+    const wrapped = wrapVhsSurfaces(plain);
+    expect(wrapped).toContain('<RevymeVhs><button');
+    expect(wrapVhsSurfaces(wrapped)).toBe(wrapped);
+    const node = parseJSXToNodes(wrapped).get('tape');
+    expect(node?.parentId).toBe('root');
+    expect(parseCanvasEffectFromAttrs(node?.attrs)?.vhs?.duration).toBe(1.7);
+    const removed = wrapVhsSurfaces(updateHtmlAttrsInCode(liftVhsSurfaces(wrapped), 'tape', { 'data-canvas-effect': '' }));
+    expect(removed).not.toContain('RevymeVhs');
+    const out = await buildSourceExport({ 'app/page.client.tsx': wrapped }, { name: 'test', runtimeRange: '^0.0.32' });
+    expect(out.files['vendor/revyme-runtime/dist/index.js']).toContain('texElementSubImage2D');
   });
 });
 

@@ -19,7 +19,7 @@ vi.mock('./index', () => ({
 vi.mock('./project-id', () => ({
   getProjectId: () => 'site-1',
 }));
-vi.mock('@/shared/cloud-flag', () => ({ CLOUD_ENABLED: true }));
+vi.mock('@/shared/cloud-flag', () => ({ CLOUD_ENABLED: true, SELF_HOSTED: false, COLLAB_ENABLED: true }));
 
 const sendBeacon = vi.fn(() => true);
 Object.defineProperty(navigator, 'sendBeacon', {

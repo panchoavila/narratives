@@ -15,6 +15,8 @@ export const PARSER_TRANSPARENT_TAGS: ReadonlySet<string> = new Set([
   'Override',
   // Ticker-effect wrapper — `<RevymeTicker …><Frame data-id/></RevymeTicker>`.
   'RevymeTicker',
+  'RevymeVhs',
+  'RevymeLiquidBackdrop',
 ]);
 
 /** Name of the JSX tag whose opening tag contains offset `idx` (best effort:

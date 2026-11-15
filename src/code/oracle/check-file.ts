@@ -38,6 +38,8 @@ import { checkSvgShapeDialect, checkShapeVariantDForm } from './checks/svg-shape
 import { checkMotionAppearHidden, checkMotionTransformDrift } from './checks/motion-appear';
 import { checkCodeOverrides } from './checks/code-override';
 import { checkTickers } from './checks/ticker';
+import { checkEditorialFlow } from './checks/editorial-flow';
+import { checkPageFlow } from './checks/page-flow';
 import { checkMotionPropsNeedMotionTag } from './checks/motion-tag';
 import { checkTranslationDialect } from './checks/translation-dialect';
 import { checkMediaBandDialect, checkDuplicateBreakpointStack } from './checks/media-band-dialect';
@@ -1296,6 +1298,20 @@ export function checkFile(
   //    read back by the panel), so it is exempt.
   if (!isCodeComponent && code.includes('<RevymeTicker')) {
     checkTickers(ast, v);
+  }
+
+  // ── EDITORIAL FLOW — `<EditorialFlow preset>` names a known layout, `data-flow`
+  //    is a literal readFlowAttribute accepts, and a flow never sits inside another.
+  //    Same exemption as the ticker: a code component's JSX is never read back.
+  //    The source precheck keeps files with neither the tag nor the attribute cheap.
+  if (!isCodeComponent && (code.includes('<EditorialFlow') || code.includes('data-flow'))) {
+    checkEditorialFlow(ast, v);
+  }
+
+  // ── PAGE FLOW — a root that reads sideways keeps its children as panels, a value
+  //    the runtime reads, and a restorable @pageFlow block. Precheck on the source.
+  if (!isCodeComponent && (code.includes('--revyme-page-flow') || code.includes('@pageFlow'))) {
+    checkPageFlow(ast, v);
   }
 
   // ── MOTION PROPS ON A PLAIN TAG — silent everywhere the author can see.

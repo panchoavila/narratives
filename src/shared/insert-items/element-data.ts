@@ -69,6 +69,8 @@ const TYPOGRAPHY_ITEMS: InsertItem[] = [
   { id: 'paragraph', name: 'Paragraph', iconKey: 'paragraph' },
   { id: 'text-link', name: 'Text Link', iconKey: 'textLink' },
   { id: 'quote', name: 'Quote', iconKey: 'quote' },
+  // A whole piece laid out like a magazine: a code component (`cs-` + toolbar-item-config.ts).
+  { id: 'cs-editorialFlow', name: 'Editorial Flow', iconKey: 'paragraph' },
 ];
 
 const CARD_ITEMS: InsertItem[] = [
@@ -116,6 +118,7 @@ const SHAPE_ITEMS: InsertItem[] = [
 //     slot model, just driven by cursor instead of time.
 const EFFECTS_ITEMS: InsertItem[] = [
   { id: 'cs-carousel', name: 'Carousel', iconKey: 'effectCarousel', gradientColors: ['#3B82F6', '#2563EB'] },
+  { id: 'cs-carousel3D', name: '3D Carousel', iconKey: 'effectCarousel', gradientColors: ['#2563EB', '#8B5CF6'] },
   { id: 'cs-marquee', name: 'Marquee', iconKey: 'effectMarquee', gradientColors: ['#8B5CF6', '#7C3AED'] },
   { id: 'cs-ribbonMarquee', name: 'Path Marquee', iconKey: 'effectPathMarquee', gradientColors: ['#A855F7', '#7C3AED'] },
   { id: 'cs-threeDMarquee', name: '3D Marquee', iconKey: 'effectThreeDMarquee', gradientColors: ['#06B6D4', '#0891B2'] },

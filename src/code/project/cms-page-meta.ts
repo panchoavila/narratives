@@ -12,6 +12,16 @@ export interface CmsPageMeta {
   kind: 'detail' | 'index';
 }
 
+/** The variable a `kind: 'detail'` page binds its previewed record to
+ *  (`const item = <collection>.find(...) ?? <collection>[0];`). Shared by the
+ *  parser, the generators and the canvas so the name is never hard-coded twice. */
+export const CMS_DETAIL_ITEM_VAR = 'item';
+
+/** The detail item variable when `code` is a `kind: 'detail'` page, else null. */
+export function detailItemVarOf(code: string): string | null {
+  return parseCmsPageMeta(code)?.kind === 'detail' ? CMS_DETAIL_ITEM_VAR : null;
+}
+
 /**
  * Parse `/** @cmsPage { collection, kind } *​/` from a page file. Returns
  * null when the annotation is absent — that's how the editor distinguishes

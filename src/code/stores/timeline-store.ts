@@ -118,7 +118,7 @@ export const timelineTracksAtom = atom<TimelineTrack[]>((get) => {
   for (const effect of pageEffects) {
     const enterDur = effect.enter?.transition?.duration;
     const exitDur = effect.exit?.transition?.duration;
-    const dur = parseSecondsValue(enterDur ?? exitDur ?? (effect as any).duration, 0.45);
+    const dur = parseSecondsValue(effect.vhs?.duration ?? enterDur ?? exitDur ?? (effect as any).duration, 0.45);
     const delay = parseSecondsValue(effect.enter?.transition?.delay ?? 0, 0);
     tracks.push({
       id: `page:transition:${effect.target}`,
@@ -399,7 +399,7 @@ export const timelineTracksAtom = atom<TimelineTrack[]>((get) => {
         nodeTag,
         pageLabel,
         kind: 'canvas-effect',
-        trigger: 'hover',
+        trigger: canvasFx.vhs?.trigger === 'click' ? 'tap' : 'hover',
         label: getCanvasEffectLabel(canvasFx.preset),
         delay: canvasFx.delay,
         duration: canvasFx.duration,

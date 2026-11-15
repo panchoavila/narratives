@@ -95,6 +95,50 @@ describe('one upright editing canvas across all breakpoints', () => {
 });
 
 describe('focused live responsive viewport', () => {
+  it('preserves spatial component depth across grouping wrappers and restores the site camera', async () => {
+    const scene = document.createElement('div');
+    scene.innerHTML = `<section data-node-id="container" style="isolation:isolate;opacity:.6;filter:blur(1px);overflow:hidden">
+      <div data-revyme-spatial-root><div data-revyme-spatial-camera style="perspective:1200px;overflow:clip">
+        <div style="transform-style:preserve-3d"><div data-revyme-spatial-surface
+          style="transform:translateZ(200px);visibility:hidden;backface-visibility:hidden;opacity:.4">Rear</div></div>
+      </div></div>
+    </section>`;
+    document.body.append(scene);
+    const before = scene.innerHTML;
+    const options = { enabled: true, instant: true, separation: 0, selectedId: '' };
+    await applySceneInspection(scene, options);
+    const surface = scene.querySelector<HTMLElement>('[data-revyme-spatial-surface]')!;
+    for (let parent = surface.parentElement; parent && scene.contains(parent); parent = parent.parentElement) {
+      expect(getComputedStyle(parent).transformStyle).toBe('preserve-3d');
+      expect(getComputedStyle(parent).isolation).toBe('auto');
+    }
+    expect(getComputedStyle(surface).visibility).toBe('visible');
+    expect(getComputedStyle(surface).backfaceVisibility).toBe('visible');
+    const camera = scene.querySelector<HTMLElement>('[data-revyme-spatial-camera]')!;
+    expect(getComputedStyle(camera).perspective).toBe('none');
+    // A component mounted after entering inspection must inherit the contract.
+    const inserted = document.createElement('div');
+    inserted.innerHTML = '<div data-revyme-spatial-surface></div>';
+    scene.append(inserted);
+    expect(getComputedStyle(inserted).transformStyle).toBe('preserve-3d');
+    inserted.remove();
+    await applySceneInspection(scene, { ...options, enabled: false });
+    expect(scene.innerHTML).toBe(before);
+    expect(getComputedStyle(camera).perspective).toBe('1200px');
+    expect(getComputedStyle(surface).visibility).toBe('hidden');
+    expect(getComputedStyle(surface).backfaceVisibility).toBe('hidden');
+  });
+
+  it('keeps spatial surfaces in other viewports hidden', async () => {
+    const scene = document.createElement('div');
+    scene.innerHTML = `<div data-viewport="desktop" data-node-id="desktop"><div data-revyme-spatial-surface></div></div>
+      <div data-viewport="mobile" data-node-id="mobile"><div data-revyme-spatial-surface></div></div>`;
+    document.body.append(scene);
+    await applySceneInspection(scene, { enabled: true, instant: true, separation: 0, selectedId: '', viewportId: 'desktop' });
+    expect(getComputedStyle(scene.querySelector('[data-viewport="desktop"] [data-revyme-spatial-surface]')!).visibility).toBe('visible');
+    expect(getComputedStyle(scene.querySelector('[data-viewport="mobile"] [data-revyme-spatial-surface]')!).visibility).toBe('hidden');
+  });
+
   it('measures fractional border-box dimensions in layout space, ignoring 3D projection', () => {
     const scene = document.createElement('div'); document.body.append(scene);
     const viewport = document.createElement('div'); scene.append(viewport);

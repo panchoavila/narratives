@@ -27,7 +27,7 @@ describe('Canvas effect picker', () => {
     expect(ui.queryByRole('option',{name:'Particle Object'})).toBeNull();
     ui.rerender(<CanvasEffectPopup nodeId="image" config={{...DEFAULT_CANVAS_EFFECT, preset:'glitch'}} isParticleTarget />);
     expect(ui.getAllByRole('option').map(option => option.textContent)).toEqual([
-      'Glitch', 'Glyph Rain', 'Ripple', 'Particle Object',
+      'Glitch', 'Glyph Rain', 'Ripple', 'VHS', 'Particle Object',
     ]);
   });
   it('keeps custom glyph characters safe in the generated JSX attribute', () => {

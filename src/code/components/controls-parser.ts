@@ -61,6 +61,8 @@ export interface ComponentControlDef {
   // slot — how many canvas nodes may be connected into this children prop.
   // `1` for a single slot, a number for a cap, `"infinite"` for unbounded.
   slotMax?: SlotMax;
+  /** This slot can expand an editable CMS collection into individual items. */
+  collection?: boolean;
   // group — the nested controls rendered inside this group's popup. Each is
   // a normal flat prop on the component (the group only nests them in the UI).
   controls?: Record<string, ComponentControlDef>;
@@ -79,6 +81,21 @@ export interface ComponentControlsMeta {
   label: string | null;
   comment: string | null;
   controls: Record<string, ComponentControlDef>;
+}
+
+/** Group controls expose flat component props, including at nested depths. */
+export function findComponentControl(
+  controls: Record<string, ComponentControlDef> | undefined,
+  propName: string,
+): ComponentControlDef | undefined {
+  if (!controls) return undefined;
+  if (controls[propName]) return controls[propName];
+  for (const control of Object.values(controls)) {
+    if (control.type !== 'group') continue;
+    const found = findComponentControl(control.controls, propName);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 // ─── Parser ─────────────────────────────────────────────────────────────────

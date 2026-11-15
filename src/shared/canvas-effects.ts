@@ -2,6 +2,7 @@ export type CanvasEffectPreset =
   | 'glitch'
   | 'glyph-rain'
   | 'ripple-water'
+  | 'vhs'
   | 'particle-object';
 
 export interface CanvasEffectConfig {
@@ -13,11 +14,13 @@ export interface CanvasEffectConfig {
   glyphRain?: import('../../packages/revyme-runtime-scene/src/glyph-rain').GlyphRainConfig;
   ripple?: import('../../packages/revyme-runtime-scene/src/ripple-config').RippleConfig;
   particle?: import('../../packages/revyme-runtime-scene/src/particle-config').ParticleConfig;
+  vhs?: import('../../packages/revyme-runtime-scene/src/vhs-config').VhsConfig;
 }
 import { DEFAULT_GLITCH, normalizeGlitch } from '../../packages/revyme-runtime-scene/src/glitch-config';
 import { DEFAULT_GLYPH_RAIN, normalizeGlyphRain } from '../../packages/revyme-runtime-scene/src/glyph-rain';
 import { DEFAULT_RIPPLE, normalizeRipple } from '../../packages/revyme-runtime-scene/src/ripple-config';
 import { DEFAULT_PARTICLE, normalizeParticle } from '../../packages/revyme-runtime-scene/src/particle-config';
+import { DEFAULT_VHS, normalizeVhs } from '../../packages/revyme-runtime-scene/src/vhs-config';
 
 export const CANVAS_EFFECT_OPTIONS: {
   value: CanvasEffectPreset;
@@ -28,6 +31,7 @@ export const CANVAS_EFFECT_OPTIONS: {
   { value: 'glitch', label: 'Glitch', description: 'Broadcast tears, RGB separation and corrupted blocks.', defaultDuration: 0.4 },
   { value: 'glyph-rain', label: 'Glyph Rain', description: 'Falling glyphs illuminate the content beneath.', defaultDuration: 1 },
   { value: 'ripple-water', label: 'Ripple', description: 'Expanding ripples refract the selected content.', defaultDuration: 1.8 },
+  { value: 'vhs', label: 'VHS', description: 'Tape wave, chroma bleed and tracking noise.', defaultDuration: DEFAULT_VHS.duration },
   { value: 'particle-object', label: 'Particle Object', description: 'Reconstruct an image or SVG as interactive particles.', defaultDuration: 1 },
 ];
 
@@ -123,6 +127,11 @@ export function parseCanvasEffectFromAttrs(
     let particle = DEFAULT_PARTICLE;
     try { particle = normalizeParticle(JSON.parse(String(attrs['data-particle-object'] ?? ''))) ?? DEFAULT_PARTICLE; } catch { /* defaults */ }
     return { preset: rawPreset, duration, delay, intensity, particle };
+  }
+  if (rawPreset === 'vhs') {
+    let vhs = DEFAULT_VHS;
+    try { vhs = normalizeVhs(JSON.parse(String(attrs['data-vhs'] ?? ''))) ?? DEFAULT_VHS; } catch { /* defaults */ }
+    return { preset: rawPreset, duration: vhs.duration, delay, vhs };
   }
   return { preset: rawPreset, duration, delay, intensity };
 }

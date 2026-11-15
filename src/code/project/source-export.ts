@@ -23,6 +23,8 @@
 // command was removed in 16), and the tsconfig values Next would otherwise
 // rewrite on first run (`jsx: react-jsx`, `.next/dev/types`).
 
+import { needsWorkspaceRuntime } from '@/shared/workspace-runtime';
+
 // ─── URL-import localization ────────────────────────────────────────────────
 
 const URL_IMPORT_RE = /(['"])(https:\/\/assets\.revyme\.app\/components\/([A-Za-z0-9_-]+)@([a-f0-9]+)\.js)\1/g;
@@ -127,7 +129,9 @@ export async function buildSourceExport(input: Record<string, string>, opts: Sou
     if (!isBuilderMetadataPath(path)) files[path] = content;
   }
   const slug = exportSlug(opts.name);
-  const needsExperimentalRuntime = Object.values(files).some(code => code.includes('@pt-scene-') || code.includes('@revyme-glitch-runtime-'));
+  const needsExperimentalRuntime = Object.values(files).some(code =>
+    needsWorkspaceRuntime(code),
+  );
   if (!localized['package.json']) files['package.json'] = buildPackageJson(slug, opts.runtimeRange, opts.now ?? new Date());
   if (needsExperimentalRuntime) {
     const { EXPERIMENTAL_RUNTIME_FILES } = await import('../generation/experimental-runtime-files');

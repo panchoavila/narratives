@@ -10,6 +10,7 @@ export interface SceneCamera extends SceneOrientation {
 }
 export const DEFAULT_SCENE_CAMERA: SceneCamera = { pitch: SCENE_PITCH, yaw: SCENE_YAW, roll: 0, perspective: false, previousPerspective: false, view: 'user', dragging: false };
 export const sceneActiveAtom = atom(false);
+export const sceneSeparationAtom = atom(24);
 export const sceneCameraAtom = atom<SceneCamera>({ ...DEFAULT_SCENE_CAMERA });
 export const sceneBoundsAtom = atom<SceneViewportBounds | null>(null);
 

@@ -130,7 +130,9 @@ export function getResponsiveOverridesForNode(nodeId: string, vpWidth: number | 
       const nodeOverrides = bp.nodes.get(nodeId);
       if (nodeOverrides) {
         for (const [prop, val] of nodeOverrides) {
-          const camelProp = prop.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+          // A custom property keeps its name: camel-casing `--revyme-page-flow` made an expando
+          // (`-RevymePageFlow`) the element ignores. setElStyle routes `--` keys to setProperty.
+          const camelProp = prop.startsWith('--') ? prop : prop.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
           overrides[camelProp] = val; // smaller breakpoints override larger ones
         }
       }

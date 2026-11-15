@@ -238,6 +238,10 @@ export function connectSlotInCode(code: string, componentId: string, canvasNodeI
       && c.expression.name === constName);
     if (!already) {
       comp.children.push(t.jsxExpressionContainer(t.identifier(constName)));
+      if (comp.openingElement.selfClosing) {
+        comp.openingElement.selfClosing = false;
+        comp.closingElement = t.jsxClosingElement(comp.openingElement.name);
+      }
     }
   });
 

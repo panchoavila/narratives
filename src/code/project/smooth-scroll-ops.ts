@@ -31,7 +31,8 @@ export function getSmoothScrollForPage(pageFile: string): { own: SmoothScrollCon
   return { own: ownSmoothScroll(map, route), effective: resolveSmoothScroll(map, route), route };
 }
 
-function ensureRuntime(): void {
+/** Scaffold the Smooth Scroll controller and mount it in the root layout (idempotent). Also used by Page Flow. */
+export function ensureSmoothScrollRuntime(): void {
   ensureSmoothScrollScaffold();
   if (!projectFS.exists('app/layout.tsx')) projectFS.writeFile('app/layout.tsx', ensureLayoutFile());
   // Only touch the root layout when the mount is missing: a no-op rewrite on
@@ -50,7 +51,7 @@ function writeMap(next: (code: string) => string): void {
 
 /** Author the config on this page. */
 export function setSmoothScrollForPage(pageFile: string, cfg: SmoothScrollConfig): void {
-  ensureRuntime();
+  ensureSmoothScrollRuntime();
   const route = routeForPage(pageFile);
   writeMap((code) => serializeSmoothScroll(setSmoothScrollInMap(parseSmoothScroll(code), route, cfg)));
   trace.action('smooth-scroll-ops:set', { pageFile, route, enabled: cfg.enabled, intensity: cfg.intensity });
@@ -59,7 +60,7 @@ export function setSmoothScrollForPage(pageFile: string, cfg: SmoothScrollConfig
 /** The same config on several pages, in one write (a site import: every imported page). */
 export function setSmoothScrollForPages(pageFiles: string[], cfg: SmoothScrollConfig): void {
   if (!pageFiles.length) return;
-  ensureRuntime();
+  ensureSmoothScrollRuntime();
   const routes = [...new Set(pageFiles.map(routeForPage))];
   writeMap((code) => serializeSmoothScroll(setSmoothScrollForRoutesInMap(parseSmoothScroll(code), routes, cfg)));
   trace.action('smooth-scroll-ops:set-pages', { routes: routes.length, intensity: cfg.intensity });

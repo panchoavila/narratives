@@ -33,8 +33,11 @@ import {
   COLLECTION_MAP_CALL_RE,
   findCollectionChainHead,
   buildFilterExpression,
+  unemittableFilterReason,
   buildSortKeyExpr,
+  filterRowVar,
 } from './cms-gen';
+import { detailItemVarOf } from '@/code/project/cms-page-meta';
 
 // ─── Config model ─────────────────────────────────────────────────────────────
 
@@ -50,6 +53,30 @@ export interface ResponsiveListConfig {
   base: ListConfigDims;
   viewport: Record<string, ListConfigDims>;  // breakpoint width → partial
   variants: Record<string, ListConfigDims>;  // variant name → partial
+}
+
+/** True when any dimension (base, per-viewport or per-variant) carries a currentItem
+ *  filter. That expression reads the detail page's item, which the JSON config below
+ *  cannot carry (`__applyListConfig` interprets plain data only), so such a config is
+ *  refused rather than written with a wrong predicate. */
+export function hasCurrentItemFilter(cfg: ResponsiveListConfig): boolean {
+  return [cfg.base, ...Object.values(cfg.viewport), ...Object.values(cfg.variants)]
+    .some(d => !!d.filterGroup?.filters.some(f => f.valueSource === 'currentItem'));
+}
+
+/** Why the responsive writer would refuse this config on a page whose detail item is
+ *  `detailItemVar` (null off a detail page), or null when it writes. Shared by the writer
+ *  and the AI tool, so a refused write is reported as a failure, never as success.
+ *  - upgraded (any per-viewport/variant override) + any currentItem → refused (JSON can't carry it);
+ *  - inline (no overrides): the base filter is emitted into the chain, so any condition
+ *    the generator cannot emit refuses the write. */
+export function listConfigRefusal(cfg: ResponsiveListConfig, detailItemVar: string | null): string | null {
+  if (hasResponsiveOverrides(cfg)) {
+    return hasCurrentItemFilter(cfg)
+      ? 'a "Current item" filter cannot be set per breakpoint or per variant; set it on the base list'
+      : null;
+  }
+  return cfg.base.filterGroup ? unemittableFilterReason(cfg.base.filterGroup, detailItemVar) : null;
 }
 
 /** True when the config has any NON-EMPTY per-viewport or per-variant override
@@ -213,11 +240,16 @@ function buildSliceSuffix(opts: WriteListConfigOpts): string {
   return '';
 }
 
-/** Inline `.filter(...).sort(...)` for the DOWNGRADE path (no overrides → plain chain). */
-function buildInlineFilterSort(base: ListConfigDims): string {
+/** Inline `.filter(...).sort(...)` for the DOWNGRADE path (no overrides → plain chain).
+ *  `detailItemVar` is the page's detail item (null off a detail page): it moves the
+ *  filter callback to `row` and lets a currentItem filter emit. */
+function buildInlineFilterSort(base: ListConfigDims, detailItemVar: string | null): string | null {
   let s = '';
   if (base.filterGroup && base.filterGroup.filters.length > 0) {
-    s += `.filter(item => ${buildFilterExpression(base.filterGroup)})`;
+    const rowVar = filterRowVar(detailItemVar);
+    const expr = buildFilterExpression(base.filterGroup, { rowVar, detailItemVar });
+    if (expr === null) return null;
+    if (expr) s += `.filter(${rowVar} => ${expr})`;
   }
   const keys = base.sort ?? [];
   if (keys.length > 0) {
@@ -301,6 +333,14 @@ export function writeResponsiveListConfigInCode(
 ): string {
   trace.fn('cms-responsive:write', { parentId, slug, upgraded: hasResponsiveOverrides(cfg) });
 
+  const detailItemVar = detailItemVarOf(code);
+  // Refuse, don't corrupt or weaken: the file is left exactly as it was.
+  const refusal = listConfigRefusal(cfg, detailItemVar);
+  if (refusal) {
+    trace.error('cms-responsive:write', { message: refusal, parentId });
+    return code;
+  }
+
   const elStart = findJSXElementByDataId(code, parentId);
   if (elStart === -1) { trace.error('cms-responsive:write', { message: 'container not found', parentId }); return code; }
   const closing = findClosingTag(code, elStart);
@@ -330,9 +370,14 @@ export function writeResponsiveListConfigInCode(
   const cfgVar = listConfigVar(parentId);
   const sliceSuffix = buildSliceSuffix(opts);
   const upgraded = hasResponsiveOverrides(cfg);
+  const inline = upgraded ? '' : buildInlineFilterSort(cfg.base, detailItemVar);
+  if (inline === null) {
+    trace.error('cms-responsive:write', { message: 'filter cannot be emitted; list left unchanged', parentId });
+    return code;
+  }
   const newArrayExpr = upgraded
     ? `__applyListConfig(${slug}, ${cfgVar})${sliceSuffix}`
-    : `${slug}${buildInlineFilterSort(cfg.base)}${sliceSuffix}`;
+    : `${slug}${inline}${sliceSuffix}`;
 
   const absStart = closing.contentStart + arrayExprStart;
   const absEnd = closing.contentStart + mapEnd;

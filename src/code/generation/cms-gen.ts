@@ -5,7 +5,8 @@
 import { trace } from '@/shared/debug-trace';
 import { escapeJsxText } from '@/code/parsing/rich-text-runs';
 import { findTagClose, findMatchingCloseTagIndex, findStyleObjectEnd, insertAfterLastImportLine } from './generator-utils';
-import type { FilterGroup, SortConfig } from '@/shared/types';
+import type { FilterConfig, FilterGroup, SortConfig } from '@/shared/types';
+import { detailItemVarOf } from '@/code/project/cms-page-meta';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -84,39 +85,109 @@ function ensureCmsImport(code: string, slug: string): string {
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const isDateVal = (v: any): boolean => typeof v === 'string' && DATE_ONLY_RE.test(v);
 
-export function buildFilterExpression(fg: FilterGroup): string {
-  const conditions = fg.filters.map(f => {
-    // Dynamic value (Phase 4) — the predicate reads a page variable (search input /
-    // date picker) at runtime, with an empty-guard so a blank input matches all.
-    if (f.valueSource === 'searchField' && f.valueVar) {
-      return `(${f.valueVar} === '' || String(item.${f.field}).toLowerCase().includes(${f.valueVar}.toLowerCase()))`;
+/** Emit options for a filter predicate. `rowVar` is the `.filter(...)` callback
+ *  parameter (default `item`). `detailItemVar` is set on a `@cmsPage` detail page: it
+ *  names the detail item a `currentItem` filter reads (`item._id`), and it moves the
+ *  row parameter to `row` (see `filterRowVar`) so the callback never shadows it. */
+export interface FilterEmitOpts {
+  rowVar?: string;
+  detailItemVar?: string | null;
+}
+
+/** The `.filter(...)` callback parameter for a list: `row` on a detail page (so it can't
+ *  shadow the detail `item`), `item` everywhere else (today's output, byte for byte). */
+export function filterRowVar(detailItemVar: string | null | undefined): string {
+  return detailItemVar ? 'row' : 'item';
+}
+
+/** Operators a currentItem filter is emitted for (the panel offers exactly these). */
+const CURRENT_ITEM_OPS: ReadonlySet<FilterConfig['operator']> = new Set(['equals', 'not_equals', 'contains', 'not_contains']);
+
+/** `item.<field>` for an identifier field, `item["<field>"]` otherwise. */
+function fieldRef(objVar: string, field: string): string {
+  return /^[A-Za-z_$][\w$]*$/.test(field) ? `${objVar}.${field}` : `${objVar}[${JSON.stringify(field)}]`;
+}
+
+/** Why a filter group cannot be emitted on this page, or null when every condition can.
+ *  A currentItem condition needs a detail page, a valueField and an operator the panel
+ *  offers. Such a condition is never dropped: dropping one widens the list (or drops an
+ *  `or` branch and narrows it), so the whole write is refused instead. */
+export function unemittableFilterReason(fg: FilterGroup, detailItemVar: string | null): string | null {
+  for (const f of fg.filters) {
+    if (f.valueSource !== 'currentItem') continue;
+    if (!detailItemVar) return `"Current item" filter on "${f.field}" needs a detail page`;
+    if (!f.valueField) return `"Current item" filter on "${f.field}" has no detail field`;
+    if (!CURRENT_ITEM_OPS.has(f.operator)) return `"Current item" filter on "${f.field}" uses unsupported operator "${f.operator}"`;
+  }
+  return null;
+}
+
+/** One currentItem predicate: `row.F === item.<valueField>` (and the contains shapes).
+ *  `buildFilterExpression` refuses the group (`unemittableFilterReason`) before this runs,
+ *  so the null/traced branch below is an invariant guard, not a reachable drop. */
+function buildCurrentItemCondition(f: FilterConfig, row: string, detail: string): string | null {
+  if (!f.valueField || !CURRENT_ITEM_OPS.has(f.operator)) {
+    trace.error('cms-gen:filter:currentItem-invariant', { field: f.field, operator: f.operator, valueField: f.valueField ?? null });
+    return null;
+  }
+  const lhs = fieldRef(row, f.field);
+  const rhs = fieldRef(detail, f.valueField);
+  switch (f.operator) {
+    case 'equals': return `${lhs} === ${rhs}`;
+    case 'not_equals': return `${lhs} !== ${rhs}`;
+    case 'contains': return `String(${lhs}).toLowerCase().includes(String(${rhs}).toLowerCase())`;
+    case 'not_contains': return `!String(${lhs}).toLowerCase().includes(String(${rhs}).toLowerCase())`;
+    default: return null;
+  }
+}
+
+function buildFilterCondition(f: FilterConfig, row: string, detail: string | null): string | null {
+  if (f.valueSource === 'currentItem') return detail ? buildCurrentItemCondition(f, row, detail) : null;
+  // Dynamic value (Phase 4) — the predicate reads a page variable (search input /
+  // date picker) at runtime, with an empty-guard so a blank input matches all.
+  if (f.valueSource === 'searchField' && f.valueVar) {
+    return `(${f.valueVar} === '' || String(${row}.${f.field}).toLowerCase().includes(${f.valueVar}.toLowerCase()))`;
+  }
+  if (f.valueSource === 'dateField' && f.valueVar) {
+    return `(!${f.valueVar} || ${row}.${f.field} >= ${f.valueVar})`;
+  }
+  // Date-aware LHS for comparison operators (see DATE_ONLY_RE note above).
+  const dateCmp = isDateVal(f.value) || (Array.isArray(f.value) && (isDateVal(f.value[0]) || isDateVal(f.value[1])));
+  const lhs = dateCmp ? `String(${row}.${f.field}).slice(0, 10)` : `${row}.${f.field}`;
+  switch (f.operator) {
+    case 'equals': return `${lhs} === ${JSON.stringify(f.value)}`;
+    case 'not_equals': return `${lhs} !== ${JSON.stringify(f.value)}`;
+    // contains / not_contains are CASE-INSENSITIVE (design-tool parity) — "the"
+    // matches "The Truth…" as well as "…the spreadsheet".
+    case 'contains': return `String(${row}.${f.field}).toLowerCase().includes(String(${JSON.stringify(f.value)}).toLowerCase())`;
+    case 'not_contains': return `!String(${row}.${f.field}).toLowerCase().includes(String(${JSON.stringify(f.value)}).toLowerCase())`;
+    case 'gt': return `${lhs} > ${JSON.stringify(f.value)}`;
+    case 'gte': return `${lhs} >= ${JSON.stringify(f.value)}`;
+    case 'lt': return `${lhs} < ${JSON.stringify(f.value)}`;
+    case 'lte': return `${lhs} <= ${JSON.stringify(f.value)}`;
+    case 'in': return `${JSON.stringify(f.value)}.includes(${row}.${f.field})`;
+    case 'not_in': return `!${JSON.stringify(f.value)}.includes(${row}.${f.field})`;
+    case 'exists': return `${row}.${f.field} != null`;
+    case 'between': {
+      const [lo, hi] = Array.isArray(f.value) ? f.value : [f.value, f.value];
+      return `(${lhs} >= ${JSON.stringify(lo)} && ${lhs} <= ${JSON.stringify(hi)})`;
     }
-    if (f.valueSource === 'dateField' && f.valueVar) {
-      return `(!${f.valueVar} || item.${f.field} >= ${f.valueVar})`;
-    }
-    // Date-aware LHS for comparison operators (see DATE_ONLY_RE note above).
-    const dateCmp = isDateVal(f.value) || (Array.isArray(f.value) && (isDateVal(f.value[0]) || isDateVal(f.value[1])));
-    const lhs = dateCmp ? `String(item.${f.field}).slice(0, 10)` : `item.${f.field}`;
-    switch (f.operator) {
-      case 'equals': return `${lhs} === ${JSON.stringify(f.value)}`;
-      case 'not_equals': return `${lhs} !== ${JSON.stringify(f.value)}`;
-      // contains / not_contains are CASE-INSENSITIVE (design-tool parity) — "the"
-      // matches "The Truth…" as well as "…the spreadsheet".
-      case 'contains': return `String(item.${f.field}).toLowerCase().includes(String(${JSON.stringify(f.value)}).toLowerCase())`;
-      case 'not_contains': return `!String(item.${f.field}).toLowerCase().includes(String(${JSON.stringify(f.value)}).toLowerCase())`;
-      case 'gt': return `${lhs} > ${JSON.stringify(f.value)}`;
-      case 'gte': return `${lhs} >= ${JSON.stringify(f.value)}`;
-      case 'lt': return `${lhs} < ${JSON.stringify(f.value)}`;
-      case 'lte': return `${lhs} <= ${JSON.stringify(f.value)}`;
-      case 'in': return `${JSON.stringify(f.value)}.includes(item.${f.field})`;
-      case 'not_in': return `!${JSON.stringify(f.value)}.includes(item.${f.field})`;
-      case 'exists': return `item.${f.field} != null`;
-      case 'between': {
-        const [lo, hi] = Array.isArray(f.value) ? f.value : [f.value, f.value];
-        return `(${lhs} >= ${JSON.stringify(lo)} && ${lhs} <= ${JSON.stringify(hi)})`;
-      }
-    }
-  });
+  }
+}
+
+/** The predicate for a filter group, or null when a condition cannot be emitted (the
+ *  caller must then leave the code unchanged — see `unemittableFilterReason`). */
+export function buildFilterExpression(fg: FilterGroup, opts: FilterEmitOpts = {}): string | null {
+  const row = opts.rowVar ?? 'item';
+  const detail = opts.detailItemVar ?? null;
+  const reason = unemittableFilterReason(fg, detail);
+  if (reason) {
+    trace.error('cms-gen:filter:refused', { reason });
+    return null;
+  }
+  const conditions = fg.filters
+    .map(f => buildFilterCondition(f, row, detail))
+    .filter((c): c is string => c !== null);
 
   const joiner = fg.combinator === 'or' ? ' || ' : ' && ';
   return conditions.join(joiner);
@@ -145,11 +216,17 @@ export function buildChainCode(
    *  site alike, with no build step. The filter/sort/slice chain stays OUTSIDE
    *  the wrapper so it still operates on whole rows. */
   localized?: boolean,
-): string {
+  /** The detail item variable when the page is a `@cmsPage` detail page (else null).
+   *  Enables currentItem filters and moves the filter callback param to `row`. */
+  detailItemVar?: string | null,
+): string | null {
   let chain = localized ? `localizeRows(${slug}, __activeLocale)` : slug;
 
   if (filterGroup && filterGroup.filters.length > 0) {
-    chain += `.filter(item => ${buildFilterExpression(filterGroup)})`;
+    const rowVar = filterRowVar(detailItemVar);
+    const expr = buildFilterExpression(filterGroup, { rowVar, detailItemVar: detailItemVar ?? null });
+    if (expr === null) return null;   // refused: the caller keeps the code unchanged
+    if (expr) chain += `.filter(${rowVar} => ${expr})`;
   }
 
   const sortKeys = Array.isArray(sort) ? sort : sort ? [sort] : [];
@@ -735,7 +812,11 @@ export function updateCollectionListConfigInCode(
   // Build the new chain
   // Preserve the localized head across a Filter/Sort/Limit edit — dropping it
   // would silently un-translate the list.
-  const newChain = buildChainCode(slug, filterGroup, sort, limit, paginationVar, offset, head.localized);
+  const newChain = buildChainCode(slug, filterGroup, sort, limit, paginationVar, offset, head.localized, detailItemVarOf(code));
+  if (newChain === null) {
+    trace.error('cms-gen:updateCollectionConfig', { message: 'filter cannot be emitted; list left unchanged', ...{ parentId } });
+    return code;
+  }
   const newChainWithMap = `${newChain}.map(${callbackParam} =>`;
 
   // Replace from slug start to end of `.map(itemVar =>`

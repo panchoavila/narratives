@@ -3,7 +3,7 @@
 // hydrates ProjectFS, and redirects to sign-in if unauthenticated (cloud).
 
 import { useState, useEffect } from 'react';
-import { CLOUD_ENABLED } from '@/shared/cloud-flag';
+import { CLOUD_ENABLED, COLLAB_ENABLED } from '@/shared/cloud-flag';
 import { useSetAtom, getDefaultStore } from 'jotai';
 import App from './App';
 import SitesDashboard from './editor/SitesDashboard';
@@ -212,8 +212,9 @@ export default function ProjectLoader() {
       //    of getting bounced to the dashboard. Earlier this redirected
       //    to `/auth/signin` which doesn't match any route — revyme-
       //    cloud's catch-all then sent them to /dashboard, looking
-      //    exactly like the dashboard ate the click.
-      if (CLOUD_ENABLED && !user) {
+      //    exactly like the dashboard ate the click. Self-hosted mode has
+      //    its own `/auth` on the same server (server/auth.ts).
+      if (COLLAB_ENABLED && !user) {
         trace.action('project-loader:redirect-signin');
         const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
         window.location.replace(`/auth?returnTo=${returnTo}`);

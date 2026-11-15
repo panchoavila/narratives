@@ -220,6 +220,17 @@ export async function generateMetadata({ params }) {
   };
 }
 
+// Only real items get a route. Without this, \`dynamicParams\` defaults to true and the
+// client's \`items[0]\` fallback would render for any unknown URL. Drafts are included:
+// collection lists show every item, so a draft left out here would be a card whose link 404s.
+export function generateStaticParams() {
+  return (Array.isArray(${varName}) ? ${varName} : [])
+    .filter((i) => i && typeof i._slug === 'string' && i._slug !== '')
+    .map((i) => ({ slug: i._slug }));
+}
+
+export const dynamicParams = false;
+
 export default function Page() {
   return <PageClient />;
 }

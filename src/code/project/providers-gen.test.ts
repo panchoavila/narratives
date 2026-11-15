@@ -1,6 +1,7 @@
 // Generated app/providers.tsx — locale imports follow the config; route-first
 // locale resolution ships in the template.
 import { describe, it, expect } from 'vitest';
+import { transform } from '@babel/standalone';
 import { buildProvidersSource, looksGeneratedProviders, PROVIDERS_MARKER } from './providers-gen';
 import { RTL_TEXT_CSS } from '@/shared/rtl-text';
 
@@ -104,13 +105,12 @@ describe('the Providers export contract', () => {
 });
 
 // ─── Link attributes runtime (BUG 18: Smooth Scroll / Keep Params had no runtime) ──
-// The generated function is plain JS by design (it ships inside every project);
-// pull it out of the template and drive it in jsdom.
+// Transpile the generated TS function and drive its DOM behavior in jsdom.
 function extractNavClick(): (e: any, nav: { push: (s: string) => void }) => void {
   const src = buildProvidersSource(CFG);
   const start = src.indexOf('function revymeNavClick');
   const end = src.indexOf('/** Scroll smoothly', start);
-  const body = src.slice(start, end).replace(/^function revymeNavClick/, 'return function revymeNavClick');
+  const body = transform(src.slice(start, end), { presets: ['typescript'], filename: 'nav.ts' }).code!.replace(/^function revymeNavClick/, 'return function revymeNavClick');
   return new Function(`const SMOOTH_KEY = 'revyme:smooth-target'; ${body}`)() as any;
 }
 function click(a: HTMLAnchorElement, extra: Partial<MouseEvent> = {}) {

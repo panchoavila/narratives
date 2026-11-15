@@ -2,7 +2,7 @@
 // All tools sit inside <ControlProvider> which handles style read/write routing.
 
 import React from 'react';
-import { useAtomValue, useSetAtom } from 'jotai';
+import { useAtomValue } from 'jotai';
 import { selectedNodeAtom, selectedIdsAtom } from '../code/stores/store';
 import { useNodesComputed } from '../code/stores/node-family';
 import { activeFilePathAtom, isComponentFilePath, isIconSetFilePath, isPageClientFile, isPageServerFile, isDesignComponentFile, isVariantFile, isTemplateFilePath } from '../code/project/active-file-store';
@@ -23,6 +23,8 @@ import ComponentPropsTool from './tools/ComponentPropsTool';
 import IconSetTool from './tools/IconSetTool';
 import TextStyleTool from './tools/TextStyleTool';
 import StylesTool from './tools/StylesTool';
+import EffectsTool from './tools/EffectsTool';
+import EditorialFlowTool from './tools/EditorialFlowTool';
 import CursorTool from './tools/CursorTool';
 import AccessibilityTool from './tools/AccessibilityTool';
 import ScrollSectionTool from './tools/ScrollSectionTool';
@@ -33,6 +35,7 @@ import SvgShapeTool from './tools/SvgShapeTool';
 import PathTool from './tools/PathTool';
 import SketchTool from './tools/SketchTool';
 import AnimationTool from './tools/AnimationTool';
+import PageFlowTool from './tools/PageFlowTool';
 import ImageTool from './tools/ImageTool';
 import VideoTool from './tools/VideoTool';
 import AudioTool from './tools/AudioTool';
@@ -49,6 +52,8 @@ import { isTextTag, isFrameTag, canAcceptChildren, isLinkTag } from '@/shared/co
 import { shapeEditingIdAtom } from '@/code/stores/shape-edit-store';
 import type { CanvasNode } from '@/code/parsing/parser';
 import TemplatePicker from './TemplatePicker';
+import SceneProperties from './scene-composer/SceneProperties';
+import { sceneActiveAtom } from './scene-composer/scene-state';
 import { VariableModalHost } from './ui/VariableModalHost';
 
 // React.memo: Canvas re-renders at every drag transition (drag-state,
@@ -79,7 +84,9 @@ export default React.memo(function PropertiesPanel() {
         data-tutorial="right-toolbar"
         className="w-[260px] shrink-0 overflow-y-auto scrollbar-hide relative z-5000"
         style={{ marginTop: 52, marginLeft: -260, willChange: 'transform', isolation: 'isolate' }}
-      />
+      >
+        <SceneProperties />
+      </div>
     );
   }
 
@@ -123,6 +130,7 @@ function findCollectionContext(node: CanvasNode, nodes: Map<string, CanvasNode>)
 // Inner component — has access to useControl()
 function PropertiesPanelInner({ isMultiSelect = false }: { isMultiSelect?: boolean }) {
   const { node, styles, vpId, isReplica, vpWidth, parentLayout, updateStyle, updateMultipleStyles } = useControl();
+  const sceneActive = useAtomValue(sceneActiveAtom);
   const activeEditor = useAtomValue(activeEditorAtom);
   const shapeEditingId = useAtomValue(shapeEditingIdAtom);
   const filePath = useAtomValue(activeFilePathAtom);
@@ -237,7 +245,9 @@ function PropertiesPanelInner({ isMultiSelect = false }: { isMultiSelect?: boole
         data-tutorial="right-toolbar"
         className="w-[260px] shrink-0 overflow-y-auto scrollbar-hide relative z-5000"
         style={{ marginTop: 52, marginLeft: -260, willChange: 'transform', isolation: 'isolate' }}
-      />
+      >
+        <SceneProperties />
+      </div>
     );
   }
 
@@ -424,6 +434,7 @@ function PropertiesPanelInner({ isMultiSelect = false }: { isMultiSelect?: boole
             outside the scrollable area — it stays put even when the panel
             scrolls. */}
         <div className="mb-1.5" />
+        <SceneProperties />
 
       {/* ─── Template picker — viewport selection on page files ────────────
           Shows when the user has the page's viewport-frame selected. The
@@ -654,7 +665,7 @@ function PropertiesPanelInner({ isMultiSelect = false }: { isMultiSelect?: boole
           </>
         )}
 
-        {/* 4. Animation ("Effects") — hidden on the viewport frame (no
+        {/* 4. Animation — hidden on the viewport frame (no
             animatable target). Vector/icon-set instances DO get it: the user
             animates the whole vector wrapper (appear / hover / loop / scroll),
             which is a valid instance-level effect (the master-only concern is
@@ -666,10 +677,20 @@ function PropertiesPanelInner({ isMultiSelect = false }: { isMultiSelect?: boole
           styles={s}
           onUpdate={updateStyle}
           glideOnly={isViewportFrame}
+          hidePageTransitions={sceneActive}
         />
 
-        {/* Page Effects (View Transitions) live INSIDE the AnimationTool's "+"
-            on a viewport (a "Page Transition" effect), not a separate section. */}
+        {/* Page flow: the page root of a page file. A templated root carries the template's flex column, so it stays with Template. */}
+        {node.id === 'root' && !isTemplatedViewport && !isMultiSelect && isPageClientFile(filePath) && <PageFlowTool />}
+
+        {!isViewportFrame && !isMultiSelect && !isComponentInstance && !isCodeComponentInstance && !isContainerSetInstance && !isInputElement
+          && !['img', 'Image', 'motion.img', 'video', 'motion.video', 'audio', 'canvas', 'svg', 'motion.svg'].includes(node.type) && <EffectsTool />}
+
+        {/* Editorial flow: an element with `data-flow` or slot-connected to an EditorialFlow. Media included. */}
+        {!isViewportFrame && !isMultiSelect && !isCodeComponentInstance && <EditorialFlowTool />}
+
+        {/* In 2D, Page Transitions live in Animation. In 3D, the shared page
+            settings are grouped above and remain accessible without selection. */}
 
         {/* 5b. Layout (all elements — text nodes get Block-only mode).
             Container-set instances (icon sets) hide it: the

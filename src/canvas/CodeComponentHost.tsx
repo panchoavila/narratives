@@ -4,6 +4,7 @@
 import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAtomValue, getDefaultStore } from 'jotai';
 import { nodesAtom, codeAtom } from '@/code/stores/store';
+import { activePreviewItemAtom, cmsPageMetaAtom } from '@/code/stores/cms-page-store';
 import { coerceScalar } from '@/code/values/value-eval';
 import { projectFS } from '@/code/project/project-fs';
 import { compileCodeComponent, clearCodeComponentCache } from './code-component-runtime';
@@ -20,6 +21,7 @@ import { getAllSlotConnections } from '@/code/generation/slot-ops';
 import { activeFilePathAtom, getLayoutForPage, getLayoutClientPath } from '@/code/project/active-file-store';
 import { projectVersionAtom } from '@/code/project/project-fs';
 import { parseProjectFile } from '@/code/parsing/project-parser';
+import { localizedCollectionDataAtom } from '@/code/stores/cms-store';
 
 import { getCdnComponent, loadCdnComponent } from '@/cloud/components/cdn-component-cache';
 import { previewModeAtom } from '@/code/stores/editor-store';
@@ -44,6 +46,29 @@ const liveCompileOpts = () => ({ previewMode: getDefaultStore().get(previewModeA
  *  Canonical logic in value-eval.coerceScalar (shared with the sandbox's coerceProps). */
 function coerceValue(value: string): any {
   return coerceScalar(value);
+}
+
+/** On a CMS detail page, the props bound to the page's own item (`headline={item.title}`), with the
+ *  previewed record's values — what `applyDetailPageBindings` does for text, attributes and
+ *  styles, for code-component props. Rows of a collection list on the page resolve their own item
+ *  elsewhere, so template nodes are left alone. Fields the record lacks stay unset, so the
+ *  component's own defaults apply. */
+function detailPageBoundProps(node: CanvasNode): Record<string, unknown> {
+  if (!node.propBindings?.length || node.isCollectionTemplate) return {};
+  const store = getDefaultStore();
+  if (store.get(cmsPageMetaAtom)?.kind !== 'detail') return {};
+  const item = store.get(activePreviewItemAtom);
+  if (!item) return {};
+  const bound: Record<string, unknown> = {};
+  for (const binding of node.propBindings) {
+    const value = item[binding.field];
+    if (value === undefined || value === null) continue;
+    bound[binding.prop] = binding.urlWrap ? `url(${String(value)})` : value;
+  }
+  if (Object.keys(bound).length > 0) {
+    trace.fn('code-component-host:detail-page-props', { nodeId: node.id, props: Object.keys(bound) });
+  }
+  return bound;
 }
 
 /** Extract props from node attrs + componentProps, coercing values. */
@@ -73,6 +98,7 @@ export function extractCodeComponentProps(node: CanvasNode): Record<string, any>
       try { props[key] = JSON.parse(value); } catch { /* leave the prop unset */ }
     }
   }
+  Object.assign(props, detailPageBoundProps(node));
   // Bake INLINE per-viewport variable VALUES into `data-responsive` so the code component resolves the
   // per-tile value on canvas. A per-viewport variable bound on a replica is written as an inline ternary
   // `prop={__mq ? var : base}` (the same mechanism design-component props use); the parser resolves its value
@@ -345,6 +371,9 @@ export function renderCodeComponentDirect(
 
 export default function CodeComponentHost() {
   const nodes = useAtomValue(nodesAtom);
+  const collections = useAtomValue(localizedCollectionDataAtom);
+  const collectionsRef = useRef(collections);
+  collectionsRef.current = collections;
   const rootsRef = useRef<Map<string, { root: Root; component: string; propsHash: string }>>(new Map());
   // Tracks what we've already pushed to the sandbox per node so we can decide
   // between mount / re-mount / props-only update / skip on each sync pass.
@@ -605,7 +634,7 @@ export default function CodeComponentHost() {
           // templateSlotNodes), so serialize against both.
           const tplNodes = templateSlotNodesRef.current;
           const slotSource = tplNodes ? new Map([...tplNodes, ...nodes]) : nodes;
-          const slotKids = serializeSlotChildren(connectedIds, slotSource, slotConnectionsRef.current);
+          const slotKids = serializeSlotChildren(connectedIds, slotSource, slotConnectionsRef.current, collectionsRef.current);
           if (slotKids.length > 0) props.__slotChildren = slotKids;
           rememberMountedSlotChildren(node.id, slotKids);
           const vpWidths = getViewportWidths();
@@ -664,6 +693,10 @@ export default function CodeComponentHost() {
   // the canvas left them in for the whole preview.
   const previewMode = useAtomValue(previewModeAtom);
   useEffect(() => { syncCodeComponents(); }, [previewMode, syncCodeComponents]);
+
+  // Stepping the CMS preview-slug navigator changes the values of detail-page bound props.
+  const previewItem = useAtomValue(activePreviewItemAtom);
+  useEffect(() => { syncCodeComponents(); }, [previewItem, syncCodeComponents]);
 
   // Sync code components whenever nodes change or renderer completes.
   // Uses a polling interval that runs until all expected ghost mounts succeed,
@@ -735,7 +768,7 @@ export default function CodeComponentHost() {
       window.removeEventListener('revyme:render-complete', handler);
       window.removeEventListener('revyme:cdn-component-loaded', handler);
     };
-  }, [nodes, syncCodeComponents]);
+  }, [nodes, collections, syncCodeComponents]);
 
   // Cleanup on unmount
   useEffect(() => {

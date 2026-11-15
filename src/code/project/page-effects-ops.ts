@@ -55,18 +55,25 @@ export function getEffectsForPage(pageFile: string): PageEffect[] {
   return listEffectsForPage(getPageEffectsMap(pageFile), routeForPage(pageFile));
 }
 
+/** A page without its own catch-all still uses the layout's site default. */
+export function getInheritedPageEffectForPage(pageFile: string): PageEffect | undefined {
+  const map = getPageEffectsMap(pageFile), route = routeForPage(pageFile);
+  return route !== '/' && !map.pages[route]?.all ? map.__default : undefined;
+}
+
 /** Insert/replace an effect for the active page. Scaffolds the runtime + injects
  *  `<PageTransitions>` on first use. Returns false when the page has no layout. */
-export function setPageEffectForPage(pageFile: string, effect: PageEffect): boolean {
+export function setPageEffectForPage(pageFile: string, effect: PageEffect, scope: 'page' | 'default' = 'page'): boolean {
+  if (scope === 'default' && effect.target !== 'all') return false;
   const lc = layoutClientForPage(pageFile);
   if (!lc) {
     trace.error('page-effects-ops:set', { pageFile, reason: 'no-layout' });
     return false;
   }
-  ensurePageEffectsScaffold(lc, ['displacement', 'glitch', 'ripple-water'].includes(effect.preset));
+  ensurePageEffectsScaffold(lc, ['displacement', 'glitch', 'ripple-water', 'vhs'].includes(effect.preset));
   // Inject <PageTransitions> into the LayoutClient (existing file → modifyProjectFile).
   modifyProjectFile(lc, (code) => injectPageTransitionsInCode(code));
-  const sourceRoute = routeForPage(pageFile);
+  const sourceRoute = scope === 'default' ? '/' : routeForPage(pageFile);
   modifyProjectFile(pageEffectsDataPath(lc), (code) =>
     serializePageEffects(upsertEffectInMap(parsePageEffects(code), sourceRoute, effect)),
   );
@@ -75,10 +82,11 @@ export function setPageEffectForPage(pageFile: string, effect: PageEffect): bool
 }
 
 /** Remove an effect (by its target) for the active page. */
-export function removePageEffectForPage(pageFile: string, target: string): void {
+export function removePageEffectForPage(pageFile: string, target: string, scope: 'page' | 'default' = 'page'): void {
+  if (scope === 'default' && target !== 'all') return;
   const lc = layoutClientForPage(pageFile);
   if (!lc) return;
-  const sourceRoute = routeForPage(pageFile);
+  const sourceRoute = scope === 'default' ? '/' : routeForPage(pageFile);
   modifyProjectFile(pageEffectsDataPath(lc), (code) =>
     serializePageEffects(removeEffectFromMap(parsePageEffects(code), sourceRoute, target)),
   );

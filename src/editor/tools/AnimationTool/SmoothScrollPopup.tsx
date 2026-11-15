@@ -10,7 +10,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { ToolRow, ToolSegmentedControl } from '../../controls';
+import { ToolRow, ToolSegmentedControl, ToolInput } from '../../controls';
 import { SliderRow } from './shared';
 import type { SmoothScrollConfig } from '@/code/project/smooth-scroll-config';
 
@@ -48,7 +48,9 @@ export default function SmoothScrollPopup({ config, onChange }: {
   useEffect(() => flush, []);
 
   const set = (patch: Partial<SmoothScrollConfig>) => {
-    const next = { ...latest.current, ...patch };
+    const next: SmoothScrollConfig = { ...latest.current, ...patch };
+    // An explicit undefined removes the key (a cleared "From width" means always, not 0).
+    for (const k of Object.keys(patch) as (keyof SmoothScrollConfig)[]) if (patch[k] === undefined) delete (next as Partial<SmoothScrollConfig>)[k];
     latest.current = next;
     setDraft(next);
     if (pending.current !== null) window.clearTimeout(pending.current);
@@ -71,6 +73,17 @@ export default function SmoothScrollPopup({ config, onChange }: {
             <ToolSegmentedControl value={draft.orientation} onChange={(v) => set({ orientation: v === 'horizontal' ? 'horizontal' : 'vertical' })}
               options={DIRECTION_OPTIONS} size="sm" />
           </ToolRow>
+          {draft.orientation === 'horizontal' && (
+            <ToolRow label="From width">
+              {/* Empty = horizontal at every width. A typed width below 1 px is read as empty. */}
+              <ToolInput value={draft.horizontalFrom ? String(draft.horizontalFrom) : ''}
+                placeholder="Always" chevronLabel="px" min={1} step={10}
+                onChange={(v) => {
+                  const px = Math.round(parseFloat(v));
+                  set({ horizontalFrom: Number.isFinite(px) && px >= 1 ? px : undefined });
+                }} />
+            </ToolRow>
+          )}
           <ToolRow label="Wheel">
             <ToolSegmentedControl value={yn(draft.smoothWheel)} onChange={(v) => set({ smoothWheel: v === 'yes' })} options={YES_NO} size="sm" />
           </ToolRow>

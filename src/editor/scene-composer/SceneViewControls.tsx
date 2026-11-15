@@ -1,26 +1,10 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { useAtom, useAtomValue, useSetAtom } from 'jotai';
-import { interactingViewportIdAtom } from '@/code/stores/viewport-store';
-import { selectedIdsAtom } from '@/code/stores/store';
-import { useActiveViewports } from '@/canvas/hooks/useActiveViewports';
+import { useAtom, useAtomValue } from 'jotai';
 import { transformManager } from '@/canvas/transform';
 import { projectScenePoint } from '@/shared/scene-projection';
 import { trace } from '@/shared/debug-trace';
-import ToolSelect from '@/editor/controls/ToolSelect';
 import { alignSceneView, orbitSceneView, snapSceneView, sceneActiveAtom, sceneCameraAtom, type SceneCamera, type SceneAxisView } from './scene-state';
 import { sceneScreenRect } from './scene-layout';
-
-export function SceneViewportSelect() {
-  const active = useAtomValue(sceneActiveAtom);
-  const [viewport, setViewport] = useAtom(interactingViewportIdAtom);
-  const setSelection = useSetAtom(selectedIdsAtom);
-  const views = useActiveViewports();
-  if (!active) return null;
-  return <label className="w-36 shrink-0" data-scene-viewport-select="">
-    <span className="sr-only">3D viewport</span>
-    <ToolSelect value={viewport} onChange={id => { setViewport(id); setSelection(['root']); trace.action('scene-composer:viewport', { id }); }} options={views.map(v => ({ value: v.id, label: v.label || v.id }))} />
-  </label>;
-}
 
 const axes: { label: string; view: Exclude<SceneAxisView, 'user'>; vector: [number, number, number]; color: string; positive: boolean }[] = [
   { label: 'X', view: 'right', vector: [1,0,0], color: '#e65369', positive: true },

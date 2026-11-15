@@ -2,7 +2,11 @@
 
 /** @canvas {"viewports":[{"id":"desktop","label":"Desktop","width":1200,"height":"auto","isPrimary":true,"order":0},{"id":"tablet","label":"Tablet","width":700,"height":"auto","order":1},{"id":"mobile","label":"Mobile","width":390,"height":"auto","order":2}],"positions":{"desktop":{"x":0,"y":0},"mobile":{"x":2100,"y":0},"tablet":{"x":1300,"y":0}}} */
 import Link from 'next/link';
+import { useState } from 'react';
+import { RevymeVhs } from '@revyme/runtime';
+
 export default function Page() {
+  const [tape, setTape] = useState(false);
   return <main data-id="root" data-name="Canvas — Composición" style={{
     position: 'relative',
     minHeight: '900px',
@@ -93,6 +97,10 @@ export default function Page() {
         }}>Explorar el espacio<span data-id="navigate-arrow" aria-hidden="true" style={{
             fontSize: '22px'
           }}>↗</span></Link>
+          <a data-id="jump-to-lab" href="#laboratorio" style={{
+            display: 'inline-block', margin: '14px 0 0 16px', padding: '10px 0',
+            fontSize: '13px', color: '#343a20', textDecoration: 'underline', textUnderlineOffset: '4px',
+          }}>Ir al banco de efectos ↓</a>
         </div>
         <figure data-id="sculpture" data-name="Estudio de planos" aria-label="Composición abstracta de planos, un círculo y líneas" style={{
         position: 'relative',
@@ -179,6 +187,68 @@ export default function Page() {
         }}>FIG. 01 — FORMA / EQUILIBRIO</figcaption>
         </figure>
       </section>
+      <section id="laboratorio" data-id="effects-lab" data-name="Banco de efectos" aria-labelledby="effects-title" style={{
+        order: 2, padding: '36px 0 48px', borderTop: '1px solid #cbcbbf', scrollMarginTop: '20px',
+      }}>
+        <p data-id="lab-index" style={{ fontFamily: 'monospace', fontSize: '11px', letterSpacing: '2px', color: '#64665a' }}>03 / ESTUDIOS EN MOVIMIENTO</p>
+        <h2 id="effects-title" data-id="lab-title" style={{ fontFamily: 'Georgia, serif', fontWeight: 400, fontSize: 'clamp(38px, 6vw, 68px)', letterSpacing: '-0.055em', lineHeight: 1, margin: '16px 0' }}>Banco de efectos</h2>
+        <p data-id="lab-intro" style={{ color: '#505347', fontSize: '15px', lineHeight: 1.6, marginBottom: '24px', maxWidth: '480px' }}>Prueba cada señal sobre una pieza y cambia de escena para verla como transición de página.</p>
+        <nav data-id="transition-links" data-name="Transiciones de prueba" aria-label="Transiciones de prueba" style={{
+          display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '32px',
+        }}>
+          <Link data-id="try-vhs-route" href="/senal/vhs" style={{ background: '#30351e', color: '#f0efe4', padding: '12px 16px', fontSize: '13px' }}>VHS ↗</Link>
+          <Link data-id="try-glitch-route" href="/senal/glitch" style={{ border: '1px solid #a5a694', padding: '11px 15px', fontSize: '13px' }}>Glitch ↗</Link>
+          <Link data-id="try-ripple-route" href="/senal/ripple" style={{ border: '1px solid #a5a694', padding: '11px 15px', fontSize: '13px' }}>Ripple ↗</Link>
+          <Link data-id="try-displacement-route" href="/espacio" style={{ border: '1px solid #a5a694', padding: '11px 15px', fontSize: '13px' }}>Displacement ↗</Link>
+        </nav>
+        <div data-id="effects-grid" data-name="Muestras de objeto" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '14px' }}>
+          <RevymeVhs><button type="button" data-id="sample-vhs" data-name="VHS · Reproducir cinta" aria-label="Reproducir VHS" data-canvas-effect="vhs" data-vhs='{"version":1,"duration":1.55,"wave":1.45,"chroma":4,"switching":0.7,"scanlines":0.3}' onClick={() => setTape(value => !value)} style={{
+            gridColumn: '1 / -1', width: '100%', minHeight: '242px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'stretch', gap: '24px',
+            padding: '24px', border: 0, cursor: 'pointer', textAlign: 'left', color: '#f1f1d9', backgroundColor: '#202922',
+            backgroundImage: 'linear-gradient(120deg,#17231b 25%,transparent 74%), repeating-linear-gradient(105deg,#b25645 0%,#b25645 13%,#b79a4a 13%,#b79a4a 26%,#829c70 26%,#829c70 39%,#4f7c82 39%,#4f7c82 52%)',
+          }}>
+            <span data-id="vhs-channel" style={{ fontFamily: 'monospace', fontSize: '11px', letterSpacing: '2px' }}>01 / CINTA MAGNÉTICA</span>
+            <strong data-id="vhs-type" style={{ fontFamily: 'Georgia, serif', fontWeight: 400, fontSize: 'clamp(64px, 13vw, 128px)', letterSpacing: '-0.06em', lineHeight: .8 }}>VHS</strong>
+            <span data-id="vhs-play" style={{ fontFamily: 'monospace', fontSize: '12px', letterSpacing: '1.2px' }}>▶ REPRODUCIR / CANAL {tape ? '02' : '01'}</span>
+          </button></RevymeVhs>
+          <article data-id="sample-glitch" data-name="Glitch · Señal intermitente" data-canvas-effect="glitch" data-glitch-interval="2.8" data-glitch-duration="0.52" data-glitch-rgb-shift="6" style={{
+            minHeight: '198px', padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '18px', background: '#302647', color: '#f8eaf8',
+          }}>
+            <span data-id="glitch-index" style={{ fontFamily: 'monospace', fontSize: '11px', letterSpacing: '1.5px' }}>02 / SEÑAL INTERMITENTE</span>
+            <strong data-id="glitch-type" style={{ fontFamily: 'monospace', fontSize: 'clamp(32px, 7vw, 68px)', fontWeight: 500, letterSpacing: '-0.07em' }}>GLITCH</strong>
+            <span data-id="glitch-hint" style={{ fontSize: '12px', color: '#d4bad9' }}>Pulso automático</span>
+          </article>
+          <button type="button" data-id="sample-ripple" data-name="Ripple · Superficie de agua" aria-label="Probar Ripple" data-canvas-effect="ripple-water" data-ripple='{"version":1,"trigger":"click","amplitude":0.7,"wavelength":64}' style={{
+            minHeight: '198px', padding: '20px', border: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '18px', cursor: 'pointer', textAlign: 'left',
+            backgroundColor: '#d5e9e8', backgroundImage: 'repeating-radial-gradient(circle at 73% 60%,transparent 0 15px,#5f90943c 16px 17px)', color: '#18393f',
+          }}>
+            <span data-id="ripple-index" style={{ fontFamily: 'monospace', fontSize: '11px', letterSpacing: '1.5px' }}>03 / SUPERFICIE DE AGUA</span>
+            <strong data-id="ripple-type" style={{ fontFamily: 'Georgia, serif', fontWeight: 400, fontSize: 'clamp(36px, 7vw, 68px)', letterSpacing: '-0.055em' }}>Ripple</strong>
+            <span data-id="ripple-hint" style={{ fontSize: '12px' }}>Pulsa para crear una onda</span>
+          </button>
+          <article data-id="sample-glyph" data-name="Glyph Rain · Lluvia tipográfica" data-canvas-effect="glyph-rain" data-glyph-rain='{"version":1,"density":0.47,"cell":17,"color":"#b4e66c","headColor":"#f0ffb9","dim":0.2}' style={{
+            minHeight: '208px', padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '18px', color: '#d8f09d', background: '#1f2c20',
+          }}>
+            <span data-id="glyph-index" style={{ fontFamily: 'monospace', fontSize: '11px', letterSpacing: '1.5px' }}>04 / LLUVIA TIPOGRÁFICA</span>
+            <strong data-id="glyph-type" style={{ fontFamily: 'monospace', fontWeight: 500, fontSize: 'clamp(27px, 5vw, 50px)', letterSpacing: '-0.06em' }}>Glyph Rain</strong>
+            <span data-id="glyph-hint" style={{ fontSize: '12px' }}>Mueve el cursor sobre los caracteres</span>
+          </article>
+          <article data-id="particle-card" data-name="Particle Object · Emblema" style={{
+            minHeight: '208px', display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(88px, 42%)', alignItems: 'center', padding: '20px', gap: '8px', background: '#ecd4b4', color: '#472c26',
+          }}>
+            <div data-id="particle-caption" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <span data-id="particle-index" style={{ fontFamily: 'monospace', fontSize: '11px', letterSpacing: '1.5px' }}>05 / EMBLEMA</span>
+              <strong data-id="particle-type" style={{ fontFamily: 'Georgia, serif', fontWeight: 400, fontSize: 'clamp(24px, 4vw, 42px)', letterSpacing: '-0.05em' }}>Particle Object</strong>
+              <span data-id="particle-hint" style={{ fontSize: '12px' }}>Acerca el cursor al símbolo</span>
+            </div>
+            <svg data-id="sample-particle" data-name="Emblema SVG con partículas" role="img" aria-label="Emblema de órbita" viewBox="0 0 140 140" width="140" height="140" data-canvas-effect="particle-object" data-particle-object='{"version":1,"count":3500,"size":1.8,"radius":70,"drift":0}' style={{ width: '100%', height: 'auto', aspectRatio: '1', maxWidth: '158px', justifySelf: 'center' }}>
+              <circle data-id="particle-core" cx="70" cy="70" r="37" fill="#b24c35" />
+              <ellipse data-id="particle-orbit" cx="70" cy="70" rx="63" ry="24" fill="none" stroke="#8b3829" strokeWidth="9" transform="rotate(-35 70 70)" />
+              <circle data-id="particle-satellite" cx="115" cy="33" r="11" fill="#e76b45" />
+            </svg>
+          </article>
+        </div>
+      </section>
       <footer data-id="colophon" data-name="Pie" style={{
       display: 'flex',
       justifyContent: 'space-between',
@@ -186,7 +256,7 @@ export default function Page() {
       gap: '20px',
       borderTop: '1px solid #cbcbbf',
       paddingTop: '24px',
-      order: "2",
+      order: "3",
       flex: "0 0 auto"
     }}><span data-id="colophon-note" style={{
         order: "0",
@@ -204,6 +274,7 @@ export default function Page() {
   [data-id="root"] { padding: 24px !important; min-height: 100vh !important; }
   [data-id="edition"] { max-width: 125px !important; text-align: right !important; font-size: 9px !important; }
   [data-id="composition"] { grid-template-columns: 1fr !important; gap: 30px !important; padding-top: 38px !important; padding-bottom: 38px !important; }
+  [data-id="effects-grid"] { grid-template-columns: minmax(0, 1fr) !important; }
   [data-id="headline"] { font-size: 60px !important; letter-spacing: -3px !important; }
   [data-id="sculpture"] { height: 410px !important; }
   [data-id="back-plane"] { height: 310px !important; }

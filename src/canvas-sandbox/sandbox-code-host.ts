@@ -36,7 +36,7 @@ function makeInner(
   vpWidth: number,
 ): React.ReactElement {
   const { __slotChildren, ...rest } = props;
-  const kids = Array.isArray(__slotChildren) ? buildSlotChildren(__slotChildren) : [];
+  const kids = Array.isArray(__slotChildren) ? buildSlotChildren(__slotChildren, vpWidth) : [];
   return React.createElement(Component, { ...rest, __canvasViewportWidth: vpWidth }, ...kids);
 }
 

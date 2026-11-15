@@ -15,7 +15,7 @@
 // Cloud-only — standalone mode short-circuits to a small placeholder.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CLOUD_ENABLED } from '@/shared/cloud-flag';
+import { COLLAB_ENABLED } from '@/shared/cloud-flag';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -77,7 +77,7 @@ export default function CollaboratorsModal({ isOpen, onClose }: Props) {
               </div>
 
               {/* Body */}
-              {CLOUD_ENABLED ? <CloudBody /> : <StandaloneBody />}
+              {COLLAB_ENABLED ? <CloudBody /> : <StandaloneBody />}
             </motion.div>
           </div>
         )}

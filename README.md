@@ -92,6 +92,17 @@ Everything is optional - see [`.env.example`](./.env.example) for the annotated 
 | `VITE_REVYME_CLOUD` | set to `true` only when running against the hosted cloud backend |
 | `VITE_CDN_HOST` / `VITE_PLATFORM_HOST` | point a self-hosted fork at your own asset CDN / platform |
 
+### Publishing local sites to Vercel
+
+Named local sites (`/builder/<site-id>`, stored under `sites/<site-id>`) can publish directly from **Publish** without enabling Revyme Cloud.
+
+1. Choose **Connect Vercel**, enter an existing project name/ID or explicitly create a new project, and connect with a Vercel access token. A local Vercel CLI login or server-side `VERCEL_TOKEN` can also supply credentials. Team projects can use their `team_…` ID. The Vercel project's Root Directory must be empty because each site is uploaded as a complete Next.js project.
+2. **Publish preview** saves the latest source, uploads a fixed snapshot and starts a Vercel build. The temporary `*.vercel.app` URL appears when the build is ready. The previous working preview remains available if a later build fails.
+3. **Deploy to production** rebuilds that ready preview with production settings; later editor changes are not included. Production requires its own explicit action.
+4. **Configure domains** adds production domains, reports ownership verification separately from DNS configuration, and displays Vercel's recommended DNS records. Preview URLs remain separate.
+
+Connection secrets and deployment state stay in ignored `.revyme-local/` files (owner-only permissions), outside site exports and upload payloads. The three development servers deny HTTP access to that directory. Publishing routes accept only local, same-origin requests. An MCP connection in an assistant is separate from the editor server's credentials.
+
 ![The Add Language dialog - locale search, display name, slug and fallback](docs/readme/localization.webp)
 
 ## How it works

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parse } from '@babel/parser';
+import * as ts from 'typescript';
 import {
   buildCmsDetailServerWrapper,
   parseCmsSeoBindings,
@@ -40,8 +41,10 @@ async function runGenerateMetadata(src: string, items: unknown[] | null, slug: s
   // resolve — bind that identifier to the test data instead.
   const importVar = /^import (\w+) from ['"]@\/cms\//m.exec(src)?.[1];
   if (!importVar) throw new Error('wrapper has no collection import');
+  // Stop before generateStaticParams: that export is not part of the metadata
+  // body, and `new Function` cannot parse an `export` keyword.
   const body = src
-    .slice(src.indexOf('const seoDefaults'), src.indexOf('export default'))
+    .slice(src.indexOf('const seoDefaults'), src.indexOf('export function generateStaticParams'))
     .replace('export async function', 'async function')
     // A distinct name: the emitted code declares its own `items`, so reusing
     // that identifier would shadow the injection and throw on its own TDZ.
@@ -184,5 +187,96 @@ export default function Page() {
     // …and the old export is gone, so the module has one metadata source.
     expect(next).not.toMatch(/export\s+const\s+metadata/);
     expect((next.match(/export\s+(async\s+function\s+generateMetadata|const\s+metadata)/g) ?? []).length).toBe(1);
+  });
+});
+
+// ─── Static params for the detail route ─────────────────────────────────────
+//
+// A detail page mounted at the site root answers every unknown top-level URL.
+// The client falls back to `items[0]`, so `/anything` would render the first
+// item instead of a 404. `generateStaticParams` + `dynamicParams = false` make
+// Next serve only real items.
+
+/** Top-level export names, in source order. */
+function exportOrder(src: string): string[] {
+  const ast = parse(src, { sourceType: 'module', plugins: ['jsx', 'typescript'] });
+  const names: string[] = [];
+  for (const node of ast.program.body) {
+    if (node.type === 'ExportDefaultDeclaration') names.push('default');
+    if (node.type !== 'ExportNamedDeclaration' || !node.declaration) continue;
+    const d = node.declaration;
+    if (d.type === 'FunctionDeclaration' && d.id) names.push(d.id.name);
+    if (d.type === 'VariableDeclaration') {
+      const id = d.declarations[0]?.id;
+      if (id?.type === 'Identifier') names.push(id.name);
+    }
+  }
+  return names;
+}
+
+/** Extract the emitted `generateStaticParams` and evaluate it for real, with
+ *  the collection import bound to `items`. */
+function runGenerateStaticParams(src: string, items: unknown): Array<Record<string, unknown>> {
+  const ast = parse(src, { sourceType: 'module', plugins: ['jsx', 'typescript'] });
+  const decl = ast.program.body.find(
+    (n) => n.type === 'ExportNamedDeclaration' && n.declaration?.type === 'FunctionDeclaration'
+      && n.declaration.id?.name === 'generateStaticParams',
+  );
+  if (!decl || decl.type !== 'ExportNamedDeclaration' || decl.declaration?.type !== 'FunctionDeclaration') {
+    throw new Error('wrapper has no generateStaticParams');
+  }
+  const importVar = /^import (\w+) from ['"]@\/cms\//m.exec(src)?.[1];
+  if (!importVar) throw new Error('wrapper has no collection import');
+  const fnSrc = src.slice(decl.declaration.start!, decl.declaration.end!);
+  const js = ts.transpileModule(fnSrc, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText;
+  const factory = new Function(importVar, `${js}\nreturn generateStaticParams;`);
+  const fn = factory(items) as () => Array<Record<string, unknown>>;
+  return fn();
+}
+
+describe('buildCmsDetailServerWrapper — static params', () => {
+  const src = buildCmsDetailServerWrapper({
+    collection: 'articles',
+    defaults: { title: 'Articles' },
+    bindings: { title: 'name' },
+  });
+
+  // S1 — the emitted exports exist with the agreed shape.
+  it('emits generateStaticParams over the collection and dynamicParams = false', () => {
+    expect(src).toMatch(/export function generateStaticParams\(\) \{/);
+    expect(src).toMatch(/\.filter\(\(i\) => i && typeof i\._slug === 'string' && i\._slug !== ''\)/);
+    expect(src).toMatch(/\.map\(\(i\) => \(\{ slug: i\._slug \}\)\)/);
+    expect(src).toMatch(/export const dynamicParams = false;/);
+  });
+
+  // S2 — still valid TSX, and the exports come in the required order.
+  it('parses, and orders generateMetadata, generateStaticParams, dynamicParams, default', () => {
+    expect(() => parse(src, { sourceType: 'module', plugins: ['jsx', 'typescript'] })).not.toThrow();
+    expect(exportOrder(src)).toEqual(['generateMetadata', 'generateStaticParams', 'dynamicParams', 'default']);
+  });
+
+  // S3 — evaluate the emitted function against sample data.
+  // Drafts get a route: collection lists show every item (nothing filters on `_status`), so a
+  // draft excluded here would be a card on the site whose link 404s (review finding, 2026-11-13).
+  it('returns a slug for every item a list can show, drafts included; skips empty slugs and nulls', () => {
+    const items = [
+      { _slug: 'a' },
+      { _slug: 'b', _status: 'draft' },
+      { _slug: '' },
+      null,
+      { _slug: 'c', _status: 'published' },
+    ];
+    expect(runGenerateStaticParams(src, items)).toEqual([{ slug: 'a' }, { slug: 'b' }, { slug: 'c' }]);
+  });
+
+  it('returns no params when the collection file is not an array', () => {
+    // Same defensive contract as generateMetadata: a malformed cms/*.json
+    // must not throw during the build.
+    expect(runGenerateStaticParams(src, null)).toEqual([]);
+  });
+
+  it('keeps the route param key aligned with generateMetadata (`slug`)', () => {
+    expect(src).toMatch(/resolved\?\.slug/);
+    expect(runGenerateStaticParams(src, [{ _slug: 'a' }])[0]).toHaveProperty('slug', 'a');
   });
 });
