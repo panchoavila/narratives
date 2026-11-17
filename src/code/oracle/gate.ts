@@ -27,6 +27,8 @@ import { ensureFormRouteFile } from '@/code/generation/form-gen';
 import { ensureLayoutFile } from '@/code/generation/metadata-gen';
 import { ensureLayoutRootOnComponentRoot } from '@/code/components/component-ops';
 import { getPresetTokens } from '@/code/project/preset-ops';
+import { getCollectionSchema, listCollections } from '@/code/project/cms-ops';
+import type { CollectionSchema } from '@/shared/types';
 import { checkFile, ensureNodeDimensions, type FileKind, type OracleViolation } from '@/code/oracle/check-file';
 import { isCodeComponentSource } from '@/code/oracle/checks/shared';
 import { checkSubmitPath, checkPreservation, checkComponentCompat, checkTokenRefs, type SurfaceFile } from './turn-guards';
@@ -87,6 +89,13 @@ export function gateTurnFiles(
 
   // Known design tokens (app/globals.css) — var(--x) refs are checked per file.
   const knownTokens = new Set(getPresetTokens().map((t) => t.name));
+  // Known CMS collection schemas (cms/*.schema.json) — verifies every item.<field>
+  // read on a collection list or @cmsPage detail lookup exists in the schema.
+  const knownSchemas = new Map<string, CollectionSchema>();
+  for (const slug of listCollections()) {
+    const schema = getCollectionSchema(slug);
+    if (schema) knownSchemas.set(slug, schema);
+  }
 
   const violations: OracleViolation[] = files.flatMap((f) => {
     const tag = (vs: OracleViolation[]) =>
@@ -124,7 +133,7 @@ export function gateTurnFiles(
     // ever appeared in a stale band rule exempted the model's brand-new node
     // from every new-node rule, 2026-08-11).
     if (prevCode) for (const m of prevCode.matchAll(/(?<!\[)data-id="([^"]+)"/g)) existingDataIds.add(m[1]);
-    let vs = [...checkFile(f.code, { kind, path: f.path, existingDataIds })];
+    let vs = [...checkFile(f.code, { kind, path: f.path, existingDataIds, schemas: knownSchemas })];
     // ── GRANDFATHERING ────────────────────────────────────────────────────
     // The oracle grows rules; legacy files carry violations they were built
     // with. Judging an EDIT by the whole file would brick AI editing on any
@@ -138,7 +147,7 @@ export function gateTurnFiles(
       const prevKind: FileKind = f.kind === 'component'
         ? (isCodeComponentSource(prevCode) ? 'code-component' : 'component')
         : isLayoutFile(f.path) ? 'template' : 'page';
-      const oldVs = checkFile(prevCode, { kind: prevKind, path: f.path });
+      const oldVs = checkFile(prevCode, { kind: prevKind, path: f.path, schemas: knownSchemas });
       const oldKeyed = new Set(oldVs.filter((o) => o.elementId).map((o) => `${o.code}::${o.elementId}`));
       const oldCounts = new Map<string, number>();
       for (const o of oldVs) if (!o.elementId) oldCounts.set(o.code, (oldCounts.get(o.code) ?? 0) + 1);

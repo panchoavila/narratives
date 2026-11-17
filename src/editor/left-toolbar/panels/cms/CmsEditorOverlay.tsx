@@ -45,6 +45,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { trace } from '@/shared/debug-trace';
 import { pushHistory } from '@/code/mutation/history';
 import { fieldDropTargets } from './cms-field-reorder';
+import { useIsCmsOnly } from '@/code/stores/viewer-mode-store';
 
 type SidebarMode = 'items' | 'fields';
 
@@ -156,6 +157,8 @@ export default function CmsEditorOverlay() {
   const [searchQuery, setSearchQuery] = useState('');
   const [fieldSearchQuery, setFieldSearchQuery] = useState('');
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>('items');
+  const isCmsOnly = useIsCmsOnly();
+  const effectiveSidebarMode: SidebarMode = isCmsOnly ? 'items' : sidebarMode;
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [newFieldMenuOpen, setNewFieldMenuOpen] = useState(false);
   const [aiPanelOpen, setAiPanelOpen] = useState(true);
@@ -404,18 +407,20 @@ export default function CmsEditorOverlay() {
           },
         ]} />
         {/* AI panel toggle — re-opens the docked Vibe panel after it's hidden. */}
-        <button
-          onClick={() => setAiPanelOpen(v => !v)}
-          title={aiPanelOpen ? 'Hide AI panel' : 'Show AI panel'}
-          className={`flex items-center gap-1.5 px-2.5 h-7 cut-corners text-xs font-medium transition-colors cursor-pointer ${
-            aiPanelOpen
-              ? 'bg-[var(--accent)]/15 text-[var(--accent-text)]'
-              : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
-          }`}
-        >
-          <SparkleIcon size={13} />
-          Vibe
-        </button>
+        {!isCmsOnly && (
+          <button
+            onClick={() => setAiPanelOpen(v => !v)}
+            title={aiPanelOpen ? 'Hide AI panel' : 'Show AI panel'}
+            className={`flex items-center gap-1.5 px-2.5 h-7 cut-corners text-xs font-medium transition-colors cursor-pointer ${
+              aiPanelOpen
+                ? 'bg-[var(--accent)]/15 text-[var(--accent-text)]'
+                : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <SparkleIcon size={13} />
+            Vibe
+          </button>
+        )}
       </div>
 
       {/* Body — master-detail: items/fields sidebar + editor pane. */}
@@ -431,18 +436,22 @@ export default function CmsEditorOverlay() {
           <>
             {/* ── Sidebar ───────────────────────────────────────────────── */}
             <div className="w-64 shrink-0 border-r border-[var(--border-light)] bg-[var(--bg-surface)] flex flex-col">
-              {/* Items / Fields segmented control */}
-              <div className="px-3 pt-3 pb-2 shrink-0">
-                <ToolSegmentedControl
-                  value={sidebarMode}
-                  onChange={(v) => setSidebarMode(v as SidebarMode)}
-                  size="sm"
-                  options={[{ value: 'items', label: 'Items' }, { value: 'fields', label: 'Fields' }]}
-                />
-              </div>
-              <div className="h-px bg-[var(--border-light)] mx-3 shrink-0" />
+              {/* Items / Fields segmented control (hidden on self-hosted `cmsOnly` sites: schemas live locally) */}
+              {!isCmsOnly && (
+                <>
+                  <div className="px-3 pt-3 pb-2 shrink-0">
+                    <ToolSegmentedControl
+                      value={sidebarMode}
+                      onChange={(v) => setSidebarMode(v as SidebarMode)}
+                      size="sm"
+                      options={[{ value: 'items', label: 'Items' }, { value: 'fields', label: 'Fields' }]}
+                    />
+                  </div>
+                  <div className="h-px bg-[var(--border-light)] mx-3 shrink-0" />
+                </>
+              )}
 
-              {sidebarMode === 'items' ? (
+              {effectiveSidebarMode === 'items' ? (
                 <>
                   <div className="px-3 py-2 shrink-0">
                     <Button
@@ -614,7 +623,7 @@ export default function CmsEditorOverlay() {
 
             {/* ── Editor pane ───────────────────────────────────────────── */}
             <div className="flex-1 overflow-y-auto scrollbar-hide bg-[var(--bg-panel)]">
-              {sidebarMode === 'items' ? (
+              {effectiveSidebarMode === 'items' ? (
                 selectedItem ? (
                   <div className="max-w-2xl mx-auto mt-2">
                     <ItemEditor
@@ -661,7 +670,7 @@ export default function CmsEditorOverlay() {
             </div>
 
             {/* ── AI panel (docked right column) ───────────────────────── */}
-            {aiPanelOpen && (
+            {!isCmsOnly && aiPanelOpen && (
               <CmsAiPanel collectionName={collectionName} onClose={() => setAiPanelOpen(false)} />
             )}
           </>

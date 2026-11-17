@@ -44,7 +44,8 @@ import { checkMotionPropsNeedMotionTag } from './checks/motion-tag';
 import { checkTranslationDialect } from './checks/translation-dialect';
 import { checkMediaBandDialect, checkDuplicateBreakpointStack } from './checks/media-band-dialect';
 import { checkComponentLinks, checkPageLinks } from './checks/link-rules';
-import { checkCmsRowNavMarker, checkCmsCollectionDialect, checkCmsNavDialect } from './checks/cms-dialect';
+import { checkCmsRowNavMarker, checkCmsCollectionDialect, checkCmsNavDialect, checkCmsSchemaFieldBindings } from './checks/cms-dialect';
+import type { CollectionSchema } from '@/shared/types';
 import { checkCmsLocaleFilter, checkCmsI18nDirectAccess, checkCmsMapResolves, checkCmsStyleBindingsResolve, checkInlineMapUnsupported } from './checks/cms-locale-dialect';
 import { checkResolutionFidelity } from './checks/fidelity';
 import { checkStyleSurface, checkTextStyleOnFrame, checkElementSurface, checkLoopCarrier, checkPageExports, checkExpressionDataAttrs } from './checks/surface-dialect';
@@ -193,7 +194,12 @@ function isEditorMediaStyleBlock(el: t.JSXElement): boolean {
 
 export function checkFile(
   code: string,
-  opts: { kind: FileKind; path?: string; existingDataIds?: Set<string> },
+  opts: {
+    kind: FileKind;
+    path?: string;
+    existingDataIds?: Set<string>;
+    schemas?: ReadonlyMap<string, CollectionSchema>;
+  },
 ): OracleViolation[] {
   // A template (LayoutClient.tsx — Next.js layout semantics) is page dialect
   // plus one extra invariant: the {children} slot. Normalize to 'page' for
@@ -1472,6 +1478,9 @@ export function checkFile(
     checkCmsRowNavMarker(code, ast, v);
     checkCmsLocaleFilter(code, ast, v);
     checkCmsI18nDirectAccess(code, ast, v);
+    if (opts.schemas && opts.schemas.size > 0) {
+      checkCmsSchemaFieldBindings(code, ast, opts.schemas, v);
+    }
   }
 
   // What may gate a MOUNTED element. The canvas is rendered from the parsed

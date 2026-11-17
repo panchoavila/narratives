@@ -165,6 +165,11 @@ export interface ProjectBackend {
    *  impl always returns false. */
   getWebsiteClosedSource(id: string): Promise<boolean>;
 
+  /** Self-hosted mode: true when the site locks canvas/JSX/schema editing and
+   *  restricts remote authoring to CMS item data (`_revyme/project-meta.json`
+   *  `cmsOnly: true`). Always false in local dev mode. */
+  getWebsiteCmsOnly?(id: string): Promise<boolean>;
+
   /** The workspace id that owns this website. Cloud impl reads
    *  `workspaceId` from the website GET response; local impl returns
    *  null (localStorage projects don't belong to any workspace). Used

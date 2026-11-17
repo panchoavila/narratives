@@ -21,6 +21,8 @@ export interface ServerConfig {
    *  magic links and to refuse cross-origin writes and socket handshakes. */
   publicOrigin: string;
   adminEmail: string;
+  /** Optional Bearer token (`ADMIN_API_TOKEN`) for CLI `design:push` / `content:pull`, authenticating as the admin. */
+  adminApiToken: string | null;
   /** How invitation mails name the admin ("Ana te invitó…"); falls back to the email. */
   adminName: string | null;
   mailTransport: 'file' | 'resend';
@@ -53,6 +55,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
 
   const adminEmail = (env.ADMIN_EMAIL ?? '').trim().toLowerCase();
   if (!adminEmail || !adminEmail.includes('@')) throw new Error('ADMIN_EMAIL is required');
+  const adminApiToken = env.ADMIN_API_TOKEN?.trim() || null;
+  if (adminApiToken !== null && adminApiToken.length < 24) {
+    throw new Error('ADMIN_API_TOKEN must be at least 24 characters when set');
+  }
 
   const mailTransport = (env.MAIL_TRANSPORT ?? 'file') as ServerConfig['mailTransport'];
   if (mailTransport !== 'file' && mailTransport !== 'resend') {
@@ -74,6 +80,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     portPreview: int(env, 'PORT_PREVIEW', 8092),
     publicOrigin,
     adminEmail,
+    adminApiToken,
     adminName: env.ADMIN_NAME?.trim() || null,
     mailTransport,
     resendApiKey,

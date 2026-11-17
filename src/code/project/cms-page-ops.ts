@@ -496,7 +496,7 @@ import ${varName} from '@/cms/${slug}.json';
 
 export default function Page() {
   const params = useParams();
-  const item = ${varName}.find((i) => i._slug === params?.slug) ?? ${varName}[0];
+  const item = ${varName}.find((i) => i._slug === params?.slug) ?? ${varName}[0] ?? ({} as Record<string, any>);
   return (
     <div data-id="root" key={String(params?.slug ?? '')} data-name="${pageName}" style={{
       position: 'relative', width: '100%',

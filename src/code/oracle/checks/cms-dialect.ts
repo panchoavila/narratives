@@ -6,6 +6,8 @@ import { cmsNavHrefExpr } from '@/code/generation/map-gen';
 import { paginationStateVar } from '@/code/generation/cms-pagination-gen';
 import { traverse, jsxTagName, jsxAttrs, stringAttr } from './shared';
 import { MOTION_LINK_DECL_ANY_RE } from '@/code/generation/generator-attrs';
+import { checkCmsViewBindingsInAst } from '@/shared/cms-site-contract';
+import type { CollectionSchema } from '@/shared/types';
 import type { OracleViolation, FileKind } from './shared';
 
 /** CMS COLLECTION-LIST ROW LINK — a Link/MotionLink/anchor whose `href` template
@@ -236,8 +238,38 @@ const CMS_NAV_LABEL: Record<string, string> = { self: 'Current', prev: 'Previous
  */
 function checkCmsNavDialect(code: string, ast: t.File, v: OracleViolation[], kind: 'page' | 'component' = 'page'): void {
   const norm = (s: string) => s.replace(/\s+/g, '');
-  // cms import: `import products from '@/cms/products.json'` → var + slug.
+  // cms imports: `import products from '@/cms/products.json'` → var → slug map.
+  // A page may import more than one collection (e.g. a singleton `site.json`
+  // plus `entries.json`), so `mode === 'row'` resolves its collection from the
+  // enclosing `.map()` chain rather than blindly picking the first import.
+  const importVarToSlug = new Map<string, string>();
+  for (const m of code.matchAll(/import\s+([A-Za-z_$][\w$]*)\s+from\s+['"]@\/cms\/([A-Za-z0-9_-]+)\.json['"]/g)) {
+    importVarToSlug.set(m[1], m[2]);
+  }
   const importMatch = code.match(/import\s+([A-Za-z_$][\w$]*)\s+from\s+['"]@\/cms\/([A-Za-z0-9_-]+)\.json['"]/);
+  const unwrapMapCollectionSlug = (node: t.Node | null | undefined): string | null => {
+    let cur: t.Node | null | undefined = node;
+    while (cur) {
+      if (t.isIdentifier(cur)) return importVarToSlug.get(cur.name) ?? null;
+      if (t.isParenthesizedExpression(cur)) { cur = cur.expression; continue; }
+      if (t.isCallExpression(cur)) {
+        if (t.isIdentifier(cur.callee) && (cur.callee.name === 'localizeRows' || cur.callee.name === '__applyListConfig')) {
+          cur = cur.arguments[0] ?? null;
+          continue;
+        }
+        if (
+          t.isMemberExpression(cur.callee) &&
+          t.isIdentifier(cur.callee.property) &&
+          (cur.callee.property.name === 'filter' || cur.callee.property.name === 'sort' || cur.callee.property.name === 'slice')
+        ) {
+          cur = cur.callee.object;
+          continue;
+        }
+      }
+      return null;
+    }
+    return null;
+  };
   // `const MotionLink = motion.create(Link)` (Link from next/link) IS a client-side
   // <Link> — the editor's own LinkTool/Make Component output (convertToMotionLinkInCode
   // emits it so the row link can carry framer-motion props). Accept it wherever a
@@ -338,8 +370,22 @@ function checkCmsNavDialect(code: string, ast: t.File, v: OracleViolation[], kin
         return;
       }
 
+      let effectiveCollection = authCollection;
+      if (mode === 'row') {
+        const enclosingMap = path.findParent(
+          (p) =>
+            p.isCallExpression() &&
+            t.isMemberExpression(p.node.callee) &&
+            t.isIdentifier(p.node.callee.property, { name: 'map' }),
+        );
+        if (enclosingMap?.isCallExpression() && t.isMemberExpression(enclosingMap.node.callee)) {
+          const mapSlug = unwrapMapCollectionSlug(enclosingMap.node.callee.object);
+          if (mapSlug) effectiveCollection = mapSlug;
+        }
+      }
+
       // href must equal the canonical generator output for this mode.
-      const expected = cmsNavHrefExpr(authCollection || 'COLLECTION', detailColVar || 'COLLECTION_VAR', mode, itemVar);
+      const expected = cmsNavHrefExpr(effectiveCollection || 'COLLECTION', detailColVar || 'COLLECTION_VAR', mode, itemVar);
       if (!hrefExpr) {
         v.push({
           code: 'CMS_NAV_HREF_MISMATCH', tier: 2, line,
@@ -357,4 +403,21 @@ function checkCmsNavDialect(code: string, ast: t.File, v: OracleViolation[], kin
   });
 }
 
-export { checkCmsRowNavMarker, checkCmsCollectionDialect, checkCmsNavDialect };
+function checkCmsSchemaFieldBindings(
+  code: string,
+  ast: t.File,
+  schemas: ReadonlyMap<string, CollectionSchema>,
+  v: OracleViolation[],
+): void {
+  for (const issue of checkCmsViewBindingsInAst(code, ast, schemas, { requireSchema: false })) {
+    v.push({
+      code: issue.code,
+      tier: 2,
+      line: issue.line,
+      elementId: issue.elementId,
+      message: issue.message,
+    });
+  }
+}
+
+export { checkCmsRowNavMarker, checkCmsCollectionDialect, checkCmsNavDialect, checkCmsSchemaFieldBindings };

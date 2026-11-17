@@ -12,6 +12,7 @@
 // Only the admin and people invited to at least one site receive a link; the
 // response is identical either way so the form does not reveal who is invited.
 
+import crypto from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ServerConfig } from './config';
 import type { Db, UserRow } from './db';
@@ -65,7 +66,22 @@ export class Auth {
   }
 
   userFor(req: IncomingMessage): UserRow | null {
-    return this.userFromCookieHeader(req.headers.cookie);
+    const cookieUser = this.userFromCookieHeader(req.headers.cookie);
+    if (cookieUser) return cookieUser;
+    if (this.config.adminApiToken) {
+      const authHeader = req.headers.authorization;
+      if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+        const provided = authHeader.slice('Bearer '.length).trim();
+        if (provided.length > 0) {
+          const expectedBuf = Buffer.from(sha256(this.config.adminApiToken), 'utf8');
+          const actualBuf = Buffer.from(sha256(provided), 'utf8');
+          if (expectedBuf.length === actualBuf.length && crypto.timingSafeEqual(expectedBuf, actualBuf)) {
+            return this.access.admin();
+          }
+        }
+      }
+    }
+    return null;
   }
 
   sessionPayload(user: UserRow | null) {

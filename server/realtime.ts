@@ -31,7 +31,13 @@ import type { Db, SiteRole, UserRow } from './db';
 import type { Access } from './access';
 import type { Auth } from './auth';
 import type { SiteLocks } from './site-locks';
-import { isManagedProjectPath } from '../src/server/sites-plugin';
+import { isManagedProjectPath, walkManagedFiles } from '../src/server/sites-plugin';
+import {
+  cmsSlugFromDataPath,
+  isCmsDataPath,
+  parseSchemasFromFiles,
+  validateCollectionItemsAgainstSchema,
+} from '../src/shared/cms-site-contract';
 import { trace } from './trace';
 
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
@@ -217,6 +223,10 @@ export class Realtime {
         trace.action('rt:file-delete-refused', { userId: user.id, role: ctx.member.role, path: rawPath });
         return;
       }
+      if (this.deps.access.isCmsOnly(ctx.room.siteId)) {
+        trace.action('rt:file-delete-refused', { userId: user.id, role: ctx.member.role, path: rawPath, reason: 'cms-only' });
+        return;
+      }
       const previous = ctx.room.live.get(rawPath as string);
       const seq = (previous?.seq ?? 0) + 1;
       ctx.room.liveBytes -= previous?.content?.length ?? 0;
@@ -359,6 +369,14 @@ export class Realtime {
       trace.action('rt:file-sync-dropped', { userId: user.id, role: member.role, path: rawPath });
       return;
     }
+    if (this.deps.access.isCmsOnly(room.siteId) && (!rel || !isCmsDataPath(rel))) {
+      // On a `cmsOnly` site, only CMS item data (`cms/<slug>.json`) may be
+      // edited on the server; camera pans (`_meta/page-camera.json`) and any
+      // attempted design/schema writes are acked and dropped.
+      reply({ ok: true, seq: current });
+      trace.action('rt:file-sync-dropped', { userId: user.id, role: member.role, path: rawPath, reason: 'cms-only' });
+      return;
+    }
     const content = payload.content;
     const bytes = typeof content === 'string' ? Buffer.byteLength(content) : 0;
     const previous = typeof rawPath === 'string' ? room.live.get(rawPath) : undefined;
@@ -456,11 +474,34 @@ export class Realtime {
     return this.deps.locks.run(room.siteId, () => {
       if (this.rooms.get(room.siteId) !== room || !this.deps.access.siteExists(room.siteId)) return 0;
       const siteDir = path.join(this.deps.access.sitesRoot, room.siteId);
+      const cmsOnly = this.deps.access.isCmsOnly(room.siteId);
+      const schemas = cmsOnly ? parseSchemasFromFiles(walkManagedFiles(siteDir)).schemas : null;
       let changed = 0;
       for (const [rawPath, file] of room.live) {
         const rel = safeRelPath(rawPath);
         if (!rel || !isManagedProjectPath(rel)) continue;
+        if (cmsOnly && (!isCmsDataPath(rel) || file.content === null)) continue;
         if (file.content === this.readDisk(room.siteId, rel)) continue;
+        if (cmsOnly && schemas && file.content !== null) {
+          const slug = cmsSlugFromDataPath(rel);
+          const schema = slug ? schemas.get(slug) : undefined;
+          if (!schema) {
+            trace.error('rt:persist-validation-failed', { siteId: room.siteId, path: rel, reason: 'missing-schema' });
+            continue;
+          }
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(file.content);
+          } catch {
+            trace.error('rt:persist-validation-failed', { siteId: room.siteId, path: rel, reason: 'invalid-json' });
+            continue;
+          }
+          const issues = validateCollectionItemsAgainstSchema(slug!, schema, parsed);
+          if (issues.length > 0) {
+            trace.error('rt:persist-validation-failed', { siteId: room.siteId, path: rel, issues: issues.map((i) => i.code) });
+            continue;
+          }
+        }
         const abs = path.join(siteDir, rel);
         try {
           if (file.content === null) {
@@ -481,6 +522,58 @@ export class Realtime {
         trace.action('rt:persisted', { siteId: room.siteId, reason, files: changed, revision });
       }
       return changed;
+    });
+  }
+
+  /** Flush any pending live CMS edits for `siteId` to disk before a design push or content pull. */
+  async flushSite(siteId: string): Promise<number> {
+    const room = this.rooms.get(siteId);
+    if (!room) return 0;
+    if (room.flushTimer) {
+      clearTimeout(room.flushTimer);
+      room.flushTimer = null;
+    }
+    return this.persist(room, 'explicit-flush');
+  }
+
+  /**
+   * Broadcast a local `design:push` into an active room so connected editors
+   * receive the updated views, components, and schemas live without losing
+   * their CMS edits or hitting a revision conflict.
+   */
+  applyDesignPush(
+    siteId: string,
+    updatedFiles: Record<string, string>,
+    deletedPaths: string[],
+    revision: number,
+    adminUserId: string,
+  ): void {
+    const room = this.rooms.get(siteId);
+    if (!room) return;
+    if (room.members.size === 0) {
+      this.dropRoom(room, 'design-push');
+      return;
+    }
+    for (const [relPath, content] of Object.entries(updatedFiles)) {
+      const prev = room.live.get(relPath);
+      const seq = (prev?.seq ?? 0) + 1;
+      room.liveBytes += content.length - (prev?.content?.length ?? 0);
+      room.live.set(relPath, { seq, content, lastUserId: adminUserId });
+      this.io.to(this.key(siteId)).emit('file-sync', { userId: adminUserId, path: relPath, content, seq });
+    }
+    for (const delPath of deletedPaths) {
+      const prev = room.live.get(delPath);
+      const seq = (prev?.seq ?? 0) + 1;
+      room.liveBytes -= prev?.content?.length ?? 0;
+      room.live.set(delPath, { seq, content: null, lastUserId: adminUserId });
+      this.io.to(this.key(siteId)).emit('file-delete', { userId: adminUserId, path: delPath, seq });
+    }
+    this.notifySaved(siteId, revision, true);
+    trace.action('rt:design-pushed', {
+      siteId,
+      updated: Object.keys(updatedFiles).length,
+      deleted: deletedPaths.length,
+      revision,
     });
   }
 

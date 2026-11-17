@@ -29,7 +29,7 @@ import { useIsClosedSource } from '@/code/stores/closed-source-store';
 import { parseWebsiteMeta } from './publish-utils';
 import { useSigmoidProgress } from '@/editor/hooks/useSigmoidProgress';
 import type { WebsiteMeta } from '@/backend/types';
-import { useIsViewer } from '@/code/stores/viewer-mode-store';
+import { useIsViewer, useCanEditCms } from '@/code/stores/viewer-mode-store';
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
@@ -43,6 +43,7 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
   // Viewers can preview but not Settings / Export / Publish — those
   // either change the site or trigger a deploy.
   const isViewer = useIsViewer();
+  const canEditCms = useCanEditCms();
   // Closed-source template remix — exporting would hand over the source the
   // template's creator chose to hide, so Export is disabled with a tooltip.
   const isClosedSource = useIsClosedSource();
@@ -369,7 +370,7 @@ export default function RightHeader({ previewMode, onTogglePreview }: Props) {
             // the dropdown's own UI handles the feedback, so the button
             // stays plain.
             onClick={handleLiveClick}
-            disabled={isViewer}
+            disabled={!canEditCms}
             className="w-full relative overflow-hidden cut-corners"
             style={primaryBg}
             // Tag for the dropdown's outside-click filter.

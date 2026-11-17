@@ -93,6 +93,7 @@ const child = spawn(process.execPath, [path.join(repo, 'dist-server', 'index.mjs
     PORT_PREVIEW: '5175',
     PUBLIC_ORIGIN: 'http://127.0.0.1:4334',
     ADMIN_EMAIL: 'admin@e2e.test',
+    ADMIN_API_TOKEN: 'e2e-admin-sync-token-0123456789abcdef',
     MAIL_TRANSPORT: 'file',
     ROOM_GRACE_MS: '3000',
   },

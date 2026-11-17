@@ -14,6 +14,11 @@ const bundle = await rolldown({
   input: path.join(root, 'server', 'index.ts'),
   platform: 'node',
   external: [/^node:/, 'bufferutil', 'utf-8-validate'],
+  resolve: {
+    alias: {
+      '@': path.join(root, 'src'),
+    },
+  },
 });
 await bundle.write({
   file: outFile,

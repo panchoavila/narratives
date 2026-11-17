@@ -39,6 +39,7 @@ import Button from '@/design-system/Button';
 import SearchBar from '@/design-system/SearchBar';
 import type { DropdownMenuEntry } from '@/design-system/DropdownMenu';
 import { CmsIcon } from '@/shared/icons';
+import { useIsCmsOnly } from '@/code/stores/viewer-mode-store';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -91,6 +92,7 @@ function CollectionListView({
   const setEditorOpen = useSetAtom(cmsEditorOpenAtom);
   const setEditorCollection = useSetAtom(cmsEditorCollectionAtom);
   const refresh = useCmsRefresh();
+  const isCmsOnly = useIsCmsOnly();
 
   trace.fn('CmsPanel:CollectionListView.render', { collectionCount: schemas.size, searchQuery });
 
@@ -216,7 +218,7 @@ function CollectionListView({
             ? 'Try a different search term.'
             : 'Create a collection to manage structured content like blog posts, team members, or products.'}
         </p>
-        {!hasAnyCollections && (
+        {!hasAnyCollections && !isCmsOnly && (
         <button
           onClick={onNewCollection}
           // Accent tokens, not hardcoded blue — --accent-fg is the per-theme
@@ -240,7 +242,7 @@ function CollectionListView({
         {slugs.map(slug => {
           const schema = schemas.get(slug);
           const items = data.get(slug) ?? [];
-          const menuItems: DropdownMenuEntry[] = [
+          const menuItems: DropdownMenuEntry[] | undefined = isCmsOnly ? undefined : [
             { id: 'rename', label: 'Rename', onClick: () => setRenamingSlug(slug) },
             { id: 'duplicate', label: 'Duplicate', onClick: () => handleDuplicateCollection(slug) },
             { type: 'separator' },
@@ -256,7 +258,7 @@ function CollectionListView({
               onClick={() => onClickCollection(slug)}
               menuItems={menuItems}
               right={<span className="text-[10px] text-[var(--text-disabled)]">{items.length}</span>}
-              inlineEdit={renamingSlug === slug ? {
+              inlineEdit={!isCmsOnly && renamingSlug === slug ? {
                 // Pre-fill the current name (the auto-name for a fresh
                 // collection); SidebarRow selects it so a keystroke
                 // overwrites, and clicking away keeps it.
@@ -749,6 +751,7 @@ export default function CmsPanel() {
   // collection-list-only.
   const [searchQuery, setSearchQuery] = useState('');
   const refresh = useCmsRefresh();
+  const isCmsOnly = useIsCmsOnly();
 
   // Refresh on mount
   React.useEffect(() => {
@@ -797,7 +800,7 @@ export default function CmsPanel() {
       </div>
       <div data-tool-divider className="h-px bg-[var(--border-light)] mx-3 mt-1.5 mb-0" />
 
-      <SectionLabel size="md" right={<AddButton onClick={handleCreateCollectionInline} title="New collection" />}>CMS</SectionLabel>
+      <SectionLabel size="md" right={isCmsOnly ? undefined : <AddButton onClick={handleCreateCollectionInline} title="New collection" />}>CMS</SectionLabel>
 
       <CollectionListView
         onClickCollection={handleClickCollection}

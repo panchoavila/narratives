@@ -44,7 +44,7 @@ import { CLOUD_ENABLED } from './shared/cloud-flag';
 import { previewModeAtom } from './code/stores/editor-store';
 import { CollaborationProvider } from './canvas/collab/CollaborationProvider';
 import CollaborationLayer from './canvas/collab/CollaborationLayer';
-import { useIsViewer, useIsViewerRole, useViewerReason, setOfflineMode } from './code/stores/viewer-mode-store';
+import { useIsViewer, useIsViewerRole, useIsCmsOnly, useViewerReason, setOfflineMode } from './code/stores/viewer-mode-store';
 import { useActiveBranchId } from './code/stores/agent-run-lock-store';
 import { MAIN_BRANCH_ID } from './code/project/project-fs';
 import { suspendBuilderTheme, resumeBuilderTheme } from '@/editor/builder-theme';
@@ -105,6 +105,7 @@ export default function App() {
   // would just produce mutations the queue no-ops, so hide them.
   const isViewer = useIsViewer();
   const isViewerRole = useIsViewerRole();
+  const isCmsOnly = useIsCmsOnly();
 
   // Ctrl/Cmd+P → toggle preview. Ignored when typing in inputs /
   // textareas / contenteditable so the shortcut doesn't fight with
@@ -190,6 +191,7 @@ export default function App() {
           ROLE. Owners and editors never see it. */}
       <ViewOnlyBanner />
       <AgentEditingBanner />
+      <CmsOnlyBanner />
       {/* Network watcher — flips the editor into the offline read-only
           state when the connection drops, and the matching toast. */}
       <OfflineWatcher />
@@ -243,7 +245,7 @@ export default function App() {
         {/* The chat keys on the ROLE, not on viewer mode: while an agent run
             locks the branch the editor is read-only (viewer reason `agent`),
             and the chat is exactly where the run is watched and stopped. */}
-        {!previewMode && !componentEditorOpen && !pluginEditorOpen && !isViewerRole && <PageChat />}
+        {!previewMode && !componentEditorOpen && !pluginEditorOpen && !isViewerRole && !isCmsOnly && <PageChat />}
         {!previewMode && !componentEditorOpen && !pluginEditorOpen && !cmsOverlayShowing && !translationsOverlayOpen && <BottomToolbar />}
         {!previewMode && !componentEditorOpen && !pluginEditorOpen && !cmsOverlayShowing && !translationsOverlayOpen && <AnimationTimeline />}
         {/* Sketch brush controls live in the right PropertiesPanel
@@ -466,6 +468,42 @@ function AgentEditingBanner() {
     >
       <span style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--accent)', boxShadow: '0 0 6px var(--accent)' }} />
       Agent is editing {branch === MAIN_BRANCH_ID ? 'main' : `branch ${branch}`} — read-only until it finishes. Stop it from the chat.
+    </div>
+  );
+}
+
+/** Pill shown on self-hosted `cmsOnly` sites: canvas/JSX/schemas are read-only
+ *  while CMS item collections, media uploads, and publishing remain live. */
+function CmsOnlyBanner() {
+  const reason = useViewerReason();
+  if (reason !== 'cms-only') return null;
+  return (
+    <div
+      data-testid="cms-only-banner"
+      style={{
+        position: 'fixed',
+        bottom: 68,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 9998,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '4px 12px',
+        background: 'var(--bg-tertiary)',
+        border: '1px solid var(--border-light)',
+        borderRadius: 999,
+        color: 'var(--text-secondary)',
+        fontSize: 11,
+        fontWeight: 500,
+        letterSpacing: 0.2,
+        whiteSpace: 'nowrap',
+        pointerEvents: 'none',
+        userSelect: 'none',
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--accent)' }} />
+      Modo contenido — edita colecciones en CMS; el diseño se gestiona en local.
     </div>
   );
 }

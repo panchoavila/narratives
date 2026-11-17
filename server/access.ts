@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { IncomingMessage } from 'node:http';
-import { SITE_ID_RE } from '../src/server/sites-plugin';
+import { SITE_ID_RE, readSiteMeta } from '../src/server/sites-plugin';
 import type { Db, SiteRole, SiteRow, UserRow } from './db';
 import type { ServerConfig } from './config';
 import { trace } from './trace';
@@ -44,6 +44,12 @@ export class Access {
   siteRow(siteId: string): SiteRow | null {
     if (!this.siteExists(siteId)) return null;
     return this.db.getSite(siteId) ?? this.db.ensureSite(siteId, this.admin().id);
+  }
+
+  /** True when `_revyme/project-meta.json` marks the site `cmsOnly: true`. */
+  isCmsOnly(siteId: string): boolean {
+    if (!this.siteExists(siteId)) return false;
+    return readSiteMeta(path.join(this.sitesRoot, siteId), siteId).cmsOnly === true;
   }
 
   /** Register every site folder on disk. Run at boot. */

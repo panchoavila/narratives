@@ -18,6 +18,7 @@ import { trace } from '@/shared/debug-trace';
 interface SitePayload {
   id: string;
   name?: string;
+  cmsOnly?: boolean;
   project?: ProjectData;
   revision?: number;
   role?: 'owner' | 'editor' | 'viewer';
@@ -250,6 +251,12 @@ export class SitesBackend implements ProjectBackend {
 
   async getWebsiteClosedSource(_id: string): Promise<boolean> {
     return false;
+  }
+
+  async getWebsiteCmsOnly(id: string): Promise<boolean> {
+    if (!SELF_HOSTED || isEphemeralId(id)) return false;
+    const payload = await this.fetchSite(id);
+    return payload?.cmsOnly === true;
   }
 
   async getWebsiteWorkspaceId(id: string): Promise<string | null> {

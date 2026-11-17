@@ -21,7 +21,7 @@ import {
 } from '@/shared/icons';
 import CollaboratorsModal from '@/editor/collab/CollaboratorsModal';
 import CollaboratorsSection from '@/editor/collab/CollaboratorsSection';
-import { useIsViewer, useIsViewerRole } from '@/code/stores/viewer-mode-store';
+import { useIsViewer, useIsViewerRole, useIsCmsOnly, useCanEditCms } from '@/code/stores/viewer-mode-store';
 import { useIsClosedSource } from '@/code/stores/closed-source-store';
 
 // ─── Code Icon ──────────────────────────────────────────────────────────────
@@ -136,6 +136,9 @@ export default function LeftMenu() {
   // that run is watched and stopped, and reading the code stays useful (the
   // editor's Write toggle is gated on the run separately).
   const isViewerRole = useIsViewerRole();
+  const isCmsOnly = useIsCmsOnly();
+  const canEditCms = useCanEditCms();
+  const designSurfaceLocked = isViewerRole || isCmsOnly;
   const agentRunning = useAtomValue(agentStatusAtom) === 'running';
   const isClosedSource = useIsClosedSource();
   // The VIBE icon opens the docked AI chat. It hides entirely while the chat
@@ -245,12 +248,12 @@ export default function LeftMenu() {
                   cut it. */}
               <div className={`vibe-ring relative w-8 h-8 cut-corners ${agentRunning ? 'vibe-working' : ''}`} data-testid="vibe-button" data-working={agentRunning || undefined}>
                 <button
-                  disabled={isViewerRole}
-                  onClick={isViewerRole ? undefined : (e) => { togglePanel('vibe'); handleClick('vibe'); e.currentTarget.blur(); }}
-                  onMouseEnter={isViewerRole ? undefined : (e) => handleEnter('vibe', 'Vibe AI', e.currentTarget)}
-                  onMouseLeave={isViewerRole ? undefined : handleLeave}
+                  disabled={designSurfaceLocked}
+                  onClick={designSurfaceLocked ? undefined : (e) => { togglePanel('vibe'); handleClick('vibe'); e.currentTarget.blur(); }}
+                  onMouseEnter={designSurfaceLocked ? undefined : (e) => handleEnter('vibe', 'Vibe AI', e.currentTarget)}
+                  onMouseLeave={designSurfaceLocked ? undefined : handleLeave}
                   className={`vibe-face absolute inset-0 cut-corners flex items-center justify-center transition-colors text-[10px] font-bold tracking-wide ${
-                    isViewerRole
+                    designSurfaceLocked
                       ? 'bg-[var(--accent)] text-[var(--accent-fg)] opacity-40 cursor-not-allowed'
                       : activePanel === 'vibe'
                         ? 'bg-[var(--accent-hover)] text-[var(--accent-fg)]'
@@ -319,7 +322,7 @@ export default function LeftMenu() {
         </MenuButton>
 
         {/* Media Gallery */}
-        <MenuButton panelId="media" isActive={activePanel === 'media'} onToggle={togglePanel} title="Media Gallery" tooltip={tooltipHandlers} disabled={isViewer} dataTutorial="media-button">
+        <MenuButton panelId="media" isActive={activePanel === 'media'} onToggle={togglePanel} title="Media Gallery" tooltip={tooltipHandlers} disabled={!canEditCms} dataTutorial="media-button">
           <ChatImageIcon className="w-[18px] h-[18px]" />
         </MenuButton>
 
@@ -329,7 +332,7 @@ export default function LeftMenu() {
         </MenuButton>
 
         {/* CMS */}
-        <MenuButton panelId="cms" isActive={activePanel === 'cms'} onToggle={togglePanel} title="CMS" tooltip={tooltipHandlers} disabled={isViewer} dataTutorial="cms-button">
+        <MenuButton panelId="cms" isActive={activePanel === 'cms'} onToggle={togglePanel} title="CMS" tooltip={tooltipHandlers} disabled={!canEditCms} dataTutorial="cms-button">
           <CmsIcon className="w-[18px] h-[18px]" />
         </MenuButton>
 
@@ -337,7 +340,7 @@ export default function LeftMenu() {
         {/* Branches keys on the ROLE: while an agent run holds the branch the
             panel is where you see which one is in use (switching is refused
             with the reason until the run finishes). */}
-        <MenuButton panelId="branches" isActive={activePanel === 'branches'} onToggle={togglePanel} title="Branches" tooltip={tooltipHandlers} disabled={isViewerRole} dataTutorial="branches-button">
+        <MenuButton panelId="branches" isActive={activePanel === 'branches'} onToggle={togglePanel} title="Branches" tooltip={tooltipHandlers} disabled={designSurfaceLocked} dataTutorial="branches-button">
           <BranchIcon size={18} />
         </MenuButton>
 
@@ -346,12 +349,12 @@ export default function LeftMenu() {
             chose not to expose the source, so the affordance doesn't render
             (matching the marketplace "Closed source" option). */}
         {!isClosedSource && <button
-          disabled={isViewerRole}
-          onClick={isViewerRole ? undefined : (e) => { setCodeOpen(v => !v); handleClick('code'); e.currentTarget.blur(); }}
-          onMouseEnter={isViewerRole ? undefined : (e) => handleEnter('code', 'Code', e.currentTarget)}
-          onMouseLeave={isViewerRole ? undefined : handleLeave}
+          disabled={designSurfaceLocked}
+          onClick={designSurfaceLocked ? undefined : (e) => { setCodeOpen(v => !v); handleClick('code'); e.currentTarget.blur(); }}
+          onMouseEnter={designSurfaceLocked ? undefined : (e) => handleEnter('code', 'Code', e.currentTarget)}
+          onMouseLeave={designSurfaceLocked ? undefined : handleLeave}
           className={`w-8 h-8 cut-corners flex items-center justify-center transition-colors ${
-            isViewerRole
+            designSurfaceLocked
               ? 'text-[var(--text-secondary)] opacity-40 cursor-not-allowed'
               : codeOpen
                 ? 'bg-[var(--btn-secondary-bg)] text-[var(--text-primary)]'

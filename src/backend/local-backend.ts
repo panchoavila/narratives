@@ -101,6 +101,10 @@ export class LocalBackend implements ProjectBackend {
     return false;
   }
 
+  async getWebsiteCmsOnly(_id: string): Promise<boolean> {
+    return false;
+  }
+
   async getWebsiteWorkspaceId(_id: string): Promise<string | null> {
     // localStorage projects don't belong to any workspace — there's no
     // cloud dashboard to route to. Callers (LeftHeader's "Your Account"

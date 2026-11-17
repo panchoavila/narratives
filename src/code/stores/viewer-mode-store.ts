@@ -28,15 +28,19 @@ import { useSyncExternalStore } from 'react';
 import { trace } from '@/shared/debug-trace';
 
 /** Why the editor is read-only right now. `null` = fully editable.
- *  · `viewer`  — the session's role; permanent.
- *  · `offline` — no network; until it returns.
- *  · `agent`   — an AI run is editing the branch the user is on; until the
- *                run finishes (or is stopped from the chat). A run on
- *                another branch leaves this one editable. */
-export type ViewerReason = 'viewer' | 'offline' | 'agent' | null;
+ *  · `viewer`   — the session's role; permanent.
+ *  · `offline`  — no network; until it returns.
+ *  · `agent`    — an AI run is editing the branch the user is on; until the
+ *                 run finishes (or is stopped from the chat). A run on
+ *                 another branch leaves this one editable.
+ *  · `cms-only` — self-hosted `cmsOnly` site: canvas/JSX/schemas are locked
+ *                 (design is maintained locally), while CMS item data, media
+ *                 uploads, and publishing remain editable for owner/editor. */
+export type ViewerReason = 'viewer' | 'offline' | 'agent' | 'cms-only' | null;
 
 let _isViewerRole = false;
 let _isOffline = false;
+let _isCmsOnly = false;
 /**
  * THE AGENT SOURCE. The lock itself lives in agent-run-lock-store (it needs
  * ProjectFS for the active branch; this store must stay a leaf), which
@@ -72,15 +76,25 @@ export function registerAgentEditingSource(
 }
 
 /** Read viewer mode from imperative code (mutation-queue, node-ops,
- *  drag/resize handlers). True when the user is a viewer by role OR
- *  currently offline — every reader sees the same value. */
+ *  drag/resize handlers). True when the user is a viewer by role,
+ *  currently offline, locked by an agent, OR on a self-hosted `cmsOnly` site. */
 export function isViewerMode(): boolean {
-  return _isViewerRole || _isOffline || _agentBusy();
+  return _isViewerRole || _isOffline || _agentBusy() || _isCmsOnly;
 }
 
 /** The UI's view of the same question (see `_agentLocked` above). */
 function isViewerModeForUi(): boolean {
-  return _isViewerRole || _isOffline || _agentLocked();
+  return _isViewerRole || _isOffline || _agentLocked() || _isCmsOnly;
+}
+
+/** True when the user may edit CMS items, upload media, and publish — allowed
+ *  on `cmsOnly` sites for owners/editors, blocked for viewers, offline, or active agent runs. */
+function canEditCmsForUi(): boolean {
+  return !_isViewerRole && !_isOffline && !_agentLocked();
+}
+
+export function isCmsOnlyMode(): boolean {
+  return _isCmsOnly;
 }
 
 /** The session's ROLE alone — for the few surfaces that must stay usable
@@ -97,6 +111,7 @@ function getViewerReason(): ViewerReason {
   if (_isViewerRole) return 'viewer';
   if (_isOffline) return 'offline';
   if (_agentLocked()) return 'agent';
+  if (_isCmsOnly) return 'cms-only';
   return null;
 }
 
@@ -115,6 +130,14 @@ export function setViewerMode(next: boolean): void {
   if (_isViewerRole === next) return;
   _isViewerRole = next;
   trace.action('viewer-mode:set-role', { isViewer: next });
+  emit();
+}
+
+/** Set the self-hosted `cmsOnly` flag from ProjectLoader. Idempotent. */
+export function setCmsOnlyMode(next: boolean): void {
+  if (_isCmsOnly === next) return;
+  _isCmsOnly = next;
+  trace.action('viewer-mode:set-cms-only', { isCmsOnly: next });
   emit();
 }
 
@@ -155,4 +178,14 @@ export function useViewerReason(): ViewerReason {
  *  `isOffline()` for when to use this over `useViewerReason()`. */
 export function useIsOffline(): boolean {
   return useSyncExternalStore(subscribe, isOffline, isOffline);
+}
+
+/** React hook — true on self-hosted `cmsOnly` sites (canvas/schemas locked, CMS items editable). */
+export function useIsCmsOnly(): boolean {
+  return useSyncExternalStore(subscribe, isCmsOnlyMode, isCmsOnlyMode);
+}
+
+/** React hook — true when the user can edit CMS items, upload media, and publish. */
+export function useCanEditCms(): boolean {
+  return useSyncExternalStore(subscribe, canEditCmsForUi, canEditCmsForUi);
 }

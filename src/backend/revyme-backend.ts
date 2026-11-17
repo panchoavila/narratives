@@ -159,6 +159,10 @@ export class RevymeBackend implements ProjectBackend {
     return r.row.closed_source === true;
   }
 
+  async getWebsiteCmsOnly(_id: string): Promise<boolean> {
+    return false;
+  }
+
   async getCredits(workspaceId: string): Promise<number | null> {
     // Workspace prepaid AI-credit balance — see backend routes/credits.ts.
     // Null on any error: the AI bars simply hide the indicator.

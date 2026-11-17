@@ -18,6 +18,14 @@ import type { WorkspaceFont } from '../backend/types';
 import { inspectFontBinary } from './font-binary-inspector';
 import { fetchAdobeTypekitKits, ingestAdobeFontsLowLevel } from './adobe-fonts-lowlevel';
 import { createPublishingMiddleware } from './site-publishing';
+import {
+  generateCmsTypesDts,
+  isCmsDataPath,
+  parseSchemasFromFiles,
+  validateAllCmsDataFiles,
+  type CmsContractIssue,
+} from '../shared/cms-site-contract';
+import { RTL_TEXT_CSS } from '../shared/rtl-text';
 
 const MANAGED_TOP_DIRS = new Set([
   'app',
@@ -45,6 +53,9 @@ export interface SiteMetaFile {
   id: string;
   name: string;
   format: 'revyme-v1' | 'revyme-v2' | 'canvas-poc-v1';
+  /** True when content is 100% CMS-managed on self-hosted servers while design,
+   *  views, and schemas are maintained locally. */
+  cmsOnly?: boolean;
   branches?: Record<string, unknown>;
   activeBranchId?: string;
   mainBranchId?: string;
@@ -57,6 +68,7 @@ export interface SiteMetaFile {
 export interface SiteSummary {
   id: string;
   name: string;
+  cmsOnly?: boolean;
   pageCount: number;
   collectionCount: number;
   updatedAt: string;
@@ -136,6 +148,7 @@ export function readSiteMeta(siteDir: string, siteId: string): SiteMetaFile {
         id: siteId,
         name: parsed.name || siteId,
         format: parsed.format || 'revyme-v1',
+        ...(typeof parsed.cmsOnly === 'boolean' ? { cmsOnly: parsed.cmsOnly } : {}),
         branches: parsed.branches,
         activeBranchId: parsed.activeBranchId,
         mainBranchId: parsed.mainBranchId,
@@ -155,7 +168,7 @@ export function readSiteMeta(siteDir: string, siteId: string): SiteMetaFile {
   };
 }
 
-function writeSiteMeta(siteDir: string, meta: SiteMetaFile): void {
+export function writeSiteMeta(siteDir: string, meta: SiteMetaFile): void {
   const metaDir = path.join(siteDir, '_revyme');
   fs.mkdirSync(metaDir, { recursive: true });
   fs.writeFileSync(
@@ -165,7 +178,7 @@ function writeSiteMeta(siteDir: string, meta: SiteMetaFile): void {
   );
 }
 
-function ensureNextScaffold(siteDir: string, siteId: string, siteName: string, runtimeRange = '^0.0.32'): void {
+export function ensureNextScaffold(siteDir: string, siteId: string, siteName: string, runtimeRange = '^0.0.32'): void {
   const pkgPath = path.join(siteDir, 'package.json');
   if (!fs.existsSync(pkgPath)) {
     const pkg = {
@@ -203,7 +216,7 @@ function ensureNextScaffold(siteDir: string, siteId: string, siteName: string, r
   if (!fs.existsSync(nextConfigPath)) {
     fs.writeFileSync(
       nextConfigPath,
-      `/** @type {import('next').NextConfig} */\nconst nextConfig = {\n  reactStrictMode: true,\n  typescript: { ignoreBuildErrors: true },\n};\n\nexport default nextConfig;\n`,
+      `/** @type {import('next').NextConfig} */\nconst nextConfig = {\n  reactStrictMode: true,\n  typescript: { ignoreBuildErrors: false },\n};\n\nexport default nextConfig;\n`,
       'utf-8',
     );
   }
@@ -217,6 +230,7 @@ function ensureNextScaffold(siteDir: string, siteId: string, siteName: string, r
         allowJs: true,
         skipLibCheck: true,
         strict: true,
+        noImplicitAny: false,
         noEmit: true,
         esModuleInterop: true,
         module: 'esnext',
@@ -252,7 +266,26 @@ function ensureNextScaffold(siteDir: string, siteId: string, siteName: string, r
     );
   }
 
-  fs.mkdirSync(path.join(siteDir, 'public'), { recursive: true });
+  fs.mkdirSync(path.join(siteDir, 'public', 'assets'), { recursive: true });
+  fs.mkdirSync(path.join(siteDir, 'public', 'uploads'), { recursive: true });
+}
+
+/** Regenerate `cms/cms-types.d.ts` on disk whenever `cms/*.schema.json` exists. */
+export function syncSiteCmsTypesDts(siteDir: string): string | null {
+  const cmsDir = path.join(siteDir, 'cms');
+  if (!fs.existsSync(cmsDir) || !fs.statSync(cmsDir).isDirectory()) return null;
+  const schemaEntries: Record<string, string> = {};
+  for (const entry of fs.readdirSync(cmsDir, { withFileTypes: true })) {
+    if (entry.isFile() && entry.name.endsWith('.schema.json')) {
+      schemaEntries[`cms/${entry.name}`] = fs.readFileSync(path.join(cmsDir, entry.name), 'utf-8');
+    }
+  }
+  if (Object.keys(schemaEntries).length === 0) return null;
+  const { schemas } = parseSchemasFromFiles(schemaEntries);
+  if (schemas.size === 0) return null;
+  const dts = generateCmsTypesDts(schemas);
+  fs.writeFileSync(path.join(cmsDir, 'cms-types.d.ts'), dts, 'utf-8');
+  return 'cms/cms-types.d.ts';
 }
 
 export function listAllSites(sitesRoot: string): SiteSummary[] {
@@ -271,6 +304,7 @@ export function listAllSites(sitesRoot: string): SiteSummary[] {
     summaries.push({
       id: siteId,
       name: meta.name,
+      ...(meta.cmsOnly ? { cmsOnly: true } : {}),
       pageCount,
       collectionCount,
       updatedAt: meta.updatedAt || stat.mtime.toISOString(),
@@ -467,6 +501,7 @@ export function readRuntimeRange(repoRoot: string): string {
 export interface SiteProjectPayload {
   id: string;
   name: string;
+  cmsOnly: boolean;
   project: {
     format: SiteMetaFile['format'];
     files: Record<string, string>;
@@ -487,6 +522,7 @@ export function readSiteProject(sitesRoot: string, siteId: string): SiteProjectP
   return {
     id: siteId,
     name: meta.name,
+    cmsOnly: meta.cmsOnly === true,
     project: {
       format: meta.format || 'revyme-v1',
       files,
@@ -528,6 +564,10 @@ export function writeSiteProject(sitesRoot: string, siteId: string, data: any, r
     previousSet.delete(cleanRel);
   }
 
+  // `cms/cms-types.d.ts` is derived from `cms/*.schema.json`; never delete it
+  // just because a browser ProjectFS snapshot omitted it, then regenerate fresh.
+  previousSet.delete('cms/cms-types.d.ts');
+
   // Remove deleted managed files
   for (const removedRel of previousSet) {
     if (!isManagedProjectPath(removedRel)) continue;
@@ -539,11 +579,17 @@ export function writeSiteProject(sitesRoot: string, siteId: string, data: any, r
   }
 
   ensureNextScaffold(siteDir, siteId, prevMeta.name, runtimeRange);
+  const generatedDts = syncSiteCmsTypesDts(siteDir);
+  if (generatedDts && !nextManaged.includes(generatedDts)) {
+    nextManaged.push(generatedDts);
+  }
   materializeSiteWorkspaceFonts(sitesRoot, siteDir, incomingFiles);
+  const cmsOnly = typeof data?.cmsOnly === 'boolean' ? data.cmsOnly : prevMeta.cmsOnly;
   writeSiteMeta(siteDir, {
     id: siteId,
     name: prevMeta.name,
     format: data?.format || prevMeta.format || 'revyme-v1',
+    ...(typeof cmsOnly === 'boolean' ? { cmsOnly } : {}),
     branches: data?.branches,
     activeBranchId: data?.activeBranchId,
     mainBranchId: data?.mainBranchId,
@@ -553,6 +599,477 @@ export function writeSiteProject(sitesRoot: string, siteId: string, data: any, r
     updatedAt: new Date().toISOString(),
   });
   return nextManaged.length;
+}
+
+/**
+ * Self-hosted save path for `cmsOnly` sites: validates and persists ONLY
+ * `cms/<slug>.json` data files against the on-disk `cms/<slug>.schema.json`
+ * contracts. Design, views (`app/`, `components/`), and schemas are never
+ * modified or deleted.
+ */
+export function writeSiteCmsContent(
+  sitesRoot: string,
+  siteId: string,
+  incomingFiles: Record<string, string>,
+): { fileCount: number; writtenPaths: string[]; issues: CmsContractIssue[] } {
+  if (!SITE_ID_RE.test(siteId)) throw new Error(`Invalid site ID: ${siteId}`);
+  const siteDir = path.join(sitesRoot, siteId);
+  const diskFiles = walkManagedFiles(siteDir);
+  const { schemas, issues: schemaIssues } = parseSchemasFromFiles(diskFiles);
+  if (schemaIssues.length > 0) {
+    return { fileCount: 0, writtenPaths: [], issues: schemaIssues };
+  }
+
+  const cmsDataIncoming: Record<string, string> = {};
+  for (const [relPath, content] of Object.entries(incomingFiles)) {
+    if (!isCmsDataPath(relPath)) continue;
+    const cleanRel = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
+    cmsDataIncoming[cleanRel] = String(content);
+  }
+
+  const dataIssues = validateAllCmsDataFiles(cmsDataIncoming, schemas);
+  if (dataIssues.length > 0) {
+    return { fileCount: 0, writtenPaths: [], issues: dataIssues };
+  }
+
+  const writtenPaths: string[] = [];
+  for (const [cleanRel, content] of Object.entries(cmsDataIncoming)) {
+    const absFile = path.join(siteDir, cleanRel);
+    fs.mkdirSync(path.dirname(absFile), { recursive: true });
+    fs.writeFileSync(absFile, content, 'utf-8');
+    writtenPaths.push(cleanRel);
+  }
+
+  const prevMeta = readSiteMeta(siteDir, siteId);
+  const managedSet = new Set<string>([
+    ...(prevMeta.managedFiles ?? []),
+    ...Object.keys(diskFiles),
+    ...writtenPaths,
+  ]);
+  writeSiteMeta(siteDir, {
+    ...prevMeta,
+    managedFiles: [...managedSet].sort(),
+    updatedAt: new Date().toISOString(),
+  });
+
+  return { fileCount: writtenPaths.length, writtenPaths, issues: [] };
+}
+
+/**
+ * Scaffold a complete, oracle-clean "100% CMS-first" site (`cmsOnly: true`):
+ *   - `cms/site.schema.json` + `cms/site.json` singleton for all site-wide copy
+ *   - `cms/entries.schema.json` + `cms/entries.json` starter collection
+ *   - `cms/cms-types.d.ts` generated from the schemas
+ *   - `app/page.{tsx,client.tsx}` + `app/entries/[slug]/page.{tsx,client.tsx}`
+ *     with zero hardcoded prose in JSX and defensive empty-collection handling
+ *   - `public/assets/` (design) + `public/uploads/` (CMS uploads)
+ */
+export function scaffoldCmsFirstSite(
+  sitesRoot: string,
+  siteId: string,
+  siteName: string,
+  runtimeRange = '^0.0.32',
+): { siteDir: string; managedFiles: string[] } {
+  if (!SITE_ID_RE.test(siteId)) throw new Error(`Invalid site ID: ${siteId}`);
+  const siteDir = path.join(sitesRoot, siteId);
+  fs.mkdirSync(siteDir, { recursive: true });
+  ensureNextScaffold(siteDir, siteId, siteName, runtimeRange);
+
+  const stamp = new Date().toISOString();
+  const canvasBlock = `/** @canvas ${JSON.stringify({
+    viewports: [
+      { id: 'desktop', label: 'Desktop', width: 1200, isPrimary: true, order: 0 },
+      { id: 'tablet', label: 'Tablet', width: 1199, designWidth: 810, isPrimary: false, order: 1 },
+      { id: 'mobile', label: 'Mobile', width: 809, designWidth: 390, isPrimary: false, order: 2 },
+    ],
+    positions: {
+      desktop: { x: 0, y: 0 },
+      tablet: { x: 1300, y: 0 },
+      mobile: { x: 2210, y: 0 },
+    },
+  })} */`;
+
+  const siteSchema = {
+    name: 'Site Copy',
+    slug: 'site',
+    fields: [
+      { id: 'siteTitle', name: 'Site Title', type: 'text', required: true },
+      { id: 'tagline', name: 'Tagline', type: 'textarea' },
+      { id: 'entriesHeading', name: 'Entries Heading', type: 'text', required: true },
+      { id: 'footerText', name: 'Footer Text', type: 'text' },
+    ],
+  };
+
+  const siteData = [
+    {
+      _id: 'item_site_global',
+      _slug: 'global',
+      _status: 'published',
+      _createdAt: stamp,
+      _updatedAt: stamp,
+      siteTitle: siteName,
+      tagline: `Publicación editorial gestionada desde el CMS para ${siteName}.`,
+      entriesHeading: 'Entradas recientes',
+      footerText: `${siteName} — Contenido gestionado en CMS.`,
+    },
+  ];
+
+  const entriesSchema = {
+    name: 'Entries',
+    slug: 'entries',
+    fields: [
+      { id: 'title', name: 'Title', type: 'text', required: true },
+      { id: 'summary', name: 'Summary', type: 'textarea' },
+      { id: 'body', name: 'Body', type: 'richtext' },
+      { id: 'publishedOn', name: 'Published On', type: 'date' },
+      { id: 'image', name: 'Cover Image', type: 'image' },
+    ],
+  };
+
+  const entriesData = [
+    {
+      _id: 'item_entry_welcome',
+      _slug: 'primera-entrada',
+      _status: 'published',
+      _createdAt: stamp,
+      _updatedAt: stamp,
+      title: 'Primera entrada',
+      summary: 'Edita este contenido desde el CMS sin tocar las vistas locales.',
+      body: 'Todo el contenido vive en colecciones CMS mientras el diseño y los componentes evolucionan en local.',
+      publishedOn: stamp.slice(0, 10),
+      image: '',
+    },
+  ];
+
+  const globalsCss = `* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #ffffff;
+  color: #0f172a;
+  font-family: Inter, system-ui, sans-serif;
+}
+`;
+
+  const layoutTsx = `import './globals.css';
+import { Providers } from './providers';
+
+export const metadata = {
+  title: ${JSON.stringify(siteName)},
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="es">
+      <body>
+        <Providers>{children}</Providers>
+      </body>
+    </html>
+  );
+}
+`;
+
+  const providersTsx = `'use client';
+
+/** @revyme-providers v4 — GENERATED from i18n/config.json (locales: en).
+ *  The editor regenerates this file when locales change. Do not hand-edit. */
+
+import { ThemeProvider } from 'next-themes';
+import { NextIntlClientProvider } from 'next-intl';
+import enMessages from '@/messages/en.json';
+
+const RTL_TEXT_CSS = ${JSON.stringify(RTL_TEXT_CSS)};
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  return (
+    <NextIntlClientProvider locale="en" messages={enMessages}>
+      <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+        <div lang="en" style={{ display: 'contents' }}>
+          <style dangerouslySetInnerHTML={{ __html: RTL_TEXT_CSS }} />
+          {children}
+        </div>
+      </ThemeProvider>
+    </NextIntlClientProvider>
+  );
+}
+`;
+
+  const indexServer = `import PageClient from './page.client';
+
+export const metadata = {};
+
+export default function Page() {
+  return <PageClient />;
+}
+`;
+
+  const indexClient = `'use client';
+
+${canvasBlock}
+
+import React from 'react';
+import Link from 'next/link';
+import site from '@/cms/site.json';
+import entries from '@/cms/entries.json';
+
+export default function Page() {
+  return (
+    <div data-id="root" data-name="Home" style={{
+      position: 'relative', width: '100%', height: 'auto',
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      gap: '48px', padding: '64px 32px', backgroundColor: '#ffffff'
+    }}>
+      <div data-id="shell" data-name="Shell" style={{
+        position: 'relative', width: '100%', maxWidth: '960px', height: 'auto',
+        order: '0', flex: '0 0 auto',
+        display: 'flex', flexDirection: 'column', gap: '48px'
+      }}>
+        <header data-id="site-header" data-name="Header" style={{
+          position: 'relative', width: '100%', height: 'auto',
+          order: '0', flex: '0 0 auto',
+          display: 'flex', flexDirection: 'column', gap: '16px'
+        }}>
+          {site.slice(0, 1).map((siteItem, idx) => (
+            <div data-id="site-copy-row" data-name="Site Copy" key={idx} style={{
+              position: 'relative', width: '100%', height: 'auto',
+              order: '0', flex: '0 0 auto',
+              display: 'flex', flexDirection: 'column', gap: '12px'
+            }}>
+              <h1 data-id="site-title" data-name="Site Title" style={{
+                position: 'relative', width: '100%', height: 'auto',
+                order: '0', flex: '0 0 auto',
+                fontSize: '44px', fontWeight: '700', lineHeight: '1.1', color: '#0f172a',
+                fontFamily: 'Inter, sans-serif', margin: '0px'
+              }}>{siteItem.siteTitle}</h1>
+              <p data-id="site-tagline" data-name="Tagline" style={{
+                position: 'relative', width: '100%', maxWidth: '680px', height: 'auto',
+                order: '1', flex: '0 0 auto',
+                fontSize: '18px', fontWeight: '400', lineHeight: '1.6', color: '#475569',
+                fontFamily: 'Inter, sans-serif', margin: '0px'
+              }}>{siteItem.tagline}</p>
+              <h2 data-id="entries-heading" data-name="Entries Heading" style={{
+                position: 'relative', width: '100%', height: 'auto',
+                order: '2', flex: '0 0 auto',
+                fontSize: '20px', fontWeight: '600', lineHeight: '1.4', color: '#0f172a',
+                fontFamily: 'Inter, sans-serif', margin: '16px 0px 0px 0px'
+              }}>{siteItem.entriesHeading}</h2>
+            </div>
+          ))}
+        </header>
+        <section data-id="entries-list" data-name="Entries List" style={{
+          position: 'relative', width: '100%', height: 'auto',
+          order: '1', flex: '0 0 auto',
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px'
+        }}>
+          {entries.map((item, idx) => (
+            <Link data-id="entry-card" data-name="Entry Card" key={idx} data-cms-nav="row" href={\`/entries/\${item?._slug ?? ''}\`} style={{
+              position: 'relative', width: '100%', height: 'auto',
+              display: 'flex', flexDirection: 'column', gap: '10px',
+              padding: '24px', borderRadius: '12px', backgroundColor: '#f8fafc',
+              border: '1px solid #e2e8f0', textDecoration: 'none', color: 'inherit'
+            }}>
+              <p data-id="entry-date" data-name="Date" style={{
+                position: 'relative', width: '100%', height: 'auto',
+                order: '0', flex: '0 0 auto',
+                fontSize: '12px', fontWeight: '500', lineHeight: '1.4', color: '#64748b',
+                fontFamily: 'Inter, sans-serif', margin: '0px'
+              }}>{item.publishedOn}</p>
+              <h3 data-id="entry-title" data-name="Title" style={{
+                position: 'relative', width: '100%', height: 'auto',
+                order: '1', flex: '0 0 auto',
+                fontSize: '20px', fontWeight: '600', lineHeight: '1.3', color: '#0f172a',
+                fontFamily: 'Inter, sans-serif', margin: '0px'
+              }}>{item.title}</h3>
+              <p data-id="entry-summary" data-name="Summary" style={{
+                position: 'relative', width: '100%', height: 'auto',
+                order: '2', flex: '0 0 auto',
+                fontSize: '15px', fontWeight: '400', lineHeight: '1.6', color: '#475569',
+                fontFamily: 'Inter, sans-serif', margin: '0px'
+              }}>{item.summary}</p>
+            </Link>
+          ))}
+        </section>
+        <footer data-id="site-footer" data-name="Footer" style={{
+          position: 'relative', width: '100%', height: 'auto',
+          order: '2', flex: '0 0 auto',
+          display: 'flex', flexDirection: 'column', paddingTop: '24px',
+          borderTop: '1px solid #e2e8f0'
+        }}>
+          {site.slice(0, 1).map((siteItem, idx) => (
+            <div data-id="footer-row" data-name="Footer Row" key={idx} style={{
+              position: 'relative', width: '100%', height: 'auto',
+              order: '0', flex: '0 0 auto',
+              display: 'flex', flexDirection: 'column'
+            }}>
+              <p data-id="footer-copy" data-name="Footer Copy" style={{
+                position: 'relative', width: '100%', height: 'auto',
+                order: '0', flex: '0 0 auto',
+                fontSize: '13px', fontWeight: '400', lineHeight: '1.5', color: '#64748b',
+                fontFamily: 'Inter, sans-serif', margin: '0px'
+              }}>{siteItem.footerText}</p>
+            </div>
+          ))}
+        </footer>
+      </div>
+    </div>
+  );
+}
+`;
+
+  const detailServer = `import PageClient from './page.client';
+import entries from '@/cms/entries.json';
+
+const seoDefaults = { title: ${JSON.stringify(siteName)} };
+
+const seoBindings = { title: "title", description: "summary", ogImage: "image" };
+
+export async function generateMetadata({ params }) {
+  const resolved = await params;
+  const items = Array.isArray(entries) ? entries : [];
+  const item = items.find((i) => i && i._slug === resolved?.slug);
+  const bound = (slot) => {
+    const field = seoBindings[slot];
+    if (!field || !item) return undefined;
+    const value = item[field];
+    return typeof value === 'string' && value ? value : undefined;
+  };
+  const pick = (slot, fallbackSlot) =>
+    bound(slot) ?? seoDefaults[slot] ?? (fallbackSlot ? bound(fallbackSlot) ?? seoDefaults[fallbackSlot] : undefined) ?? undefined;
+
+  const title = pick('title');
+  const description = pick('description');
+  const ogImage = pick('ogImage');
+  const twitterImage = pick('twitterImage') ?? ogImage;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title: pick('ogTitle', 'title'),
+      description: pick('ogDescription', 'description'),
+      images: ogImage ? [ogImage] : [],
+    },
+    twitter: {
+      card: seoDefaults.twitterCard || undefined,
+      title: pick('twitterTitle', 'title'),
+      description: pick('twitterDescription', 'description'),
+      image: twitterImage,
+    },
+    alternates: { canonical: seoDefaults.canonical || undefined },
+  };
+}
+
+export function generateStaticParams() {
+  return (Array.isArray(entries) ? entries : [])
+    .filter((i) => i && typeof i._slug === 'string' && i._slug !== '')
+    .map((i) => ({ slug: i._slug }));
+}
+
+export const dynamicParams = false;
+
+export default function Page() {
+  return <PageClient />;
+}
+`;
+
+  const detailClient = `'use client';
+
+${canvasBlock}
+
+/** @cmsPage {
+  "collection": "entries",
+  "kind": "detail"
+} */
+
+import React from 'react';
+import { useParams } from 'next/navigation';
+import entries from '@/cms/entries.json';
+
+export default function Page() {
+  const params = useParams();
+  const item = entries.find((i) => i._slug === params?.slug) ?? entries[0] ?? ({} as Record<string, any>);
+  return (
+    <div data-id="root" key={String(params?.slug ?? '')} data-name="Entry Detail" style={{
+      position: 'relative', width: '100%', height: 'auto',
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      padding: '80px 32px', backgroundColor: '#ffffff'
+    }}>
+      <article data-id="article-shell" data-name="Article" style={{
+        position: 'relative', width: '100%', maxWidth: '720px', height: 'auto',
+        order: '0', flex: '0 0 auto',
+        display: 'flex', flexDirection: 'column', gap: '20px'
+      }}>
+        <p data-id="detail-date" data-name="Published On" style={{
+          position: 'relative', width: '100%', height: 'auto',
+          order: '0', flex: '0 0 auto',
+          fontSize: '13px', fontWeight: '500', lineHeight: '1.4', color: '#64748b',
+          fontFamily: 'Inter, sans-serif', margin: '0px'
+        }}>{item.publishedOn}</p>
+        <h1 data-id="detail-title" data-name="Title" style={{
+          position: 'relative', width: '100%', height: 'auto',
+          order: '1', flex: '0 0 auto',
+          fontSize: '42px', fontWeight: '700', lineHeight: '1.15', color: '#0f172a',
+          fontFamily: 'Inter, sans-serif', margin: '0px'
+        }}>{item.title}</h1>
+        <p data-id="detail-summary" data-name="Summary" style={{
+          position: 'relative', width: '100%', height: 'auto',
+          order: '2', flex: '0 0 auto',
+          fontSize: '19px', fontWeight: '400', lineHeight: '1.6', color: '#475569',
+          fontFamily: 'Inter, sans-serif', margin: '0px'
+        }}>{item.summary}</p>
+        <p data-id="detail-body" data-name="Body" style={{
+          position: 'relative', width: '100%', height: 'auto',
+          order: '3', flex: '0 0 auto',
+          fontSize: '16px', fontWeight: '400', lineHeight: '1.75', color: '#1e293b',
+          fontFamily: 'Inter, sans-serif', margin: '0px'
+        }}>{item.body}</p>
+      </article>
+    </div>
+  );
+}
+`;
+
+  const starterFiles: Record<string, string> = {
+    'app/globals.css': globalsCss,
+    'app/layout.tsx': layoutTsx,
+    'app/providers.tsx': providersTsx,
+    'app/page.tsx': indexServer,
+    'app/page.client.tsx': indexClient,
+    'app/entries/[slug]/page.tsx': detailServer,
+    'app/entries/[slug]/page.client.tsx': detailClient,
+    'cms/site.schema.json': JSON.stringify(siteSchema, null, 2) + '\n',
+    'cms/site.json': JSON.stringify(siteData, null, 2) + '\n',
+    'cms/entries.schema.json': JSON.stringify(entriesSchema, null, 2) + '\n',
+    'cms/entries.json': JSON.stringify(entriesData, null, 2) + '\n',
+    'i18n/config.json': JSON.stringify({ defaultLocale: 'en', locales: [{ code: 'en', label: 'English' }] }, null, 2) + '\n',
+    'messages/en.json': '{}\n',
+  };
+
+  for (const [relPath, content] of Object.entries(starterFiles)) {
+    const abs = path.join(siteDir, relPath);
+    if (!fs.existsSync(abs)) {
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, content, 'utf-8');
+    }
+  }
+
+  const dtsRel = syncSiteCmsTypesDts(siteDir);
+  const managedFiles = Object.keys(walkManagedFiles(siteDir));
+  if (dtsRel && !managedFiles.includes(dtsRel)) managedFiles.push(dtsRel);
+  managedFiles.sort();
+
+  const existingMeta = readSiteMeta(siteDir, siteId);
+  writeSiteMeta(siteDir, {
+    ...existingMeta,
+    id: siteId,
+    name: siteName,
+    format: 'revyme-v1',
+    cmsOnly: true,
+    managedFiles,
+    updatedAt: stamp,
+  });
+
+  return { siteDir, managedFiles };
 }
 
 export function createSitesApiMiddleware(repoRoot: string) {
@@ -589,17 +1106,23 @@ export function createSitesApiMiddleware(repoRoot: string) {
           return;
         }
         const siteDir = path.join(sitesRoot, rawId);
-        fs.mkdirSync(siteDir, { recursive: true });
-        ensureNextScaffold(siteDir, rawId, rawName, runtimeRange);
-        const existingMeta = readSiteMeta(siteDir, rawId);
-        writeSiteMeta(siteDir, {
-          ...existingMeta,
-          id: rawId,
-          name: rawName,
-          format: 'revyme-v1',
-          updatedAt: new Date().toISOString(),
-        });
-        sendJson(res, 201, { id: rawId, name: rawName });
+        if (body?.cmsOnly === false) {
+          fs.mkdirSync(siteDir, { recursive: true });
+          ensureNextScaffold(siteDir, rawId, rawName, runtimeRange);
+          const existingMeta = readSiteMeta(siteDir, rawId);
+          writeSiteMeta(siteDir, {
+            ...existingMeta,
+            id: rawId,
+            name: rawName,
+            format: 'revyme-v1',
+            cmsOnly: false,
+            updatedAt: new Date().toISOString(),
+          });
+          sendJson(res, 201, { id: rawId, name: rawName, cmsOnly: false });
+          return;
+        }
+        scaffoldCmsFirstSite(sitesRoot, rawId, rawName, runtimeRange);
+        sendJson(res, 201, { id: rawId, name: rawName, cmsOnly: true });
         return;
       }
 

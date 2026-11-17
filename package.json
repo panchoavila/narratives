@@ -20,7 +20,11 @@
     "build:selfhosted": "VITE_REVYME_CLOUD=false VITE_SELF_HOSTED=true VITE_API_URL= vite build --outDir \"$PWD/dist-selfhosted\" --emptyOutDir && vite build --config vite.sandbox.config.ts --outDir \"$PWD/dist-selfhosted/sandbox\" --emptyOutDir && vite build --config vite.preview.config.ts --outDir \"$PWD/dist-selfhosted/preview-sandbox\" --emptyOutDir",
     "server:build": "node server/build.mjs",
     "server:start": "node dist-server/index.mjs",
-    "e2e:selfhosted": "playwright test --config playwright.selfhosted.config.ts"
+    "e2e:selfhosted": "playwright test --config playwright.selfhosted.config.ts",
+    "site:new": "node server/site-sync.mjs new",
+    "site:check": "node server/site-sync.mjs check",
+    "design:push": "node server/site-sync.mjs push-design",
+    "content:pull": "node server/site-sync.mjs pull-content"
   },
   "keywords": [
     "website-builder",

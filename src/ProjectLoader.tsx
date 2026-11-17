@@ -30,7 +30,8 @@ import { shapeEditingIdAtom, groupEditingIdAtom } from '@/code/stores/shape-edit
 import { queueMutation, flushNow, setForceRender, hasQueuedMutations, isMutationQueueProcessing, hasPendingDeferredFanOut } from '@/code/mutation/mutation-queue';
 import { setClosedSource } from '@/code/stores/closed-source-store';
 import { setTemplatePromptArmed, templatePromptDismissKey } from '@/code/stores/fresh-site-store';
-import { setViewerMode } from '@/code/stores/viewer-mode-store';
+import { setViewerMode, setCmsOnlyMode } from '@/code/stores/viewer-mode-store';
+import { leftPanelAtom } from '@/code/stores/left-panel-store';
 import { setProjectName } from '@/code/stores/project-store';
 import { setCredits } from '@/code/stores/credits-store';
 import { migrateLegacyLocaleTextOverrides, ensureIntlScaffold } from '@/code/project/translation-ops';
@@ -91,6 +92,7 @@ export default function ProjectLoader() {
   const setUser = useSetAtom(userAtom);
   const setActiveFile = useSetAtom(activeFilePathAtom);
   const openCmsEditor = useSetAtom(openCmsEditorAtom);
+  const setLeftPanel = useSetAtom(leftPanelAtom);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,6 +113,7 @@ export default function ProjectLoader() {
         window.location.pathname.split('/').filter(Boolean).includes('noauth');
       if (isNoAuthRoute) {
         trace.action('project-loader:noauth-route');
+        setCmsOnlyMode(false);
         projectFS.loadSnapshot(createEmptyProject());
         syncBuiltInCodeComponents(projectFS);
         // Legacy i18n/{locale}.json text overrides → messages/*.json (one-shot,
@@ -281,14 +284,19 @@ export default function ProjectLoader() {
       //    but every write path is gated. Fetched in parallel so role
       //    resolution doesn't add latency on top of the snapshot load.
       const id = getProjectId();
-      const [data, role, dbName, closedSource] = await Promise.all([
+      const [data, role, dbName, closedSource, cmsOnly] = await Promise.all([
         backend.loadProject(id),
         backend.getWebsiteRole(id),
         backend.getWebsiteName(id),
         backend.getWebsiteClosedSource(id),
+        backend.getWebsiteCmsOnly ? backend.getWebsiteCmsOnly(id) : Promise.resolve(false),
       ]);
-      trace.action('project-loader:load', { id, found: !!data, role, dbName, closedSource });
+      trace.action('project-loader:load', { id, found: !!data, role, dbName, closedSource, cmsOnly });
       setViewerMode(role === 'viewer');
+      setCmsOnlyMode(cmsOnly);
+      if (cmsOnly && role !== 'viewer') {
+        setLeftPanel('cms');
+      }
       // Closed-source remix: the design is fully editable but the template
       // author chose to hide the source — code panel + popup stay hidden.
       setClosedSource(closedSource);
@@ -353,8 +361,10 @@ export default function ProjectLoader() {
         }
       }
 
-      // 4b. Sync built-in code components to latest templates (ensures new controls like 'upload' are available)
-      syncBuiltInCodeComponents(projectFS);
+      // 4b. Sync built-in code components to latest templates (ensures new controls like 'upload' are available).
+      // On self-hosted `cmsOnly` sites, design/JSX files are owned locally — never rewrite them on boot.
+      if (!cmsOnly && role !== 'viewer') {
+        syncBuiltInCodeComponents(projectFS);
         // Legacy i18n/{locale}.json text overrides → messages/*.json (one-shot,
         // idempotent — localization overhaul Phase 5).
         try { migrateLegacyLocaleTextOverrides(getI18nConfig()); } catch (err) { trace.error('locale-migration-failed', err); }
@@ -376,6 +386,7 @@ export default function ProjectLoader() {
         // them, leaving wrappers that point at a group that no longer exists —
         // the published build fails. The sync is idempotent (no-op when in line).
         try { syncLocaleRoutes(getI18nConfig()); } catch (err) { trace.error('locale-routes-sync-failed', err); }
+      }
 
       // 4c. Restore each file's saved camera (pan/zoom) from `_meta/page-camera.json`
       // into the in-memory cameraStash, and apply the active file's camera on the
@@ -414,7 +425,7 @@ export default function ProjectLoader() {
       const bootFile = (pageFromUrl !== 'app/page.client.tsx' && pageFromUrl !== 'app/page.tsx' && projectFS.exists(pageFromUrl))
         ? pageFromUrl : 'app/page.client.tsx';
       const bootCode = projectFS.readFile(bootFile);
-      if (bootCode) {
+      if (bootCode && !cmsOnly && role !== 'viewer') {
         const healedBoot = healMissingInstanceDataIds(bootCode);
         if (healedBoot.code !== bootCode) {
           projectFS.writeFile(bootFile, healedBoot.code);
@@ -587,7 +598,7 @@ export default function ProjectLoader() {
     });
 
     return () => { cancelled = true; };
-  }, [setUser, setActiveFile, openCmsEditor]);
+  }, [setUser, setActiveFile, openCmsEditor, setLeftPanel]);
 
   // Remix flow: the picker is BLOCKING and renders over whatever we managed
   // to show behind it — the previewed template inside the builder when the
