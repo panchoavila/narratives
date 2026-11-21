@@ -55,6 +55,7 @@ import {
   validateSiteViewsAgainstSchemas,
 } from '../src/shared/cms-site-contract';
 import { SitePublisher, createPublishingMiddleware } from '../src/server/site-publishing';
+import { createSiteExportAssetsMiddleware } from '../src/server/site-export-assets';
 import { trace } from './trace';
 
 type Middleware = (req: IncomingMessage, res: ServerResponse, next: () => void) => unknown;
@@ -78,6 +79,7 @@ export class Api {
   private readonly sitesMiddleware: Middleware;
   private readonly workspaceMiddleware: Middleware;
   private readonly publishingMiddleware: Middleware;
+  private readonly exportAssetsMiddleware: Middleware;
   private readonly runtimeRange: string;
 
   constructor(private readonly deps: Deps) {
@@ -86,6 +88,7 @@ export class Api {
     this.workspaceMiddleware = createWorkspaceApiMiddleware(root);
     // Authorized per route below, before the middleware runs.
     this.publishingMiddleware = createPublishingMiddleware(root, new SitePublisher(root), () => true);
+    this.exportAssetsMiddleware = createSiteExportAssetsMiddleware(root);
     this.runtimeRange = readRuntimeRange(root);
   }
 
@@ -188,6 +191,11 @@ export class Api {
     }
 
     const [sub, action] = rest;
+    if (sub === 'export-assets' && rest.length === 1 && method === 'GET') {
+      this.requireRole(user, siteId, ALL);
+      await this.delegate(this.exportAssetsMiddleware, req, res);
+      return;
+    }
     if (sub === 'assets' && rest.length === 1 && method === 'POST') {
       this.requireRole(user, siteId, WRITE);
       await this.delegate(this.sitesMiddleware, req, res, ASSET_LIMIT_BYTES);

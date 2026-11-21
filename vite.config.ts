@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sitesApiPlugin } from './src/server/sites-plugin';
+import { siteExportAssetsPlugin, shouldInstallLocalExportAssetsPlugin } from './src/server/site-export-assets';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -373,7 +374,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const cloudMode = env.VITE_REVYME_CLOUD === 'true';
   return {
-  plugins: [react(), tailwindcss(), debugTracePlugin(), sitesApiPlugin(__dirname)],
+  plugins: [react(), tailwindcss(), debugTracePlugin(), ...(shouldInstallLocalExportAssetsPlugin(env) ? [siteExportAssetsPlugin(__dirname)] : []), sitesApiPlugin(__dirname)],
   // In cloud mode assets must be served under /builder/ so Next.js rewrite proxy can forward them.
   // Standalone mode uses root path (no proxy).
   base: cloudMode ? '/builder/' : '/',

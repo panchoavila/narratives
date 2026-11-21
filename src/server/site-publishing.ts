@@ -7,6 +7,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { parseEnv } from 'node:util';
 import { deploymentPending, type LocalPublishingState, type SiteDeployment, type PublishingDomain } from '../shared/local-publishing';
 import { needsWorkspaceRuntime } from '../shared/workspace-runtime';
+import { projectPublishedCms } from '../shared/cms-publication';
 
 const API = 'https://api.vercel.com';
 const SITE_ID = /^[a-z0-9][a-z0-9-_]{0,62}$/;
@@ -68,14 +69,28 @@ export function collectSiteSource(repoRoot: string, siteDir: string): SourceFile
     else if (SOURCE_FILES.test(entry.name)) add(abs, entry.name);
   }
   if (!files.some(file => file.file === 'package.json')) throw new PublishingError('The site has no package.json. Save it as a local site before publishing.');
+  // Remove drafts before the JSON can become a public client bundle. Rendering
+  // filters alone leave the original records downloadable from the JavaScript.
+  const publicCms = projectPublishedCms(Object.fromEntries(files.filter(file => file.file.startsWith('cms/')).map(file => [file.file, file.data.toString()])));
+  for (const file of files) {
+    if (publicCms[file.file] === undefined) continue;
+    const data = Buffer.from(publicCms[file.file]);
+    total += data.length - file.size;
+    file.data = data; file.size = data.length; file.sha = crypto.createHash('sha1').update(data).digest('hex');
+  }
   // Fonts shared by the local editor must also exist at their runtime URLs.
   const references = files.filter(file => /\.(css|tsx?|jsx?|json)$/.test(file.file)).map(file => file.data.toString()).join('\n');
   // Generated GPU effects ship the workspace runtime with the upload snapshot.
   // The site's saved files are left untouched; exports and publishing use the
   // same locally built runtime even if an older vendor copy exists on disk.
   if (needsWorkspaceRuntime(references)) {
+    for (let index = files.length - 1; index >= 0; index--) {
+      if (!files[index].file.startsWith('vendor/revyme-runtime/')) continue;
+      total -= files[index].size;
+      files.splice(index, 1);
+    }
     const runtimeRoot = path.join(repoRoot, 'packages/revyme-runtime-scene');
-    const runtimeFiles = ['package.json', 'tsconfig.build.json', 'HTML-TO-IMAGE-LICENSE', 'LIQUIDGL-LICENSE', 'PRETEXT-LICENSE', 'HYPHEN-LICENSE', 'EXPERIMENT.md'];
+    const runtimeFiles = ['package.json', 'build.mjs', 'THREE-LICENSE', 'RICH-CONTENT-LICENSES', 'QR-CODE-LICENSE', 'tsconfig.build.json', 'HTML-TO-IMAGE-LICENSE', 'LIQUIDGL-LICENSE', 'PRETEXT-LICENSE', 'HYPHEN-LICENSE', 'EXPERIMENT.md'];
     const removeFile = (name: string) => {
       const index = files.findIndex(file => file.file === name);
       if (index !== -1) { total -= files[index].size; files.splice(index, 1); }

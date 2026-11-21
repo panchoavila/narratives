@@ -1,3 +1,4 @@
+import { collectCmsDetailRoutes } from '../code/project/cms-detail-route';
 // site-cli.ts — Local CLI for the CMS-only remote / local-design workflow:
 //   npm run site:new <siteId> [Site Name]
 //   npm run site:check [siteId] [--strict-oracle]
@@ -139,7 +140,7 @@ export function checkOneSite(repoRoot: string, siteId: string, strictOracle = fa
         kind = isCodeComponentSource(code) ? 'code-component' : 'component';
       }
       if (!kind) continue;
-      for (const v of checkFile(code, { kind, path: relPath, schemas })) {
+      for (const v of checkFile(code, { kind, path: relPath, schemas, cmsRoutes: collectCmsDetailRoutes(files), readProjectFile: p => files[p] })) {
         errors.push(`[ORACLE:${v.code}:tier${v.tier}] ${relPath}${v.line ? `:${v.line}` : ''} — ${v.message}`);
       }
     }

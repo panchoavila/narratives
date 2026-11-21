@@ -9,6 +9,7 @@
 import { parse } from '@babel/parser';
 import _traverse, { type NodePath } from '@babel/traverse';
 import * as t from '@babel/types';
+import { ADDITIONAL_SOURCE_DIRECTORIES, PROJECT_CONFIG_FILES } from './project-source-files';
 
 export type CmsFieldType =
   | 'text'
@@ -61,6 +62,7 @@ const CMS_SCHEMA_RE = /^cms\/([a-z0-9][a-z0-9-_]*)\.schema\.json$/;
 const CMS_DATA_RE = /^cms\/([a-z0-9][a-z0-9-_]*)\.json$/;
 
 const DESIGN_TOP_DIRS = new Set([
+  ...ADDITIONAL_SOURCE_DIRECTORIES,
   'app',
   'components',
   'i18n',
@@ -101,6 +103,8 @@ export function isCmsDataPath(relPath: string): boolean {
 export function isDesignManagedPath(relPath: string): boolean {
   const clean = normalizeRelPath(relPath);
   if (!clean || clean.includes('..')) return false;
+  if (clean.split('/').some(part => part.startsWith('.'))) return false;
+  if (PROJECT_CONFIG_FILES.has(clean)) return true;
   if (clean === 'cms/cms-types.d.ts' || isCmsSchemaPath(clean)) return true;
   if (clean.startsWith('cms/') || clean.startsWith('_meta/')) return false;
   const top = clean.split('/')[0] ?? '';

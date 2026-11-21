@@ -26,8 +26,10 @@ import {
   type CmsContractIssue,
 } from '../shared/cms-site-contract';
 import { RTL_TEXT_CSS } from '../shared/rtl-text';
+import { ADDITIONAL_SOURCE_DIRECTORIES, PROJECT_CONFIG_FILES, SOURCE_FILE_CONTRACT_PATH, SOURCE_FILE_CONTRACT, isAdditionalProjectSourcePath, understandsAdditionalSourceFiles } from '../shared/project-source-files';
 
 const MANAGED_TOP_DIRS = new Set([
+  ...ADDITIONAL_SOURCE_DIRECTORIES,
   'app',
   'components',
   'cms',
@@ -96,6 +98,8 @@ export const MIME_TYPES: Record<string, string> = {
 export function isManagedProjectPath(relPath: string): boolean {
   const normalized = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
   if (!normalized || normalized.includes('..')) return false;
+  if (normalized.split('/').some(part => part.startsWith('.'))) return false;
+  if (PROJECT_CONFIG_FILES.has(normalized)) return true;
   const top = normalized.split('/')[0] ?? '';
   return MANAGED_TOP_DIRS.has(top);
 }
@@ -107,7 +111,7 @@ export function walkManagedFiles(siteDir: string): Record<string, string> {
     if (!fs.existsSync(absTop) || !fs.statSync(absTop).isDirectory()) continue;
     const walk = (dir: string, relPrefix: string) => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (entry.name === '.DS_Store') continue;
+        if (entry.name.startsWith('.')) continue;
         const absChild = path.join(dir, entry.name);
         const relChild = `${relPrefix}/${entry.name}`;
         if (entry.isDirectory()) {
@@ -118,6 +122,10 @@ export function walkManagedFiles(siteDir: string): Record<string, string> {
       }
     };
     walk(absTop, topDir);
+  }
+  for (const file of PROJECT_CONFIG_FILES) {
+    const absolute = path.join(siteDir, file);
+    if (fs.existsSync(absolute) && fs.lstatSync(absolute).isFile()) files[file] = fs.readFileSync(absolute, 'utf8');
   }
   return files;
 }
@@ -213,7 +221,7 @@ export function ensureNextScaffold(siteDir: string, siteId: string, siteName: st
   }
 
   const nextConfigPath = path.join(siteDir, 'next.config.mjs');
-  if (!fs.existsSync(nextConfigPath)) {
+  if (!['next.config.mjs', 'next.config.js', 'next.config.ts'].some(file => fs.existsSync(path.join(siteDir, file)))) {
     fs.writeFileSync(
       nextConfigPath,
       `/** @type {import('next').NextConfig} */\nconst nextConfig = {\n  reactStrictMode: true,\n  typescript: { ignoreBuildErrors: false },\n};\n\nexport default nextConfig;\n`,
@@ -519,6 +527,7 @@ export function readSiteProject(sitesRoot: string, siteId: string): SiteProjectP
   if (!fs.existsSync(siteDir) || !fs.statSync(siteDir).isDirectory()) return null;
   const meta = readSiteMeta(siteDir, siteId);
   const files = walkManagedFiles(siteDir);
+  files[SOURCE_FILE_CONTRACT_PATH] = SOURCE_FILE_CONTRACT;
   return {
     id: siteId,
     name: meta.name,
@@ -543,6 +552,7 @@ export function writeSiteProject(sitesRoot: string, siteId: string, data: any, r
   if (!SITE_ID_RE.test(siteId)) throw new Error(`Invalid site ID: ${siteId}`);
   const siteDir = path.join(sitesRoot, siteId);
   const incomingFiles: Record<string, string> = data?.files && typeof data.files === 'object' ? data.files : {};
+  const supportsAdditionalFiles = understandsAdditionalSourceFiles(incomingFiles);
   fs.mkdirSync(siteDir, { recursive: true });
 
   const prevMeta = readSiteMeta(siteDir, siteId);
@@ -571,6 +581,12 @@ export function writeSiteProject(sitesRoot: string, siteId: string, data: any, r
   // Remove deleted managed files
   for (const removedRel of previousSet) {
     if (!isManagedProjectPath(removedRel)) continue;
+    // An older open editor never received these files. Its snapshot cannot
+    // delete them, even after a newer tab has adopted the expanded contract.
+    if (!supportsAdditionalFiles && (isAdditionalProjectSourcePath(removedRel) || removedRel === SOURCE_FILE_CONTRACT_PATH)) {
+      if (fs.existsSync(path.join(siteDir, removedRel))) nextManaged.push(removedRel);
+      continue;
+    }
     const absRemoved = path.join(siteDir, removedRel);
     if (fs.existsSync(absRemoved) && fs.statSync(absRemoved).isFile()) {
       fs.rmSync(absRemoved, { force: true });
@@ -760,7 +776,7 @@ export const metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es">
+    <html lang="es" suppressHydrationWarning>
       <body>
         <Providers>{children}</Providers>
       </body>
@@ -919,7 +935,7 @@ export default function Page() {
   const detailServer = `import PageClient from './page.client';
 import entries from '@/cms/entries.json';
 
-const seoDefaults = { title: ${JSON.stringify(siteName)} };
+const seoDefaults = { title: ${JSON.stringify(siteName)} } as Record<string, string>;
 
 const seoBindings = { title: "title", description: "summary", ogImage: "image" };
 
@@ -933,7 +949,7 @@ export async function generateMetadata({ params }) {
     const value = item[field];
     return typeof value === 'string' && value ? value : undefined;
   };
-  const pick = (slot, fallbackSlot) =>
+  const pick = (slot: string, fallbackSlot?: string) =>
     bound(slot) ?? seoDefaults[slot] ?? (fallbackSlot ? bound(fallbackSlot) ?? seoDefaults[fallbackSlot] : undefined) ?? undefined;
 
   const title = pick('title');
@@ -953,7 +969,7 @@ export async function generateMetadata({ params }) {
       card: seoDefaults.twitterCard || undefined,
       title: pick('twitterTitle', 'title'),
       description: pick('twitterDescription', 'description'),
-      image: twitterImage,
+      images: twitterImage ? [twitterImage] : [],
     },
     alternates: { canonical: seoDefaults.canonical || undefined },
   };

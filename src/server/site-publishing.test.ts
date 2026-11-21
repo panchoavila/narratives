@@ -45,12 +45,23 @@ function provider() {
 }
 
 describe('local Vercel publisher', () => {
+  it('publishes a CMS projection without draft bytes and leaves local authoring records untouched', () => {
+    const source = '[{"_id":"draft","_status":"draft","title":"Secret draft"},{"_id":"public","_status":"published"}]';
+    write(path.join(site, 'cms/posts.json'), source);
+    const cms = collectSiteSource(root, site).find(file => file.file === 'cms/posts.json')!;
+    expect(cms.data.toString()).not.toContain('Secret draft');
+    expect(cms.sha).toBe(crypto.createHash('sha1').update(cms.data).digest('hex'));
+    expect(cms.size).toBe(cms.data.length);
+    expect(fs.readFileSync(path.join(site, 'cms/posts.json'), 'utf8')).toBe(source);
+  });
   it('includes the current runtime when an object uses Glitch without altering the saved site', () => {
     write(path.join(site, 'app/revyme-glitch-runtime.tsx'), '// @revyme-glitch-runtime-v1');
     write(path.join(site, 'vendor/revyme-runtime/dist/index.js'), 'obsolete');
+    write(path.join(site, 'vendor/revyme-runtime/dist/removed-module.d.ts'), 'obsolete declaration');
     const payload = collectSiteSource(process.cwd(), site);
     const runtime = payload.find(file => file.file === 'vendor/revyme-runtime/dist/index.js');
     expect(runtime?.data.toString()).toContain('attachGlitchElements');
+    expect(payload.some(file => file.file.endsWith('/removed-module.d.ts'))).toBe(false);
     const pkg = JSON.parse(payload.find(file => file.file === 'package.json')!.data.toString());
     expect(pkg.dependencies['@revyme/runtime']).toBe('file:./vendor/revyme-runtime');
     expect(fs.readFileSync(path.join(site, 'vendor/revyme-runtime/dist/index.js'), 'utf8')).toBe('obsolete');

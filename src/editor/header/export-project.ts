@@ -26,6 +26,8 @@ import { buildSourceExport } from '@/code/project/source-export';
 import { buildZip } from '@/shared/zip';
 import { getDefaultStore } from 'jotai';
 import { projectNameAtom } from '@/code/stores/project-store';
+import { getProjectId } from '@/backend/project-id';
+import { fetchLocalExportAssets, LocalAssetExportError } from './export-local-assets';
 
 /** Whether export is reachable at all. Always: cloud exports on the server,
  *  standalone builds the Next.js source zip in the browser. */
@@ -67,7 +69,8 @@ async function exportSourceInBrowser(): Promise<boolean> {
   const name = getDefaultStore().get(projectNameAtom) || null;
   trace.action('export-project:local-start', { files: main.size });
   const built = await buildSourceExport(Object.fromEntries(main), { name, runtimeRange: runtimeRange() });
-  const zip = await buildZip(Object.entries(built.files).map(([path, data]) => ({ path, data })));
+  const assets = await fetchLocalExportAssets(getProjectId(), built.files);
+  const zip = await buildZip([...Object.entries(built.files).map(([path, data]) => ({ path, data })), ...assets]);
   download(zip, built.filename);
   if (built.failed.length > 0) {
     toast(`${built.failed.length} marketplace component${built.failed.length === 1 ? '' : 's'} couldn’t be downloaded — ${built.failed.length === 1 ? 'it stays' : 'they stay'} imported by URL.`);
@@ -96,12 +99,11 @@ export async function exportProject(format: ExportFormat = 'source'): Promise<bo
       return await exportSourceInBrowser();
     } catch (err) {
       trace.error('export-project:local-error', err);
-      toast.error('Export failed — check console');
+      toast.error(err instanceof LocalAssetExportError ? `Export failed — ${err.message}` : 'Export failed — check console');
       return false;
     }
   }
 
-  const { getProjectId } = await import('@/backend/project-id');
   const id = getProjectId();
   if (!id) return false;
 
