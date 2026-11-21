@@ -39,6 +39,7 @@ export interface ScrollBinding {
   nodeId: string;         // data-id of the element
   property: string;       // 'opacity', 'y', 'scale', 'x', 'rotate'
   transformVar: string;   // which useTransform variable
+  styleVar?: string;      // reduced-motion alias bound in JSX, when present
 }
 
 /** Multi-section milestone — surfaced when the parser detects a multi-section
@@ -270,6 +271,11 @@ export function parseScrollHooks(code: string): ScrollAnimData {
   // Find all motion value references in style objects on elements with data-id
   const allTransformVars = new Set(transforms.map(t => t.varName));
   const allMotionVars = allTransformVars;
+  // Reduced-motion wrappers leave the authored useTransform intact. Resolve the
+  // JSX alias back to that transform so the Animation panel reads the same stops.
+  const reducedAliases = new Map<string, string>();
+  const reducedAliasRegex = /const\s+(\w+)\s*=\s*useReducedMotionValue\s*\(\s*(\w+)\s*,/g;
+  while ((m = reducedAliasRegex.exec(code)) !== null) reducedAliases.set(m[1], m[2]);
 
   // Find data-id elements and check their style for motion value references.
   // The `[^<>]*?` bound keeps the match inside ONE JSX tag — otherwise a
@@ -286,7 +292,10 @@ export function parseScrollHooks(code: string): ScrollAnimData {
     const propRegex = /(\w+):\s*(\w+)/g;
     let pm;
     while ((pm = propRegex.exec(styleContent)) !== null) {
-      if (allMotionVars.has(pm[2])) {
+      const original = reducedAliases.get(pm[2]);
+      if (original && allMotionVars.has(original)) {
+        bindings.push({ nodeId, property: pm[1], transformVar: original, styleVar: pm[2] });
+      } else if (allMotionVars.has(pm[2])) {
         bindings.push({ nodeId, property: pm[1], transformVar: pm[2] });
       }
     }

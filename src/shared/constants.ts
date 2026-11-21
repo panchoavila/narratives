@@ -300,6 +300,17 @@ export const WRAPPER_ONLY_STYLE_PROPS: ReadonlySet<string> = new Set([
   'marginInlineStart', 'marginInlineEnd', 'marginBlockStart', 'marginBlockEnd',
 ]);
 
+/** Opt-in code containers own their content box. The canvas wrapper only places/sizes it.
+ * Reset the other properties with priority so responsive CSS cannot apply padding twice. */
+export function codeComponentContainerStyles(styles: Record<string, string>, owner?: 'component'): Record<string, string> {
+  if (owner !== 'component') return styles;
+  return Object.fromEntries(Object.entries(styles).map(([key, value]) => [key,
+    key === 'display' ? (value.startsWith('none') ? value : 'block !important')
+      : WRAPPER_ONLY_STYLE_PROPS.has(key) || key === 'width' || key === 'height' || key === 'visibility' || key.startsWith('--')
+        ? value : 'initial !important',
+  ]));
+}
+
 
 /**
  * Layout-affecting, NON-tweenable CSS properties. When these differ between a

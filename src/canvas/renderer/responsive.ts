@@ -120,11 +120,10 @@ export function getResponsiveOverridesForNode(nodeId: string, vpWidth: number | 
   if (_isComponentMaster) return {};
   const overrides: Record<string, string> = {};
 
-  // Apply matching breakpoints — most specific (smallest range) wins.
-  // Sort by maxWidth ascending so smaller breakpoints override larger ones.
-  const sorted = [..._responsiveBreakpoints].sort((a, b) => a.maxWidth - b.maxWidth);
-
-  for (const bp of sorted) {
+  // Match the browser's cascade: equal-specificity rules apply in SOURCE
+  // order. Sorting by width applied a wide rule after the authored mobile
+  // override, so component-owned styles disagreed with the published CSS.
+  for (const bp of _responsiveBreakpoints) {
     // Check BOTH max-width AND min-width conditions
     if (vpWidth <= bp.maxWidth && vpWidth >= bp.minWidth) {
       const nodeOverrides = bp.nodes.get(nodeId);
@@ -133,7 +132,7 @@ export function getResponsiveOverridesForNode(nodeId: string, vpWidth: number | 
           // A custom property keeps its name: camel-casing `--revyme-page-flow` made an expando
           // (`-RevymePageFlow`) the element ignores. setElStyle routes `--` keys to setProperty.
           const camelProp = prop.startsWith('--') ? prop : prop.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
-          overrides[camelProp] = val; // smaller breakpoints override larger ones
+          overrides[camelProp] = val;
         }
       }
     }

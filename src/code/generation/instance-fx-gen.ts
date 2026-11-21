@@ -16,7 +16,7 @@
 import { trace } from '@/shared/debug-trace';
 import { nodeIdToVarName } from '@/shared/id-utils';
 import { parseJSX } from '@/code/parsing/ast-utils';
-import { findJSXDataIdIndex, insertBeforeRenderReturn, setTagAttr, getJsonAttr, opensAcrossLines } from './generator-utils';
+import { findJSXDataIdIndex, insertBeforeRenderReturn, setTagAttr, getJsonAttr, opensAcrossLines, ensureNamedImport } from './generator-utils';
 import { buildScopedScalarExpr, type SerScope } from './scoped-expr';
 import { scopeEq, presentOn, isPresenceOverride, addPresenceScope, hidePresenceOn, resetPresenceScope, type PresenceState } from '@/code/animations/presence';
 
@@ -116,10 +116,15 @@ const SECTION_OFFSET: Record<string, string> = {
 
 // Compose op per prop. Multiplicative props rest at 1, additive at 0.
 const MUL_PROPS = new Set(['opacity', 'scale', 'scaleX', 'scaleY']);
+const REDUCED_SCROLL_PROPS = new Set(['x', 'y', 'z', 'xPercent', 'yPercent', 'rotate', 'rotateX', 'rotateY', 'rotateZ', 'skew', 'skewX', 'skewY', 'scale', 'scaleX', 'scaleY', 'opacity']);
 // layerInView trigger line as a fraction of viewport height (top=viewport top, etc.).
 // Mirrors scroll-variant-gen's LINE_FRACTION.
 const LINE_FRACTION: Record<string, number> = { top: 0, center: 0.5, middle: 0.5, bottom: 1 };
 const baseOf = (prop: string) => (MUL_PROPS.has(prop) ? 1 : 0);
+const cleanReducedImport = (code: string): string => /\buseReducedMotionValue\s*\(/.test(code) ? code : code.replace(/import\s*\{([^}]*)\}\s*from\s*(['"])@revyme\/runtime\2\s*;?/g, (_all, names: string, quote: string) => {
+  const kept = names.split(',').map((name: string) => name.trim()).filter((name: string) => name && name !== 'useReducedMotionValue');
+  return kept.length ? `import { ${kept.join(', ')} } from ${quote}@revyme/runtime${quote};` : '';
+});
 const cleanNameOf = nodeIdToVarName;
 const Cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const numProps = (m: FxProps) => Object.keys(m).filter((p) => typeof m[p] === 'number');
@@ -214,7 +219,7 @@ export function setInstanceFxInCode(code: string, nodeId: string, spec: Instance
   let result = stripInstanceFx(code, nodeId, cn);
   const hasAny = spec && (spec.hover || spec.tap || spec.appear || spec.loop
     || (spec.speed != null && spec.speed !== 100) || spec.transform);
-  if (!hasAny) return result;
+  if (!hasAny) return cleanReducedImport(result);
 
   // Need the shared ref for pointer gestures (hover/press) AND for Scroll Transform,
   // whose progress is tied to the ELEMENT's box (not the whole page).
@@ -403,7 +408,8 @@ export function setInstanceFxInCode(code: string, nodeId: string, spec: Instance
     const speedVal = gateScalar(spec!.speed, (spec!.speedResponsive ?? []).map((r) => ({ scope: r.scope, v: r.speed })));
     const speedGated = gateP('speed', speedVal, '100');
     decls.push(`  const ${y} = useTransform(${scroll}, (v) => v * (1 - ${speedGated} / 100));`);
-    addMV('y', y);
+    decls.push(`  const ${y}Reduced = useReducedMotionValue(${y}, 0);`);
+    addMV('y', `${y}Reduced`);
   }
   if (spec!.transform) {
     const tf = spec!.transform;
@@ -445,7 +451,10 @@ export function setInstanceFxInCode(code: string, nodeId: string, spec: Instance
       const fromE = gateP('transform', gateEndpoint(from, 'from', p), String(baseOf(p)));
       const toE = gateP('transform', gateEndpoint(to, 'to', p), String(baseOf(p)));
       decls.push(`  const ${mv} = useTransform(${prog}, [0, 1], [${fromE}, ${toE}]);`);
-      addMV(p, mv);
+      if (REDUCED_SCROLL_PROPS.has(p)) {
+        decls.push(`  const ${mv}Reduced = useReducedMotionValue(${mv}, ${baseOf(p)});`);
+        addMV(p, `${mv}Reduced`);
+      } else addMV(p, mv);
     }
   }
 
@@ -470,13 +479,16 @@ export function setInstanceFxInCode(code: string, nodeId: string, spec: Instance
   const withHooks = insertBeforeRenderReturn(result, block);
   if (withHooks === null) return code;
   result = withHooks;
+  if (decls.some(line => line.includes('useReducedMotionValue('))) {
+    result = ensureNamedImport(result, '@revyme/runtime', ['useReducedMotionValue']);
+  }
 
   // 4. Bind composed values into the instance `style` + write the spec attr.
   result = setStyleBindings(result, nodeId, styleBindings);
   result = setTagAttr(result, nodeId, 'data-instance-fx', `'${JSON.stringify(spec)}'`);
 
   if (parseJSX(result) === null) { trace.error('instanceFx.set:parseFailed', { nodeId }); return code; }
-  return result;
+  return cleanReducedImport(result);
 }
 
 /** Two scopes are equal when they name the same viewport band or variant.

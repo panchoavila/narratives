@@ -575,6 +575,7 @@ describe('characterization: scroll-linked animation', () => {
   it('updateScrollAnimInCode — onScroll trigger writes hooks + style bindings', () => {
     expect(updateScrollAnimInCode(PAGE, SCROLL_CFG)).toMatchInlineSnapshot(`
       "'use client';
+      import { useReducedMotionValue } from '@revyme/runtime';
       import React from 'react';
       import { motion, useScroll, useTransform } from 'framer-motion';
 
@@ -582,9 +583,11 @@ describe('characterization: scroll-linked animation', () => {
         const { scrollYProgress: frameXProgress } = useScroll();
         const frameXY = useTransform(frameXProgress, [0, 1], ["0px", "-120px"]);
         const frameXOpacity = useTransform(frameXProgress, [0, 1], [1, 0.2]);
+        const frameXYReduced = useReducedMotionValue(frameXY, 0);
+        const frameXOpacityReduced = useReducedMotionValue(frameXOpacity, 1);
           return (
           <div data-id="root" style={{ position: 'relative', width: '100%' }}>
-            <motion.div data-id="frame-x" style={{ position: 'absolute', width: '200px', height: '100px', backgroundColor: '#ff0000', y: frameXY, opacity: frameXOpacity}} />
+            <motion.div data-id="frame-x" style={{position: 'absolute', width: '200px', height: '100px', backgroundColor: '#ff0000', y: frameXYReduced, opacity: frameXOpacityReduced}} />
             <div data-id="plain-y" style={{ position: 'relative', width: '100px', height: '50px' }} />
           </div>
         );
@@ -603,6 +606,7 @@ describe('characterization: scroll-linked animation', () => {
     } as ScrollAnimConfig;
     expect(updateScrollAnimInCode(PAGE, cfg)).toMatchInlineSnapshot(`
       "'use client';
+      import { useReducedMotionValue } from '@revyme/runtime';
       import React from 'react';
       import { motion, useScroll, useTransform } from 'framer-motion';
 
@@ -610,9 +614,10 @@ describe('characterization: scroll-linked animation', () => {
         const frameXRef = useRef(null);
         const { scrollYProgress: frameXProgress } = useScroll({ target: frameXRef, offset: ["start end", "end end"] });
         const frameXScale = useTransform(frameXProgress, [0, 1], [0.8, 1]);
+        const frameXScaleReduced = useReducedMotionValue(frameXScale, 1);
           return (
           <div data-id="root" style={{ position: 'relative', width: '100%' }}>
-            <motion.div ref={frameXRef} data-id="frame-x" style={{ position: 'absolute', width: '200px', height: '100px', backgroundColor: '#ff0000', scale: frameXScale}} />
+            <motion.div ref={frameXRef} data-id="frame-x" style={{position: 'absolute', width: '200px', height: '100px', backgroundColor: '#ff0000', scale: frameXScaleReduced}} />
             <div data-id="plain-y" style={{ position: 'relative', width: '100px', height: '50px' }} />
           </div>
         );
@@ -624,13 +629,14 @@ describe('characterization: scroll-linked animation', () => {
     const withAnim = updateScrollAnimInCode(PAGE, SCROLL_CFG);
     expect(removeScrollAnimFromCode(withAnim, 'frame-x')).toMatchInlineSnapshot(`
       "'use client';
+
       import React from 'react';
       import { motion, useScroll, useTransform } from 'framer-motion';
 
       export default function Page() {
           return (
           <div data-id="root" style={{ position: 'relative', width: '100%' }}>
-            <motion.div data-id="frame-x" style={{ position: 'absolute', width: '200px', height: '100px', backgroundColor: '#ff0000'}} />
+            <motion.div data-id="frame-x" style={{position: 'absolute', width: '200px', height: '100px', backgroundColor: '#ff0000'}} />
             <div data-id="plain-y" style={{ position: 'relative', width: '100px', height: '50px' }} />
           </div>
         );
@@ -689,15 +695,17 @@ describe('characterization: scroll-linked animation', () => {
     const withSpeed = updateScrollSpeedInCode(PAGE, { nodeId: 'frame-x', speed: 110 });
     expect(withSpeed).toMatchInlineSnapshot(`
       "'use client';
+      import { useReducedMotionValue } from '@revyme/runtime';
       import React from 'react';
       import { motion } from 'framer-motion';
 
       export default function Page() {
         const { scrollY: frameXSpeedScroll } = useScroll();
         const frameXSpeedY = useTransform(frameXSpeedScroll, (v) => v * (1 - 110 / 100));
+        const frameXSpeedYReduced = useReducedMotionValue(frameXSpeedY, 0);
           return (
           <div data-id="root" style={{ position: 'relative', width: '100%' }}>
-            <motion.div data-id="frame-x" style={{position: 'absolute', width: '200px', height: '100px', backgroundColor: '#ff0000', y: frameXSpeedY}} />
+            <motion.div data-id="frame-x" style={{position: 'absolute', width: '200px', height: '100px', backgroundColor: '#ff0000', y: frameXSpeedYReduced}} />
             <div data-id="plain-y" style={{ position: 'relative', width: '100px', height: '50px' }} />
           </div>
         );
@@ -706,6 +714,7 @@ describe('characterization: scroll-linked animation', () => {
     expect(JSON.stringify(getSpeedResponsive(withSpeed, 'frame-x'))).toMatchInlineSnapshot(`"{"base":110,"responsive":[]}"`);
     expect(removeScrollSpeedFromCode(withSpeed, 'frame-x')).toMatchInlineSnapshot(`
       "'use client';
+
       import React from 'react';
       import { motion } from 'framer-motion';
 
@@ -733,6 +742,7 @@ describe('characterization: conflict compose/decompose', () => {
     const conflicted = updateScrollAnimInCode(appearOn(PAGE), SCROLL_CFG);
     expect(composeAllScrollAppearConflicts(conflicted)).toMatchInlineSnapshot(`
       "'use client';
+      import { useReducedMotionValue } from '@revyme/runtime';
       import React, { useRef , useEffect} from 'react';
       import { motion, useScroll, useTransform , useInView, useMotionValue, animate} from 'framer-motion';
 
@@ -740,12 +750,14 @@ describe('characterization: conflict compose/decompose', () => {
         const { scrollYProgress: frameXProgress } = useScroll();
         const frameXY = useTransform(frameXProgress, [0, 1], ["0px", "-120px"]);
         const frameXOpacity = useTransform(frameXProgress, [0, 1], [1, 0.2]);
+        const frameXYReduced = useReducedMotionValue(frameXY, 0);
+        const frameXOpacityReduced = useReducedMotionValue(frameXOpacity, 1);
         const frameXRef = useRef(null);
         const frameXInView = useInView(frameXRef, { once: true });
         const frameXAppear = useMotionValue(0);
         useEffect(() => { if (frameXInView) { const _c = animate(frameXAppear, 1, { type: 'spring', duration: 0.5, bounce: 0.25 }); return () => _c.stop(); } }, [frameXInView]);
-        const frameXOpacityC = useTransform([frameXAppear, frameXOpacity], ([a, t]) => a * t);
-        const frameXYC = useTransform([frameXAppear, frameXY], ([a, t]) => a * t);
+        const frameXOpacityC = useTransform([frameXAppear, frameXOpacityReduced], ([a, t]) => a * t);
+        const frameXYC = useTransform([frameXAppear, frameXYReduced], ([a, t]) => a * t);
             return (
           <div data-id="root" style={{ position: 'relative', width: '100%' }}>
             <motion.div data-scroll-fx='{"appear":{"initial":{"opacity":"0","y":"40"},"once":true},"transform":{"trigger":"onScroll","from":{"y":"0px","opacity":"1"},"to":{"y":"-120px","opacity":"0.2"}}}' ref={frameXRef} data-id="frame-x" style={{position: 'absolute', width: '200px', height: '100px', backgroundColor: '#ff0000', opacity: frameXOpacityC, y: frameXYC}}
@@ -762,6 +774,7 @@ describe('characterization: conflict compose/decompose', () => {
     const composed = composeAllScrollAppearConflicts(conflicted);
     expect(decomposeAllScrollConflicts(composed)).toMatchInlineSnapshot(`
       "'use client';
+      import { useReducedMotionValue } from '@revyme/runtime';
       import React, { useRef , useEffect} from 'react';
       import { motion, useScroll, useTransform , useInView, useMotionValue, animate} from 'framer-motion';
 
@@ -769,9 +782,11 @@ describe('characterization: conflict compose/decompose', () => {
         const { scrollYProgress: frameXProgress } = useScroll();
         const frameXY = useTransform(frameXProgress, [0, 1], ["0px", "-120px"]);
         const frameXOpacity = useTransform(frameXProgress, [0, 1], [1, 0.2]);
+        const frameXYReduced = useReducedMotionValue(frameXY, 0);
+        const frameXOpacityReduced = useReducedMotionValue(frameXOpacity, 1);
             return (
           <div data-id="root" style={{ position: 'relative', width: '100%' }}>
-            <motion.div data-id="frame-x" style={{position: 'absolute', width: '200px', height: '100px', backgroundColor: '#ff0000', opacity: frameXOpacity, y: frameXY}}
+            <motion.div data-id="frame-x" style={{position: 'absolute', width: '200px', height: '100px', backgroundColor: '#ff0000', opacity: frameXOpacityReduced, y: frameXYReduced}}
                 
                 initial={{ opacity: 0, y: 0 }}
                 whileInView={{ opacity: 1, y: 1 }}
@@ -790,6 +805,7 @@ describe('characterization: conflict compose/decompose', () => {
     const composed = composeAllScrollAppearConflicts(conflicted);
     expect(dedupeAppearHooks(composed)).toMatchInlineSnapshot(`
       "'use client';
+      import { useReducedMotionValue } from '@revyme/runtime';
       import React, { useRef , useEffect} from 'react';
       import { motion, useScroll, useTransform , useInView, useMotionValue, animate} from 'framer-motion';
 
@@ -797,12 +813,14 @@ describe('characterization: conflict compose/decompose', () => {
         const { scrollYProgress: frameXProgress } = useScroll();
         const frameXY = useTransform(frameXProgress, [0, 1], ["0px", "-120px"]);
         const frameXOpacity = useTransform(frameXProgress, [0, 1], [1, 0.2]);
+        const frameXYReduced = useReducedMotionValue(frameXY, 0);
+        const frameXOpacityReduced = useReducedMotionValue(frameXOpacity, 1);
         const frameXRef = useRef(null);
         const frameXInView = useInView(frameXRef, { once: true });
         const frameXAppear = useMotionValue(0);
         useEffect(() => { if (frameXInView) { const _c = animate(frameXAppear, 1, { type: 'spring', duration: 0.5, bounce: 0.25 }); return () => _c.stop(); } }, [frameXInView]);
-        const frameXOpacityC = useTransform([frameXAppear, frameXOpacity], ([a, t]) => a * t);
-        const frameXYC = useTransform([frameXAppear, frameXY], ([a, t]) => a * t);
+        const frameXOpacityC = useTransform([frameXAppear, frameXOpacityReduced], ([a, t]) => a * t);
+        const frameXYC = useTransform([frameXAppear, frameXYReduced], ([a, t]) => a * t);
             return (
           <div data-id="root" style={{ position: 'relative', width: '100%' }}>
             <motion.div data-scroll-fx='{"appear":{"initial":{"opacity":"0","y":"40"},"once":true},"transform":{"trigger":"onScroll","from":{"y":"0px","opacity":"1"},"to":{"y":"-120px","opacity":"0.2"}}}' ref={frameXRef} data-id="frame-x" style={{position: 'absolute', width: '200px', height: '100px', backgroundColor: '#ff0000', opacity: frameXOpacityC, y: frameXYC}}
@@ -967,6 +985,7 @@ describe('characterization: spec-driven scroll-fx', () => {
   it('clearNodeScrollFx — removes every effect + hook for the node', () => {
     expect(clearNodeScrollFx(rich(), 'frame-x')).toMatchInlineSnapshot(`
       "'use client';
+
       import React, { useEffect } from 'react';
       import { motion, useScroll, useTransform , useMotionValue, animate} from 'framer-motion';
 
@@ -992,6 +1011,8 @@ describe('characterization: spec-driven scroll-fx', () => {
     const cleared = clearNodeScrollFx(code, 'frame-x');
     expect(setScrollFxInCode(cleared, 'frame-x', spec)).toMatchInlineSnapshot(`
       "'use client';
+
+      import { useReducedMotionValue } from '@revyme/runtime';
       import React, { useEffect } from 'react';
       import { motion, useScroll, useTransform, useMotionValue, animate } from 'framer-motion';
 
@@ -1004,14 +1025,16 @@ describe('characterization: spec-driven scroll-fx', () => {
         });
         const { scrollYProgress: frameXProgress } = useScroll();
         const frameXOpacity = useTransform(frameXProgress, [0, 1], [1, 0.2]);
+        const frameXOpacityReduced = useReducedMotionValue(frameXOpacity, 1);
         const { scrollY: frameXSpeedScroll } = useScroll();
         const frameXSpeedY = useTransform(frameXSpeedScroll, (v) => v * (1 - 110 / 100));
+        const frameXSpeedYReduced = useReducedMotionValue(frameXSpeedY, 0);
         const frameXAnimOpacity = useMotionValue(1);
         useEffect(() => { const _c = animate(frameXAnimOpacity, frameXScrolled ? 0 : 1, { type: 'spring', duration: 0.5 }); return () => _c.stop(); }, [frameXScrolled]);
-        const frameXOpacityDC = useTransform([frameXAnimOpacity, frameXOpacity], ([a, t]) => a * t);
+        const frameXOpacityDC = useTransform([frameXAnimOpacity, frameXOpacityReduced], ([a, t]) => a * t);
                           return (
           <div data-id="root" style={{ position: 'relative', width: '100%' }}>
-            <motion.div data-scroll-fx='{"transform":{"trigger":"onScroll","from":{"opacity":"1"},"to":{"opacity":"0.2"}},"speed":110,"animation":{"direction":"down","replay":true,"toProps":{"opacity":"0"},"transition":{"type":"spring","duration":"0.5"}},"hover":{"props":{"scale":"1.05"}},"tap":{"props":{"scale":"0.95"}}}' data-id="frame-x" style={{position: 'absolute', width: '200px', height: '100px', backgroundColor: '#ff0000', y: frameXSpeedY, opacity: frameXOpacityDC}}
+            <motion.div data-scroll-fx='{"transform":{"trigger":"onScroll","from":{"opacity":"1"},"to":{"opacity":"0.2"}},"speed":110,"animation":{"direction":"down","replay":true,"toProps":{"opacity":"0"},"transition":{"type":"spring","duration":"0.5"}},"hover":{"props":{"scale":"1.05"}},"tap":{"props":{"scale":"0.95"}}}' data-id="frame-x" style={{position: 'absolute', width: '200px', height: '100px', backgroundColor: '#ff0000', y: frameXSpeedYReduced, opacity: frameXOpacityDC}}
                 
                 whileHover={{ scale: 1.05 }}
                 
@@ -1029,6 +1052,7 @@ describe('characterization: spec-driven scroll-fx', () => {
     const dormant = dormantizeScrollFx(code, 'frame-x');
     expect(dormant).toMatchInlineSnapshot(`
       "'use client';
+
       import React, { useEffect } from 'react';
       import { motion, useScroll, useTransform , useMotionValue, animate} from 'framer-motion';
 
@@ -1044,6 +1068,8 @@ describe('characterization: spec-driven scroll-fx', () => {
     `);
     expect(rehydrateScrollFx(dormant, 'frame-x')).toMatchInlineSnapshot(`
       "'use client';
+
+      import { useReducedMotionValue } from '@revyme/runtime';
       import React, { useEffect } from 'react';
       import { motion, useScroll, useTransform, useMotionValue, animate } from 'framer-motion';
 
@@ -1056,14 +1082,16 @@ describe('characterization: spec-driven scroll-fx', () => {
         });
         const { scrollYProgress: frameXProgress } = useScroll();
         const frameXOpacity = useTransform(frameXProgress, [0, 1], [1, 0.2]);
+        const frameXOpacityReduced = useReducedMotionValue(frameXOpacity, 1);
         const { scrollY: frameXSpeedScroll } = useScroll();
         const frameXSpeedY = useTransform(frameXSpeedScroll, (v) => v * (1 - 110 / 100));
+        const frameXSpeedYReduced = useReducedMotionValue(frameXSpeedY, 0);
         const frameXAnimOpacity = useMotionValue(1);
         useEffect(() => { const _c = animate(frameXAnimOpacity, frameXScrolled ? 0 : 1, { type: 'spring', duration: 0.5 }); return () => _c.stop(); }, [frameXScrolled]);
-        const frameXOpacityDC = useTransform([frameXAnimOpacity, frameXOpacity], ([a, t]) => a * t);
+        const frameXOpacityDC = useTransform([frameXAnimOpacity, frameXOpacityReduced], ([a, t]) => a * t);
                           return (
           <div data-id="root" style={{ position: 'relative', width: '100%' }}>
-            <motion.div data-scroll-fx='{"transform":{"trigger":"onScroll","from":{"opacity":"1"},"to":{"opacity":"0.2"}},"speed":110,"animation":{"direction":"down","replay":true,"toProps":{"opacity":"0"},"transition":{"type":"spring","duration":"0.5"}},"hover":{"props":{"scale":"1.05"}},"tap":{"props":{"scale":"0.95"}}}' data-id="frame-x" style={{position: 'absolute', width: '200px', height: '100px', backgroundColor: '#ff0000', y: frameXSpeedY, opacity: frameXOpacityDC}}
+            <motion.div data-scroll-fx='{"transform":{"trigger":"onScroll","from":{"opacity":"1"},"to":{"opacity":"0.2"}},"speed":110,"animation":{"direction":"down","replay":true,"toProps":{"opacity":"0"},"transition":{"type":"spring","duration":"0.5"}},"hover":{"props":{"scale":"1.05"}},"tap":{"props":{"scale":"0.95"}}}' data-id="frame-x" style={{position: 'absolute', width: '200px', height: '100px', backgroundColor: '#ff0000', y: frameXSpeedYReduced, opacity: frameXOpacityDC}}
                 
                 whileHover={{ scale: 1.05 }}
                 

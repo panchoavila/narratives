@@ -61,6 +61,7 @@ export default function TextStyleTool() {
               <TextPropertyControl property="lineHeight" label="Line Height" />
               <ElementPropertyControl property="textTransform" label="Transform" />
               <ElementPropertyControl property="whiteSpace" label="Whitespace" />
+              <ElementPropertyControl property="textWrap" label="Text wrap" />
               <ElementPropertyControl property="textOverflow" label="Overflow" />
               <ElementPropertyControl property="writingMode" label="Mode" />
               <DecorationControl />

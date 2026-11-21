@@ -4,9 +4,10 @@
 // All code moved VERBATIM from generator-motion.ts (Phase 7.4 god-file split).
 import { escapeRegExp } from '@/shared/regex-utils';
 import { nodeIdToVarName } from '@/shared/id-utils';
+import { getJSXStyleValue } from './generator-motion-transition';
 import { parseScrollHooks, getScrollDataForNode, parseScrollDirection, parseRange } from '../parsing/scroll-parser';
 import { trace } from '@/shared/debug-trace';
-import { findTagClose, findJSXDataIdIndex, insertBeforeRenderReturn, findStyleObjectEnd, stripTagAttrBalanced, readTagAttrRaw, getJsonAttr, opensAcrossLines } from './generator-utils';
+import { findTagClose, findJSXDataIdIndex, insertBeforeRenderReturn, findStyleObjectEnd, ensureNamedImport, stripTagAttrBalanced, readTagAttrRaw, getJsonAttr, opensAcrossLines } from './generator-utils';
 import { setScrollVariantInCode } from './scroll-variant-gen';
 import { setInstanceFxInCode } from './instance-fx-gen';
 import { type ResolvedScope } from '@/code/animations/animation-scope';
@@ -574,7 +575,7 @@ export function clearNodeScrollFx(code: string, nodeId: string): string {
     if (/^useEffect\(/.test(t) && new RegExp(`\\b${fx}\\w*`).test(t) && /\);$/.test(t)) return false; // single-line useEffect
     return true;
   }).join('\n');
-  return result;
+  return cleanReducedImport(result);
 }
 
 // ── Spec-driven scroll-fx (Phase 1) ──────────────────────────────────────────
@@ -781,7 +782,7 @@ export function robustClearScrollFx(code: string, nodeId: string): string {
   result = removeScrollFxCall(result, 'useEffect', e);
   result = removeScrollFxCall(result, 'useMotionValueEvent', e);
   result = removeScrollFxConst(result, e, protectRef);
-  return result;
+  return cleanReducedImport(result);
 }
 
 /** Read a node's data-scroll-fx spec — the `data-scroll-fx` attr (composed nodes) or,
@@ -1012,14 +1013,24 @@ function injectStyleMotionBinding(code: string, nodeId: string, prop: string, mo
   return code.slice(0, open) + inner + `${sep}${prop}: ${motionVar}` + code.slice(close);
 }
 
+function cleanReducedImport(code: string): string {
+  if (/\buseReducedMotionValue\s*\(/.test(code)) return code;
+  return code.replace(/import\s*\{([^}]*)\}\s*from\s*(['"])@revyme\/runtime\2\s*;?/g, (whole, names: string, quote: string) => {
+    const kept = names.split(',').map((name: string) => name.trim()).filter((name: string) => name && name !== 'useReducedMotionValue');
+    return kept.length ? `import { ${kept.join(', ')} } from ${quote}@revyme/runtime${quote};` : '';
+  });
+}
+
 export function removeScrollSpeedFromCode(code: string, nodeId: string): string {
   const cleanName = nodeIdToVarName(nodeId);
   const cn = escapeRegExp(cleanName);
+  const authored = code.match(new RegExp(`const\\s+${cn}SpeedYReduced\\s*=\\s*useReducedMotionValue\\(\\s*${cn}SpeedY\\s*,\\s*([^,)]*)\\s*,\\s*true\\s*\\)`));
   let r = code;
   r = r.replace(new RegExp(`\\s*const \\{\\s*scrollY:\\s*${cn}SpeedScroll\\s*\\} = useScroll\\([^;]*\\);`, 'g'), '');
+  r = r.replace(new RegExp(`\\s*const ${cn}SpeedYReduced = useReducedMotionValue\\([^;]*;`, 'g'), '');
   r = r.replace(new RegExp(`\\s*const ${cn}SpeedY = useTransform\\([\\s\\S]*?\\);`, 'g'), '');
-  r = r.replace(new RegExp(`,?\\s*y:\\s*${cn}SpeedY`, 'g'), '');
-  return r;
+  r = r.replace(new RegExp(`(,?\\s*)y:\\s*${cn}SpeedY(?:Reduced)?\\b`, 'g'), authored ? `$1y: ${authored[1].trim()}` : '');
+  return cleanReducedImport(r);
 }
 
 /** Read a node's Speed as base + per-scope overrides (inverse of the gated emit). */
@@ -1055,17 +1066,24 @@ export function updateScrollSpeedInCode(code: string, config: ScrollSpeedConfig)
     if (scope) overrides.push({ scope, speed });
   }
 
+  const previous = code.match(new RegExp(`const\\s+${escapeRegExp(yVar)}Reduced\\s*=\\s*useReducedMotionValue\\(\\s*${escapeRegExp(yVar)}\\s*,\\s*([^,)]*)(?:,\\s*(true|false))?\\)`));
+  const authored = getJSXStyleValue(code, nodeId, 'y');
+  const baseValue = authored ?? '0';
+  const fallback = previous?.[1]?.trim() || (Number.isFinite(Number(baseValue)) ? String(Number(baseValue)) : JSON.stringify(baseValue));
+  const hasAuthoredBase = previous ? previous[2] === 'true' : authored !== null;
   let result = removeScrollSpeedFromCode(code, nodeId);
   const scoped = buildScopedScalarExpr(result, String(base), overrides.map(o => ({ scope: o.scope, value: String(o.speed) })));
   result = scoped.code;
   const lines = [
     `  const { scrollY: ${scrollVar} } = useScroll();`,
     `  const ${yVar} = useTransform(${scrollVar}, (v) => v * (1 - ${scoped.expr} / 100));`,
+    `  const ${yVar}Reduced = useReducedMotionValue(${yVar}, ${fallback}${hasAuthoredBase ? ', true' : ''});`,
   ];
   const withHooks = insertBeforeRenderReturn(result, lines.join('\n'));
   if (withHooks === null) return code;
   result = withHooks;
-  return injectStyleMotionBinding(result, nodeId, 'y', yVar);
+  result = ensureNamedImport(result, '@revyme/runtime', ['useReducedMotionValue']);
+  return injectStyleMotionBinding(result, nodeId, 'y', yVar + 'Reduced');
 }
 
 /** Reset Override on Speed: drop one scope's branch (keep base + siblings), or remove
@@ -1099,6 +1117,17 @@ export function removeScrollAnimFromCode(code: string, nodeId: string): string {
       if (otherTransformVars.has(t.varName)) otherSourceVars.add(t.sourceVar);
     }
 
+    // The wrapper records whether a static value existed before this effect.
+    // Restore it on removal so undo/re-edit does not erase authored geometry.
+    const authoredBases = new Map<string, string>();
+    for (const binding of nodeScroll.bindings) if (binding.styleVar) {
+      const declaration = code.match(new RegExp(`const\\s+${escapeRegExp(binding.styleVar)}\\s*=\\s*useReducedMotionValue\\(\\s*${escapeRegExp(binding.transformVar)}\\s*,\\s*([^,)]*)\\s*,\\s*true\\s*\\)`));
+      if (declaration) authoredBases.set(binding.property, declaration[1].trim());
+    }
+    // Remove reduced aliases together with their source transforms.
+    for (const binding of nodeScroll.bindings) if (binding.styleVar) {
+      result = result.replace(new RegExp(`\\s*const ${escapeRegExp(binding.styleVar)}\\s*=\\s*useReducedMotionValue\\([^;]*;`, 'g'), '');
+    }
     // Remove useTransform declarations by exact var name
     for (const varName of oldTransformVars) {
       const regex = new RegExp(`\\s*const ${varName} = (?:useSpring\\(\\s*)?useTransform\\([^;]*;`, 'g');
@@ -1145,10 +1174,13 @@ export function removeScrollAnimFromCode(code: string, nodeId: string): string {
           if (sClose !== -1) {
             let styleContent = result.slice(sStart, sClose);
             for (const b of nodeScroll.bindings) {
-              const bindRegex = new RegExp(`,?\\s*${b.property}:\\s*${b.transformVar}\\b`);
+              const bindRegex = new RegExp(`,?\\s*${b.property}:\\s*${b.styleVar ?? b.transformVar}\\b`);
               styleContent = styleContent.replace(bindRegex, '');
             }
-            styleContent = styleContent.replace(/^\s*,/, '');
+            styleContent = styleContent.replace(/^\s*,/, '').replace(/,\s*$/, '');
+            for (const [property, value] of authoredBases) {
+              styleContent = styleContent.trimEnd() + (styleContent.trim() ? ', ' : '') + property + ': ' + value;
+            }
             result = result.slice(0, sStart) + styleContent + result.slice(sClose);
           }
         }
@@ -1212,7 +1244,7 @@ export function removeScrollAnimFromCode(code: string, nodeId: string): string {
   // Clean extra blank lines
   result = result.replace(/\n{3,}/g, '\n\n');
 
-  return result;
+  return cleanReducedImport(result);
 }
 
 export { injectScrollFxAttr, injectAttrsBeforeClose, injectStyleMotionBinding, emitMotionPropResponsive, gateMotionPropHidden, restingOf, restingFor };

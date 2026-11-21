@@ -243,7 +243,7 @@ export default function Page() {
     const result = updateScrollAnimInCode(builderCode, config);
 
     // Should not have duplicates
-    const scaleMatches = result.match(/const heroStickyScale/g);
+    const scaleMatches = result.match(/const heroStickyScale\s*=/g);
     expect(scaleMatches).toHaveLength(1);
 
     // Should have updated output range

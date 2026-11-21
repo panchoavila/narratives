@@ -45,3 +45,4 @@ export { BackfaceControl } from './BackfaceControl';
 export { MixBlendModeControl } from './MixBlendModeControl';
 export { TransitionVariableEditor } from './TransitionVariableEditor';
 export { FormStateControl } from './FormStateControl';
+export { ScrollSnapTypeControl, ScrollSnapAlignControl, ScrollPaddingLeftControl } from './ScrollSnapControl';

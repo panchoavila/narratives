@@ -14,6 +14,7 @@ import {
 import { bakePresetRefsInSource } from '../generation/preset-refs-gen';
 import type { PresetToken } from '@/shared/types';
 import { trace } from '@/shared/debug-trace';
+import { declaredFontFamilies, fontFamilyKey } from '@/shared/font-face-families';
 import { parseVarRef } from '@/shared/css-utils';
 
 const TOKENS_PATH = 'app/globals.css';
@@ -209,6 +210,9 @@ export function ensureGoogleFontImport(fontFamilyValue: string): void {
 
   const css = projectFS.readFile(TOKENS_PATH);
   if (!css) return;
+
+  // A local or Adobe face is already supplied by this project.
+  if (declaredFontFamilies(css).has(fontFamilyKey(name))) return;
 
   // Check if @import for this font already exists
   const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

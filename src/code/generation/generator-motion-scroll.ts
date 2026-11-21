@@ -2,14 +2,33 @@
 // + useMotionTemplate), multi-section milestones, and direction-triggered scroll.
 // All code moved VERBATIM from generator-motion.ts (Phase 7.4 god-file split).
 import { escapeRegExp } from '@/shared/regex-utils';
+import { splitStyleProps } from '@/shared/css-utils';
 import { nodeIdToVarName } from '@/shared/id-utils';
 import { parseScrollHooks, getScrollDataForNode } from '../parsing/scroll-parser';
 import { trace } from '@/shared/debug-trace';
-import { findTagClose, findJSXDataIdIndex, insertBeforeRenderReturn, findMatchingCloseTagIndex, findStyleObjectEnd } from './generator-utils';
+import { findTagClose, findJSXDataIdIndex, insertBeforeRenderReturn, findMatchingCloseTagIndex, findStyleObjectEnd, ensureNamedImport } from './generator-utils';
 import { ensureMediaQueryHook, ensureMediaGate, type SerScope } from './scoped-expr';
 import { MOTION_NEUTRALS, getJSXStyleValue, buildSpringParams } from './generator-motion-transition';
 import { updateMotionPropInCode } from './generator-motion-props';
 import { removeScrollAnimFromCode } from './generator-motion-scroll-fx';
+
+/** Freeze only motion channels under reduced motion; color and other paint stay live. */
+const REDUCED_CHANNELS = new Set(['x','y','z','xPercent','yPercent','rotate','rotateX','rotateY','rotateZ','skew','skewX','skewY','scale','scaleX','scaleY','scaleZ','opacity']);
+function addReducedAliases(code: string, nodeId: string, lines: string[], bindings: Record<string, string>): boolean {
+  let added = false;
+  for (const [prop, source] of Object.entries(bindings)) {
+    if (!REDUCED_CHANNELS.has(prop)) continue;
+    const alias = source + 'Reduced';
+    const old = code.match(new RegExp(`const\\s+${escapeRegExp(alias)}\\s*=\\s*useReducedMotionValue\\(\\s*${escapeRegExp(source)}\\s*,\\s*([^,)]*)(?:,\\s*(true|false))?\\)`));
+    const authored = getJSXStyleValue(code, nodeId, prop);
+    const base = authored ?? MOTION_NEUTRALS[prop] ?? '0';
+    const literal = old?.[1]?.trim() || (Number.isFinite(Number(base)) ? String(Number(base)) : JSON.stringify(base));
+    const hasAuthoredBase = old ? old[2] === 'true' : authored !== null;
+    lines.push(`  const ${alias} = useReducedMotionValue(${source}, ${literal}${hasAuthoredBase ? ', true' : ''});`);
+    bindings[prop] = alias; added = true;
+  }
+  return added;
+}
 
 // ─── Scroll-Linked Animation (useScroll + useTransform) ─────────────────────
 // Clean generator matching AI patterns: short variable names, no markers.
@@ -557,6 +576,7 @@ export function updateScrollAnimInCode(code: string, config: ScrollAnimConfig): 
     styleBindings[prop] = varName;
   }
 
+  const hasReducedAliases = addReducedAliases(code, nodeId, lines, styleBindings);
   let result = code;
 
   // Builder-named scroll hooks for THIS node — remove up front by cleanName. The
@@ -568,6 +588,11 @@ export function updateScrollAnimInCode(code: string, config: ScrollAnimConfig): 
   // inferred from code; clean up any that accumulated).
   result = result.replace(/\s*\/\/\s*@scroll\s+dir:\w+\s+replay:\w+/g, '');
   const cnEsc = escapeRegExp(cleanName);
+  // Remove only the aliases this transform owns. A Speed effect on the same
+  // node has its own reduced-motion alias and must survive this edit.
+  for (const alias of Object.values(styleBindings)) {
+    result = result.replace(new RegExp(`\\s*const ${escapeRegExp(alias)}\\s*=\\s*useReducedMotionValue\\([^;]*;`, 'g'), '');
+  }
   result = result.replace(new RegExp(`\\s*const \\{\\s*scrollYProgress:\\s*${cnEsc}Progress\\s*\\} = useScroll\\([\\s\\S]*?\\);`, 'g'), '');
   result = result.replace(new RegExp(`\\s*const ${cnEsc}Smooth = useSpring\\([\\s\\S]*?\\);`, 'g'), '');
   result = result.replace(new RegExp(`\\s*const ${cnEsc}Peak = useRef\\(0\\);`, 'g'), '');
@@ -602,6 +627,9 @@ export function updateScrollAnimInCode(code: string, config: ScrollAnimConfig): 
   let oldRefTargetNodeId: string | null = null;
 
   if (nodeScroll.bindings.length > 0) {
+    for (const binding of nodeScroll.bindings) if (binding.styleVar) {
+      result = result.replace(new RegExp(`\\s*const ${escapeRegExp(binding.styleVar)}\\s*=\\s*useReducedMotionValue\\([^;]*;`, 'g'), '');
+    }
     // Collect actual transform var names bound to this node
     const oldTransformVars = new Set(nodeScroll.bindings.map(b => b.transformVar));
     // Find the source(s) driving those transforms
@@ -690,7 +718,7 @@ export function updateScrollAnimInCode(code: string, config: ScrollAnimConfig): 
           if (sClose !== -1) {
             let styleContent = result.slice(sStart, sClose);
             for (const b of nodeScroll.bindings) {
-              const bindRegex = new RegExp(`,?\\s*${b.property}:\\s*${b.transformVar}\\b`);
+              const bindRegex = new RegExp(`,?\\s*${b.property}:\\s*${b.styleVar ?? b.transformVar}\\b`);
               styleContent = styleContent.replace(bindRegex, '');
             }
             // Clean leading comma after removals
@@ -810,6 +838,10 @@ export function updateScrollAnimInCode(code: string, config: ScrollAnimConfig): 
         const sClose = findStyleObjectEnd(result, sStart);
         if (sClose !== -1) {
           let styleContent = result.slice(sStart, sClose);
+          styleContent = splitStyleProps(styleContent).filter(part => {
+            const key = part.match(/^\s*([\w$]+)\s*:/)?.[1];
+            return !key || !(key in styleBindings);
+          }).join(', ');
           // Remove any new binding vars that might already exist (from cleanName fallback)
           for (const varName of Object.values(styleBindings)) {
             const bindRegex = new RegExp(`,?\\s*\\w+:\\s*${varName}\\b`);
@@ -850,6 +882,8 @@ export function updateScrollAnimInCode(code: string, config: ScrollAnimConfig): 
       }
     );
   }
+
+  if (hasReducedAliases) result = ensureNamedImport(result, '@revyme/runtime', ['useReducedMotionValue']);
 
   // Final whitespace cleanup — collapse any 3+ consecutive newlines to 2
   result = result.replace(/\n{3,}/g, '\n\n');
@@ -993,6 +1027,7 @@ function updateMultiSectionScrollAnimInCode(code: string, config: ScrollAnimConf
     styleBindings[prop] = varName;
   }
 
+  const hasReducedAliases = addReducedAliases(code, nodeId, lines, styleBindings);
   let result = code;
 
   // ── Strip ALL existing scroll hooks for this nodeId before inserting fresh.
@@ -1042,6 +1077,10 @@ function updateMultiSectionScrollAnimInCode(code: string, config: ScrollAnimConf
         const sClose = findStyleObjectEnd(result, sStart);
         if (sClose !== -1) {
           let styleContent = result.slice(sStart, sClose);
+          styleContent = splitStyleProps(styleContent).filter(part => {
+            const key = part.match(/^\s*([\w$]+)\s*:/)?.[1];
+            return !key || !(key in styleBindings);
+          }).join(', ');
           for (const varName of Object.values(styleBindings)) {
             const bindRegex = new RegExp(`,?\\s*\\w+:\\s*${varName}\\b`);
             styleContent = styleContent.replace(bindRegex, '');
@@ -1073,6 +1112,8 @@ function updateMultiSectionScrollAnimInCode(code: string, config: ScrollAnimConf
       },
     );
   }
+
+  if (hasReducedAliases) result = ensureNamedImport(result, '@revyme/runtime', ['useReducedMotionValue']);
 
   // useState + useRef + useEffect imports from React — picked up by
   // syncImports on the next flush, but we add them here for safety.

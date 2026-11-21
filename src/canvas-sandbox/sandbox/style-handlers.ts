@@ -13,6 +13,7 @@ import { syncEditorFromLiveSvg as syncShapeEditorFromLiveSvg } from '../shape-ed
 import { contentRoot, emit } from './sandbox-state';
 import { cornersForElement, shouldRefreshSubtree, emitSubtreeRefresh, emitElementRefresh, cornersAreDecoupled, scheduleSubtreeRefresh } from './rect-emit';
 import { isSandboxDndInteracting } from '../sandbox-dnd-host';
+import { codeComponentContainerStyles } from '@/shared/constants';
 
 /** Two-pass style application — clear empty values first, then set non-empty.
  *  Mirrors `applyStylesToEl` in node-ops.ts. Order matters because clearing a
@@ -21,6 +22,22 @@ import { isSandboxDndInteracting } from '../sandbox-dnd-host';
  *  the radius entirely. Two-pass clears longhands first, so the shorthand
  *  set in pass 2 survives. */
 export function applyTwoPass(el: HTMLElement, styles: Record<string, string>, important: boolean, markResidue: boolean = important): void {
+  if (el.getAttribute('data-code-style-owner') === 'component') {
+    const resolved = JSON.parse(el.getAttribute('data-code-resolved-styles') || '{}');
+    for (const [key, value] of Object.entries(styles)) {
+      if (value === '') delete resolved[key]; else resolved[key] = value;
+    }
+    el.setAttribute('data-code-resolved-styles', JSON.stringify(resolved));
+    styles = codeComponentContainerStyles(styles, 'component');
+    // Reset wrapper-owned CSS with real priority, not a literal "!important" value.
+    // The inner React root receives the authored value via renderCodeComponentStyleLive.
+    const placement: Record<string, string> = {};
+    for (const [key, value] of Object.entries(styles)) {
+      if (value === 'initial !important' || value === 'block !important') el.style.setProperty(toKebab(key), value.split(' ')[0], 'important');
+      else placement[key] = value;
+    }
+    styles = placement;
+  }
   // Imperative write ⇒ this element no longer matches its last-rendered
   // signature. Invalidate the subtree-skip keys up the ancestor chain so the
   // next full render re-patches this branch (render-restore semantics).

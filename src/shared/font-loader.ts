@@ -3,6 +3,11 @@
 // Uses document.fonts.ready with 100ms fallback.
 
 import { trace } from './debug-trace';
+import { fontFamilyKey } from './font-face-families';
+let projectFontFamilies = new Set<string>();
+export function setProjectFontFamilies(families: Iterable<string>): void {
+  projectFontFamilies = new Set(Array.from(families, fontFamilyKey));
+}
 // Lazy-imported via dynamic import to avoid a circular dependency on
 // boot — `canvas-bridge` pulls in iframe machinery that isn't ready
 // until after the editor mounts. Callers of `loadGoogleFont` may run
@@ -48,7 +53,7 @@ function notifyFontLoaded(fontFamily: string) {
  * Skips system fonts. Deduplicates by font name.
  */
 export function loadGoogleFont(fontFamily: string): Promise<void> {
-  if (!fontFamily) return Promise.resolve();
+  if (!fontFamily || projectFontFamilies.has(fontFamilyKey(fontFamily))) return Promise.resolve();
 
   // Skip system fonts
   const lower = fontFamily.toLowerCase();

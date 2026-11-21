@@ -18,9 +18,12 @@ import * as React from 'react';
 // scroll offset — the editor preview not scrolling up while the live site does.
 // Deferred to the next frame so the destination page has rendered/laid out
 // first (matches Next.js committing the scroll after the navigation).
-function scrollPreviewToTop(): void {
+function scrollPreviewToTop(href?: string): void {
   const toTop = () => {
     try {
+      const hash = href ? new URL(href, window.location.href).hash.slice(1) : '';
+      const destination = hash ? document.getElementById(decodeURIComponent(hash)) : null;
+      if (destination) { destination.scrollIntoView(); return; }
       window.scrollTo(0, 0);
       if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
       if (document.documentElement) document.documentElement.scrollTop = 0;
@@ -52,7 +55,7 @@ export function LinkShim(props: React.AnchorHTMLAttributes<HTMLAnchorElement> & 
     else history.pushState(null, '', href);
     window.dispatchEvent(new PopStateEvent('popstate'));
     // Next.js scrolls to top on a forward Link navigation unless scroll={false}.
-    if (scroll !== false) scrollPreviewToTop();
+    if (scroll !== false) scrollPreviewToTop(href);
   };
   return React.createElement('a', { href, onClick: handleClick, ...rest }, children);
 }
@@ -100,8 +103,8 @@ interface RouterShim {
 const noopRouter: RouterShim = {
   // push/replace scroll to top (Next.js default); back/forward restore the
   // browser's saved scroll position, so they must NOT force-scroll.
-  push: (href) => { history.pushState(null, '', href); window.dispatchEvent(new PopStateEvent('popstate')); scrollPreviewToTop(); },
-  replace: (href) => { history.replaceState(null, '', href); window.dispatchEvent(new PopStateEvent('popstate')); scrollPreviewToTop(); },
+  push: (href) => { history.pushState(null, '', href); window.dispatchEvent(new PopStateEvent('popstate')); scrollPreviewToTop(href); },
+  replace: (href) => { history.replaceState(null, '', href); window.dispatchEvent(new PopStateEvent('popstate')); scrollPreviewToTop(href); },
   back: () => history.back(),
   forward: () => history.forward(),
   refresh: () => location.reload(),

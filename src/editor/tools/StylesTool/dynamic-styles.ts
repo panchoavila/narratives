@@ -30,6 +30,9 @@ export interface DynamicStyleSpec {
 }
 
 export const DYNAMIC_STYLES: DynamicStyleSpec[] = [
+  { id:'scrollSnapType', label:'Scroll snap', keys:['scrollSnapType'], defaultStyles:{scrollSnapType:'x mandatory'}, requiresFrame:true },
+  { id:'scrollSnapAlign', label:'Snap align', keys:['scrollSnapAlign'], defaultStyles:{scrollSnapAlign:'start'} },
+  { id:'scrollPaddingLeft', label:'Scroll padding left', keys:['scrollPaddingLeft'], defaultStyles:{scrollPaddingLeft:'0px'}, requiresFrame:true },
   {
     id: 'overflowX',
     label: 'Overflow X',

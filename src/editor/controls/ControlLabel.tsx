@@ -166,7 +166,8 @@ function PlainOverrideLabel({ label, subLabel, onReset, cell }: { label: string;
   );
 }
 
-export default function ControlLabel({ label, property, plain, forceShow, hideCreateVariable, hideResetStyle, hideCmsBinding, hideVariableMenu, hideCopyPasteStyle, hideLocalize, extraMenuItems, overridden, onResetOverride, subLabel, cell }: ControlLabelProps) {
+export default function ControlLabel(props: ControlLabelProps) {
+  const { label, plain, forceShow, overridden, onResetOverride, subLabel, cell } = props;
   // Hidden entirely when the unified context requests it (Variable modal's Default row — the FieldRow
   // already labels it; the atom's own "Background"/"Border" label would be redundant). Hook is called
   // unconditionally (Rules of Hooks); the optional variant returns null outside a unified provider.
@@ -230,6 +231,13 @@ export default function ControlLabel({ label, property, plain, forceShow, hideCr
     );
   }
 
+  // The connected branch has its own component: switching plain/hidden mode
+  // mounts or unmounts its hooks instead of changing their order in this one.
+  return <ConnectedControlLabel {...props} />;
+}
+
+function ConnectedControlLabel({ label, property, hideCreateVariable, hideResetStyle, hideCmsBinding, hideVariableMenu, hideCopyPasteStyle, hideLocalize, extraMenuItems, overridden, onResetOverride, subLabel, cell }: ControlLabelProps) {
+  const unifiedCtx = useControlContextOptional();
   const {
     nodeId, node, styles, vpId, isReplica, vpWidth,
     hasOverride, getValueSource,

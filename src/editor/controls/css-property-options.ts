@@ -20,6 +20,7 @@ export interface CSSOption {
 export const OVERFLOW_OPTIONS: CSSOption[] = [
   { value: 'visible', label: 'visible' },
   { value: 'hidden', label: 'hidden' },
+  { value: 'auto', label: 'auto' },
   { value: 'scroll', label: 'scroll' },
   { value: 'clip', label: 'clip' },
 ];
@@ -112,6 +113,13 @@ const OPTIONS: Record<string, CSSOption[]> = {
     { value: 'uppercase', label: 'uppercase' },
     { value: 'lowercase', label: 'lowercase' },
     { value: 'capitalize', label: 'capitalize' },
+  ],
+  textWrap: [
+    { value: '', label: 'default' },
+    { value: 'wrap', label: 'wrap' },
+    { value: 'nowrap', label: 'nowrap' },
+    { value: 'balance', label: 'balance' },
+    { value: 'pretty', label: 'pretty' },
   ],
   whiteSpace: [
     { value: 'normal', label: 'normal' },

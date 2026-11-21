@@ -122,7 +122,7 @@ export function composeScrollAppearInCode(code: string, nodeId: string): string 
   // Transform bindings (prop → transform var) from the scrubbed scroll.
   const scroll = getScrollDataForNode(parseScrollHooks(code), nodeId);
   const transformByProp: Record<string, string> = {};
-  for (const b of scroll.bindings) transformByProp[b.property] = b.transformVar;
+  for (const b of scroll.bindings) transformByProp[b.property] = b.styleVar ?? b.transformVar;
 
   // EXISTING style motion-var bindings (e.g. Scroll Speed's `y: …SpeedY`). When
   // an appear prop also has one of these, we must COMBINE, not overwrite — else
@@ -329,7 +329,7 @@ function composeScrollDirectionTransformInCode(code: string, nodeId: string): st
 
   const scroll = getScrollDataForNode(parseScrollHooks(code), nodeId);
   const transformByProp: Record<string, string> = {};
-  for (const b of scroll.bindings) transformByProp[b.property] = b.transformVar;
+  for (const b of scroll.bindings) transformByProp[b.property] = b.styleVar ?? b.transformVar;
 
   const condVar = `${cleanName}Scrolled`;
   const transition = dir.transition && Object.keys(dir.transition).length
@@ -414,7 +414,7 @@ const isStyleMotionVar = (code: string, v: string | undefined): boolean => {
   if (!v) return false;
   const id = v.trim();
   if (!/^[A-Za-z_$][\w$]*$/.test(id)) return false;
-  return new RegExp(`\\bconst\\s+${id}\\s*=\\s*(use(MotionValue|Transform|Spring)\\s*\\(|useMotionTemplate\\s*\`)`).test(code);
+  return new RegExp(`\\bconst\\s+${id}\\s*=\\s*(use(MotionValue|Transform|Spring|ReducedMotionValue)\\s*\\(|useMotionTemplate\\s*\`)`).test(code);
 };
 // parseTagObject strips quotes, so re-quote non-numeric/non-boolean literals
 // (CSS strings like 'red'/'10px') when re-emitting into generated source.

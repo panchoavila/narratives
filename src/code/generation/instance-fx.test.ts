@@ -434,10 +434,16 @@ export default function Page() {
     expect(out).toMatch(/const cardFxTfScale = useTransform\(cardFxTfP, \[0, 1\], \[0\.5, 1\]\)/);
     expect(out).toMatch(/const cardFxSpeedY = useTransform\(cardFxSpeedScroll, \(v\) => v \* \(1 - 110 \/ 100\)\)/);
     // scale composes hover×transform (order-agnostic), opacity is transform-only
-    expect(out).toMatch(/const cardFxCScale = useTransform\(\[cardFx(Hov|Tf)Scale, cardFx(Tf|Hov)Scale\]/);
+    expect(out).toMatch(/const cardFxCScale = useTransform\(\[cardFxHovScale, cardFxTfScaleReduced\]/);
+    expect(out).toContain('useReducedMotionValue(cardFxTfScale, 1)');
+    expect(out).toContain('useReducedMotionValue(cardFxSpeedY, 0)');
     expect(out).toMatch(/scale: cardFxCScale/);
     expect(out).toMatch(/opacity: cardFxTfOpacity/);
     expect(out).toMatch(/y: cardFxSpeedY/);
+    const edited = setInstanceFxInCode(out, 'card', { speed: 120 });
+    expect(edited.match(/const cardFxSpeedYReduced/g)).toHaveLength(1);
+    expect(getInstanceFx(edited, 'card')?.speed).toBe(120);
+    expect(setInstanceFxInCode(edited, 'card', null)).not.toContain('useReducedMotionValue');
   });
   it('speed=100 (none) emits nothing', () => {
     const out = setInstanceFxInCode(P, 'card', { speed: 100 });
@@ -459,7 +465,7 @@ export default function Page() {
     code = setInstanceFxInCode(code, 'ti', { hover: { to: { scale: 1.05 } }, tap: { to: { scale: 0.95 } }, transform: { from: { opacity: 0.5, scale: 0.5 }, to: { opacity: 1, scale: 1 } } });
     expect(parseJSX(code)).not.toBeNull();
     expect(validateGeneratedCode(syncImports(code))).toBeNull();
-    expect(code).toMatch(/const tiFxCScale = useTransform\(\[tiFxHovScale, tiFxTapScale, tiFxTfScale\]/);
+    expect(code).toMatch(/const tiFxCScale = useTransform\(\[tiFxHovScale, tiFxTapScale, tiFxTfScaleReduced\]/);
     expect(code).toMatch(/initialVariant=\{tiSv\}/);
     expect(code).toMatch(/setTiSv/);
   });

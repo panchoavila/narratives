@@ -22,6 +22,7 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import { FontSize } from '@/canvas/tiptap-extensions';
 import { sanitizeRichMessage } from '@/shared/rich-message';
+import { sanitizeRichContent } from '../../../packages/revyme-runtime-scene/src/rich-content';
 import { trace } from '@/shared/debug-trace';
 import { ControlLabel, ToolSegmentedControl } from '../controls';
 import { LinkUrlField } from '../tools/LinkTool/LinkUrlControl';
@@ -42,6 +43,14 @@ const PANEL_RICH_CSS = `
 }
 .revyme-rich-locale-field a, .revyme-rich-default-preview a { text-decoration: underline !important; }
 .revyme-rich-locale-field p { margin: 0; }
+.revyme-rich-document-field p { margin: 0 0 0.8em; }
+.revyme-rich-document-field h1, .revyme-rich-document-field h2, .revyme-rich-document-field h3 { font-weight: 600; margin: 0.8em 0 0.4em; }
+.revyme-rich-document-field h1 { font-size: 1.5em; }
+.revyme-rich-document-field h2 { font-size: 1.3em; }
+.revyme-rich-document-field h3 { font-size: 1.15em; }
+.revyme-rich-document-field ul { list-style: disc; padding-left: 1.5em; }
+.revyme-rich-document-field ol { list-style: decimal; padding-left: 1.5em; }
+.revyme-rich-document-field blockquote { border-left: 2px solid currentColor; padding-left: 1em; }
 `;
 let panelCssInjected = false;
 export function ensurePanelRichCss(): void {
@@ -59,6 +68,8 @@ const YES_NO = [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }];
 const isExternalHref = (href: string) => /^(https?:|mailto:|tel:)/i.test(href);
 
 interface Props {
+  /** CMS bodies preserve block structure; translations and labels remain inline. */
+  mode?: 'inline' | 'document';
   /** Sanitized inline HTML. */
   html: string;
   onCommit: (html: string) => void;
@@ -78,7 +89,7 @@ interface Props {
 }
 
 export default function RichInlineEditor({
-  html, onCommit, onInput, commitDelayMs, placeholderHtml, fieldAttributes, minHeightClass = 'min-h-[40px]', autoFocus, label,
+  html, onCommit, onInput, commitDelayMs, placeholderHtml, fieldAttributes, minHeightClass = 'min-h-[40px]', autoFocus, label, mode = 'inline',
 }: Props) {
   ensurePanelRichCss();
   // What the editor holds (sanitized) and what was last handed to onCommit. Loading a value
@@ -119,8 +130,8 @@ export default function RichInlineEditor({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        heading: false, bulletList: false, orderedList: false, listItem: false,
-        blockquote: false, codeBlock: false, horizontalRule: false,
+        ...(mode === 'inline' ? { heading: false as const, bulletList: false as const, orderedList: false as const, listItem: false as const,
+          blockquote: false as const, codeBlock: false as const, horizontalRule: false as const } : {}),
         hardBreak: { keepMarks: true },
         // A click selects the link (and shows it in the Link panel) instead of navigating; the
         // target is per link (New Tab), never TipTap's blanket `_blank` + nofollow.
@@ -130,18 +141,18 @@ export default function RichInlineEditor({
       Color,
       FontSize,
     ],
-    content: html ? `<p>${html}</p>` : '<p></p>',
+    content: html ? mode === 'document' ? html : `<p>${html}</p>` : '<p></p>',
     autofocus: autoFocus ? 'end' : false,
     editorProps: {
       attributes: {
-        class: `revyme-rich-locale-field outline-none ${minHeightClass} text-xs leading-snug px-2 py-2`,
+        class: `revyme-rich-locale-field ${mode === 'document' ? 'revyme-rich-document-field' : ''} outline-none ${minHeightClass} text-xs leading-snug px-2 py-2`,
         ...(fieldAttributes ?? {}),
       },
     },
     onSelectionUpdate: () => forceRender((n) => n + 1),
     onTransaction: () => forceRender((n) => n + 1),
     onUpdate: ({ editor: ed }) => {
-      latestHtml.current = sanitizeRichMessage(ed.getHTML());
+      latestHtml.current = mode === 'document' ? sanitizeRichContent(ed.getHTML()) : sanitizeRichMessage(ed.getHTML());
       remember(latestHtml.current);
       onInputRef.current?.(latestHtml.current);
       if (delayRef.current != null) {
@@ -159,8 +170,8 @@ export default function RichInlineEditor({
     latestHtml.current = html;
     lastCommitted.current = html;
     emitted.current.clear();
-    editor.commands.setContent(html ? `<p>${html}</p>` : '<p></p>', { emitUpdate: false });
-  }, [editor, html, label]);
+    editor.commands.setContent(html ? mode === 'document' ? html : `<p>${html}</p>` : '<p></p>', { emitUpdate: false });
+  }, [editor, html, label, mode]);
 
   // Unmount (popup closed without a blur) → commit what was typed.
   useEffect(() => () => commitRef.current(), []);
@@ -178,6 +189,12 @@ export default function RichInlineEditor({
       }}
     >
       <div className="flex items-center gap-0.5 px-1 pt-1 border-b border-[var(--border-light)] pb-1">
+        {mode === 'document' && <>
+          <button type="button" title="Heading" className={BTN} onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}>H2</button>
+          <button type="button" title="Bullet list" className={BTN} onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().toggleBulletList().run()}>•</button>
+          <button type="button" title="Numbered list" className={BTN} onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().toggleOrderedList().run()}>1.</button>
+          <button type="button" title="Quote" className={BTN} onMouseDown={e => e.preventDefault()} onClick={() => editor?.chain().focus().toggleBlockquote().run()}>“</button>
+        </>}
         <button type="button" tabIndex={-1} title="Bold (⌘B)" className={`${BTN} font-bold ${editor?.isActive('bold') ? 'bg-[var(--bg-hover)]' : ''}`} onMouseDown={(e) => e.preventDefault()} onClick={() => editor?.chain().focus().toggleBold().run()}>B</button>
         <button type="button" tabIndex={-1} title="Italic (⌘I)" className={`${BTN} italic ${editor?.isActive('italic') ? 'bg-[var(--bg-hover)]' : ''}`} onMouseDown={(e) => e.preventDefault()} onClick={() => editor?.chain().focus().toggleItalic().run()}>I</button>
         <button type="button" tabIndex={-1} title="Underline (⌘U)" className={`${BTN} underline ${editor?.isActive('underline') ? 'bg-[var(--bg-hover)]' : ''}`} onMouseDown={(e) => e.preventDefault()} onClick={() => editor?.chain().focus().toggleUnderline().run()}>U</button>

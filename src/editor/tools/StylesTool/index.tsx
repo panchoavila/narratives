@@ -27,7 +27,7 @@ import {
   ClipPathControl, TransformControl, FilterControl, BackdropFilterControl, ZIndexControl,
   VariantTransitionControl, PseudoElementControl,
   PointerEventsControl, UserSelectControl, BackfaceControl, MixBlendModeControl, FormStateControl,
-  GroupFillControl, RotateControl,
+  GroupFillControl, RotateControl, ScrollSnapTypeControl, ScrollSnapAlignControl, ScrollPaddingLeftControl,
 } from './atoms';
 import { DYNAMIC_STYLES, type DynamicStyleSpec } from './dynamic-styles';
 
@@ -354,6 +354,9 @@ export default function StylesTool() {
           <OverflowControl />
           {visibleIds.has('overflowX') && <OverflowXControl />}
           {visibleIds.has('overflowY') && <OverflowYControl />}
+          {visibleIds.has('scrollSnapType') && <ScrollSnapTypeControl />}
+          {visibleIds.has('scrollSnapAlign') && <ScrollSnapAlignControl />}
+          {visibleIds.has('scrollPaddingLeft') && <ScrollPaddingLeftControl />}
           <OpacityControl />
           {!isViewportFrame && <HideControl />}
           <BorderControl />

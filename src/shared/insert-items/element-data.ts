@@ -56,6 +56,7 @@ export interface InsertCategory {
 
 const BASIC_ITEMS: InsertItem[] = [
   { id: 'frame', name: 'Frame', iconKey: 'frame' },
+  { id: 'cs-advancedFrame', name: 'Advanced Frame', iconKey: 'frame' },
   { id: 'column', name: 'Column', iconKey: 'column' },
   { id: 'row', name: 'Row', iconKey: 'row' },
   { id: 'image', name: 'Image', iconKey: 'image' },
@@ -66,6 +67,7 @@ const BASIC_ITEMS: InsertItem[] = [
 
 const TYPOGRAPHY_ITEMS: InsertItem[] = [
   { id: 'heading', name: 'Heading', iconKey: 'heading' },
+  { id: 'cs-advancedHeading', name: 'Advanced Heading', iconKey: 'heading' },
   { id: 'paragraph', name: 'Paragraph', iconKey: 'paragraph' },
   { id: 'text-link', name: 'Text Link', iconKey: 'textLink' },
   { id: 'quote', name: 'Quote', iconKey: 'quote' },
@@ -267,6 +269,7 @@ const BACKGROUND_ITEMS: InsertItem[] = [
   { id: 'cs-bgMarble', name: 'Marble', iconKey: 'bgMarble', gradientColors: ['#0b1020', '#e2c887'] },
   { id: 'cs-bgWarpTunnel', name: 'Warp Tunnel', iconKey: 'bgWarpTunnel', gradientColors: ['#03030a', '#22d3ee'] },
   { id: 'cs-bgStarWarp', name: 'Star Warp', iconKey: 'bgStarWarp', gradientColors: ['#02030a', '#93c5fd'] },
+  { id: 'cs-novaWarp', name: 'Nova Warp', iconKey: 'bgStarWarp', gradientColors: ['#070e28', '#a924dc'] },
   { id: 'cs-bgHexGrid', name: 'Hex Grid', iconKey: 'bgHexGrid', gradientColors: ['#04060e', '#a855f7'] },
   { id: 'cs-bgLightning', name: 'Lightning', iconKey: 'bgLightning', gradientColors: ['#05040d', '#8b5cf6'] },
   { id: 'cs-bgLiquidChrome', name: 'Liquid Chrome', iconKey: 'bgLiquidChrome', gradientColors: ['#0b0f1a', '#cbd5e1'] },
