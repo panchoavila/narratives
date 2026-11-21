@@ -32,6 +32,8 @@ docs/*
 !docs/readme/
 plans/
 todo/
+!sites/real/app/todo/
+!sites/real/app/todo/**
 refactor-plan/
 before-oss-refactor/
 oss-release-plan/
@@ -47,3 +49,11 @@ dist-selfhosted/
 .selfhosted/
 .selfhosted-e2e/
 playwright-report-selfhosted/
+
+# Local, generated REAL migration export and build artifacts
+/exports/real-2026-11-18*
+
+# Playwright traces and videos stay local: research/ keeps READMEs, JSON and screenshots.
+# (A single trace can exceed GitHub's 100 MB file limit.)
+research/**/trace.zip
+research/**/*.webm
