@@ -160,7 +160,10 @@ function resolveRemoteAuth(repoRoot: string, flags: CliFlags): {
   headers: Record<string, string>;
 } {
   const fileEnv = readEnvFiles(repoRoot, 'CMS_');
-  const rawUrl = flags.url || process.env.CMS_URL || fileEnv.CMS_URL || 'https://cms.example.com';
+  const rawUrl = flags.url || process.env.CMS_URL || fileEnv.CMS_URL || '';
+  if (!rawUrl) {
+    throw new Error('Missing CMS_URL. Set it in .env.local (the origin of your self-hosted CMS) or pass --url <origin>.');
+  }
   const origin = new URL(rawUrl).origin;
   const token = flags.token || process.env.CMS_ADMIN_TOKEN || fileEnv.CMS_ADMIN_TOKEN || '';
   const cookie = flags.cookie || process.env.CMS_COOKIE || fileEnv.CMS_COOKIE || '';

@@ -269,7 +269,7 @@ export function ensureNextScaffold(siteDir: string, siteId: string, siteName: st
   if (!fs.existsSync(readmePath)) {
     fs.writeFileSync(
       readmePath,
-      `# ${siteName}\n\nManaged with the Websites local Revyme harness and ready for Vercel deployment.\n`,
+      `# ${siteName}\n\nManaged with Narratives and ready for Vercel deployment.\n`,
       'utf-8',
     );
   }
