@@ -175,10 +175,11 @@ export default function withResponsiveProps<P extends Record<string, any>>(
     }, [props['data-id']]);
 
     const [bp, setBp] = useState(() => {
-      const initial = resolveBucket(
-        typeof window !== 'undefined' ? window.innerWidth : 1440,
-        sortedBp,
-      );
+      // The server and hydration pass must resolve identical props, including
+      // non-variant controls (corner insets, font sizes, etc.). Variant copies
+      // alone cannot fix attributes that differ before the first client effect.
+      // Canvas tiles bypass this state through __canvasViewportWidth below.
+      const initial = resolveBucket(1440, sortedBp);
       return { cur: initial, hold: 0 };
     });
 

@@ -13,9 +13,12 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "*LICENSE*"
   ],
-  "scripts": { "build": "node build.mjs && tsc -p tsconfig.build.json" },
+  "scripts": {
+    "build": "node build.mjs && tsc -p tsconfig.build.json"
+  },
   "peerDependencies": {
     "framer-motion": ">=11",
     "perfect-freehand": ">=1.2",
@@ -27,10 +30,17 @@
       "optional": true
     }
   },
+  "dependencies": {
+    "htmlparser2": "12.0.0",
+    "qrcode-generator": "2.0.4"
+  },
   "devDependencies": {
+    "three": "0.187.0",
+    "@types/three": "0.187.0",
     "@chenglou/pretext": "1.0.0",
     "html-to-image": "1.11.13",
     "hyphen": "1.14.1",
+    "@types/hyphen": "^1.14.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
