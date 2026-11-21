@@ -246,6 +246,8 @@ test('CMP-036 a form frame with a FormSubmit: the master re-declares its formSta
 });
 
 test('CMP-028 a form master: unmapping a Form State leaves exactly one formState declaration', { tag: ['@p1', '@cmp'] }, async ({ editor, page }) => {
+  const hookWarnings: string[] = [];
+  page.on('console', message => { if (message.type() === 'error' && message.text().includes('change in the order of Hooks called by ControlLabel')) hookWarnings.push(message.text()); });
   await editor.load(FORM_PAGE);
   const made = await makeComponentViaMenu(editor, 'contact-form', 'Footer Form', { at: [0.98, 0.02] });
   const declRe = new RegExp(`const \\[${FORM_STATE}\\b`, 'g');
@@ -274,4 +276,5 @@ test('CMP-028 a form master: unmapping a Form State leaves exactly one formState
   await expect(editor).toUndoInOneStep(before, { path: made.file });
   await onPage(editor);
   await expect(editor.sandbox().getByText('Get in touch').first()).toBeVisible();
+  expect(hookWarnings).toEqual([]);
 });
