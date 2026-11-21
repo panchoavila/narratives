@@ -9,6 +9,9 @@ const runtimeFiles = import.meta.glob<string>([
   '../../../packages/revyme-runtime-scene/LIQUIDGL-LICENSE',
   '../../../packages/revyme-runtime-scene/PRETEXT-LICENSE',
   '../../../packages/revyme-runtime-scene/HYPHEN-LICENSE',
+  '../../../packages/revyme-runtime-scene/THREE-LICENSE',
+  '../../../packages/revyme-runtime-scene/RICH-CONTENT-LICENSES',
+  '../../../packages/revyme-runtime-scene/QR-CODE-LICENSE',
   '../../../packages/revyme-runtime-scene/build.mjs',
   '../../../packages/revyme-runtime-scene/EXPERIMENT.md',
 ], { query: '?raw', import: 'default', eager: true });

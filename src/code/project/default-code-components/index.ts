@@ -10,6 +10,9 @@
 
 // ─── Existing Code components ──────────────────────────────────────────────────────
 export { ANIMATED_COUNTER_COMPONENT } from './AnimatedCounter';
+export { ADVANCED_HEADING_COMPONENT } from './AdvancedHeading';
+export { ADVANCED_FRAME_COMPONENT } from './AdvancedFrame';
+export { CMS_CONTENT_COMPONENT } from './CMSContent';
 export { TYPING_EFFECT_COMPONENT } from './TypingEffect';
 export { GRADIENT_TEXT_COMPONENT } from './GradientText';
 export { IMAGE_SEQUENCE_COMPONENT } from './ImageSequence';
@@ -112,6 +115,7 @@ export { IRIDESCENT_FILM_COMPONENT } from './IridescentFilm';
 export { GOD_RAYS_COMPONENT } from './GodRays';
 export { GRAIN_FIELD_COMPONENT } from './GrainField';
 export { NEBULA_FIELD_COMPONENT } from './NebulaField';
+export { NOVA_WARP_COMPONENT } from './NovaWarp';
 export { DOT_WAVE_COMPONENT } from './DotWave';
 export { CONTOUR_MAP_COMPONENT } from './ContourMap';
 export { FLUID_GRADIENT_COMPONENT } from './FluidGradient';
@@ -137,3 +141,53 @@ export { DUNES_COMPONENT } from './Dunes';
 export { OIL_SLICK_COMPONENT } from './OilSlick';
 export { WAVE_STACK_COMPONENT } from './WaveStack';
 
+
+export { HOVER_3D_COMPONENT } from './Hover3D';
+
+export { CONFETTI_COMPONENT } from './Confetti';
+
+export { PIXEL_REVELATION_COMPONENT } from './PixelRevelation';
+
+export { DITHER_COMPONENT } from './Dither';
+
+export { READING_TIME_COMPONENT } from './ReadingTime';
+
+export { DATE_TEXT_COMPONENT } from './DateText';
+
+export { SHARE_BUTTON_COMPONENT } from './ShareButton';
+
+export { ARTICLE_TOC_COMPONENT } from './ArticleTOC';
+
+export { AUDIO_PLAYER_COMPONENT } from './AudioPlayer';
+
+export { QR_CODE_COMPONENT } from './QRCode';
+
+export { SMART_EYE_COMPONENT } from './SmartEye';
+
+export { GALLERY_TRAIL_COMPONENT } from './GalleryTrail';
+
+export { VIEWPORT_VIDEO_COMPONENT } from './ViewportVideo';
+
+export { COOKIE_CONSENT_COMPONENT } from './CookieConsent';
+
+export { COOKIE_SETTINGS_BUTTON_COMPONENT } from './CookieSettingsButton';
+
+export { NUMBER_TEXT_COMPONENT } from './NumberText';
+
+export { CYCLE_HEADING_COMPONENT } from './CycleHeading';
+
+export { IMAGE_LIGHTBOX_COMPONENT } from './ImageLightbox';
+
+export { ALTERNATING_ROWS_COMPONENT } from './AlternatingRows';
+
+export { SMART_SPACER_COMPONENT } from './SmartSpacer';
+
+export { SCROLL_CAROUSEL_CONTROLS_COMPONENT } from './ScrollCarouselControls';
+
+export { BODY_SCROLL_LOCK_COMPONENT } from './BodyScrollLock';
+
+export { DRAGGABLE_FRAME_COMPONENT } from './DraggableFrame';
+
+export { FORM_TRACKER_COMPONENT } from './FormTracker';
+
+export { DEVICE_TRACKER_COMPONENT } from './DeviceTracker';

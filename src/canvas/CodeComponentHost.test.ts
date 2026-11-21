@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import { extractCodeComponentProps } from './CodeComponentHost';
 import type { CanvasNode } from '@/code/parsing/parser';
+import { projectFS } from '@/code/project/project-fs';
 
 function makeNode(overrides: Partial<CanvasNode>): CanvasNode {
   return {
@@ -25,6 +26,18 @@ function makeNode(overrides: Partial<CanvasNode>): CanvasNode {
 }
 
 describe('extractCodeComponentProps', () => {
+  it('uses declared text controls instead of converting their numeric and boolean-looking content', () => {
+    const file = 'components/TestScalarPropContract.tsx';
+    projectFS.writeFile(file, '/** @controls {"levels":{"type":"text"},"code":{"type":"text"},"settings":{"type":"group","controls":{"label":{"type":"select"},"size":{"type":"number"}}}} */');
+    try {
+      const props = extractCodeComponentProps(makeNode({ componentFile: file,
+        attrs: { levels: '2', code: '00123', label: 'false', size: '24' },
+        responsiveAttrPropValues: { levels: { 390: '3' } },
+      }));
+      expect(props).toMatchObject({ levels: '2', code: '00123', label: 'false', size: 24 });
+      expect(JSON.parse(props['data-responsive'])['390'].levels).toBe('3');
+    } finally { projectFS.deleteFile(file); }
+  });
   it('forwards node.styles as the `style` prop so code components can self-size', () => {
     const node = makeNode({
       styles: { width: '100%', height: '100%', backgroundColor: '#020617' },

@@ -57,6 +57,22 @@ describe('sandbox-code-host mountCodeComponent', () => {
     unmountCodeComponent(nodeId);
   });
 
+  it('keeps declared text controls as strings through mounting and subsequent prop updates', async () => {
+    const nodeId = 'scalar-text-contract';
+    makeContainer(contentRoot, nodeId);
+    const code = `/** @controls {"levels":{"type":"text"},"token":{"type":"text"}} */
+      export default function Probe({ levels = '2', token = '001' }) {
+        return <div data-scalar-contract="yes">{typeof levels}:{levels}:{token}</div>;
+      }`;
+    mountCodeComponent(contentRoot, nodeId, code, { levels: '2', token: '001' }, 1440);
+    await new Promise(r => setTimeout(r, 20));
+    expect(contentRoot.querySelector('[data-scalar-contract]')?.textContent).toBe('string:2:001');
+    mountCodeComponent(contentRoot, nodeId, code, { levels: '3', token: '002' }, 1440);
+    await new Promise(r => setTimeout(r, 20));
+    expect(contentRoot.querySelector('[data-scalar-contract]')?.textContent).toBe('string:3:002');
+    unmountCodeComponent(nodeId);
+  });
+
   it('re-mounts when the wrapper DOM is rebuilt with the same data-node-id', async () => {
     // This simulates the move-into-viewport flow: the Renderer destroys the
     // old wrapper and creates a fresh one with the SAME data-node-id, after

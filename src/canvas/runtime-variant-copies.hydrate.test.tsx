@@ -8,7 +8,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import React, { act } from 'react';
 import { renderToString } from 'react-dom/server';
 import { hydrateRoot } from 'react-dom/client';
-import withResponsiveProps from '../../../runtime/src/withResponsiveProps';
+import withResponsiveProps from '../../packages/revyme-runtime-scene/src/withResponsiveProps';
 
 function Navbar({ style, initialVariant = 'default', ...rest }: any) {
   return (
@@ -109,5 +109,29 @@ describe('nesting', () => {
     // 3 outer copies × 2 inner copies. Fine for a navbar; worth knowing before
     // putting variant components inside variant components several deep.
     expect(inners).toBe(6);
+  });
+});
+
+
+describe('responsive controls without variant copies', () => {
+  it('hydrates with identical numeric props before resolving the mobile bucket', async () => {
+    const errors: unknown[] = [];
+    vi.spyOn(console, 'error').mockImplementation((...args) => { errors.push(args[0]); });
+    const originalWidth = window.innerWidth;
+    function Control({ inset = 48 }: { inset?: number }) { return <span data-inset={inset} style={{ left: inset }}>Corner</span>; }
+    const ResponsiveControl = withResponsiveProps(Control);
+    const responsive = JSON.stringify({ 809: { inset: 28 }, _bp: [809, 1199, 1200] });
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 });
+    const host = document.createElement('div');
+    host.innerHTML = renderToString(<ResponsiveControl data-responsive={responsive} />);
+    document.body.appendChild(host);
+    expect(host.querySelector('span')?.getAttribute('data-inset')).toBe('48');
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+    let root: ReturnType<typeof hydrateRoot> | undefined;
+    await act(async () => { root = hydrateRoot(host, <ResponsiveControl data-responsive={responsive} />); });
+    expect(errors.filter(error => /hydrat|did not match|Expected server HTML/i.test(String(error)))).toEqual([]);
+    expect(host.querySelector('span')?.getAttribute('data-inset')).toBe('28');
+    await act(async () => { root?.unmount(); });
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth });
   });
 });

@@ -1,5 +1,10 @@
 import { trace } from '@/shared/debug-trace';
 
+/** Code containers own layout/paint once; the canvas host retains placement. */
+export function componentOwnsCanvasStyle(source: string): boolean {
+  return hasComponentControls(source) && /\/\*\*?\s*@canvasStyleOwner\s+component\s*\*\//.test(source);
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 type ComponentControlType =

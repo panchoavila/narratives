@@ -1,0 +1,8 @@
+import { editorialAdapter, text, number, color, font, select } from './editorial-controls';
+export const AUDIO_PLAYER_COMPONENT = editorialAdapter('AudioPlayer', 'Audio Player', 'Accessible chapter audio with play, pause, seek and progress.', {
+  audioUrl: { type: 'upload', label: 'Audio', default: '', accept: 'audio/*' }, chapterLabel: text('Label', 'Escucha el capítulo'), skipSeconds: number('Skip seconds', 10, 1, 120),
+  progress: { type: 'group', label: 'Progress', controls: { dotCount: number('Segments', 10, 1, 100), dotRadius: number('Radius', 0), dotGap: number('Gap', 2), accentColor: color('Played', '#ffd65b'), inactiveDotColor: color('Remaining', '#edf2ed') } },
+  appearance: { type: 'group', label: 'Appearance', controls: { backgroundColor: color('Background', '#262626'), timeColor: color('Time', '#edf2ed'), labelColor: color('Label', '#edf2ed'), controlsColor: color('Controls', '#edf2ed'), containerPadding: text('Padding', '10px'), containerRadius: number('Radius', 0), mainGap: number('Gap', 16), controlSize: number('Control size', 20, 8), backdropBlur: number('Backdrop blur', 0, 0, 100) } },
+  typography: { type: 'group', label: 'Typography', controls: { fontFamily: font(), timeFontSize: number('Time size', 10, 1), labelFontSize: number('Label size', 12, 1), labelLetterSpacing: number('Tracking', 0.1, -5, 10, 0.1) } },
+  animation: { type: 'group', label: 'Label motion', controls: { enableTextScroll: { type: 'toggle', label: 'Scroll long label', default: true }, scrollSpeed: number('Speed', 32, 1), scrollDirection: select('Direction', ['left','right'], 'left') } },
+}, 72, true);

@@ -1,3 +1,4 @@
+import { validCmsCollation } from '@/shared/cms-collation';
 // parser.ts — JSX string → flat node map
 // Uses Babel to parse JSX and extract a flat node tree.
 
@@ -12,6 +13,7 @@ import { tickerFromJsxAttributes, type TickerConfig } from '@/shared/ticker-conf
 import { formattedBranchesOfDangerAttr, type FormattedBranches } from '@/shared/rich-message';
 import { parsePageVariables } from '../features/page-variables';
 import { CMS_DETAIL_ITEM_VAR } from '@/code/project/cms-page-meta';
+import { matchesCmsVisibilityPredicate, parseCmsVisibilityMarker, type CmsVisibility } from '@/code/project/cms-visibility';
 
 // Handle ESM/CJS interop
 const traverse = (typeof _traverse === 'function' ? _traverse : (_traverse as any).default) as typeof _traverse;
@@ -30,7 +32,7 @@ const INLINE_TAGS = new Set(['span', 'strong', 'em', 'br', 'a', 'u', 's', 'mark'
 // data-glide, …) so a declarative Loop's marker survives copy/paste — the
 // paste engine re-emits attrs from the parsed node, and anything missing
 // here silently vanishes from the pasted copy.
-const PARSED_HTML_ATTRS = ['id', 'src', 'alt', 'href', 'target', 'rel', 'type', 'placeholder', 'aria-label', 'role', 'aria-hidden', 'tabindex', 'data-overlay', 'data-overlay-trigger', 'data-smooth-scroll', 'data-keep-params', 'data-sketch', 'data-revyme-track', 'data-slot-pos', 'data-pinned', 'data-replica-solo', 'data-alt-duplicate', 'data-scroll-fx', 'data-glide', 'data-loop', 'data-canvas-effect', 'data-canvas-duration', 'data-canvas-delay', 'data-canvas-intensity', 'data-glitch-intensity', 'data-glitch-interval', 'data-glitch-duration', 'data-glitch-slices', 'data-glitch-shift', 'data-glitch-rgb-shift', 'data-glitch-blocks', 'data-glitch-noise', 'data-glyph-rain', 'data-ripple', 'data-particle-object', 'data-vhs', 'data-liquid-glass', 'data-flow', 'data-revyme-collection-slot', 'poster', 'controls', 'autoplay', 'loop', 'muted', 'preload',
+const PARSED_HTML_ATTRS = ['id', 'src', 'alt', 'href', 'target', 'rel', 'type', 'placeholder', 'aria-label', 'role', 'aria-hidden', 'tabindex', 'data-cms-nav-fragment', 'data-overlay', 'data-overlay-trigger', 'data-smooth-scroll', 'data-keep-params', 'data-sketch', 'data-revyme-track', 'data-slot-pos', 'data-pinned', 'data-replica-solo', 'data-alt-duplicate', 'data-scroll-fx', 'data-glide', 'data-loop', 'data-canvas-effect', 'data-canvas-duration', 'data-canvas-delay', 'data-canvas-intensity', 'data-glitch-intensity', 'data-glitch-interval', 'data-glitch-duration', 'data-glitch-slices', 'data-glitch-shift', 'data-glitch-rgb-shift', 'data-glitch-blocks', 'data-glitch-noise', 'data-glyph-rain', 'data-ripple', 'data-particle-object', 'data-vhs', 'data-liquid-glass', 'data-flow', 'data-revyme-collection-slot', 'poster', 'controls', 'autoplay', 'loop', 'muted', 'preload',
   // Form controls (input/textarea/select/option/button) + the <form> itself.
   // React JSX names (camelCase) so the generated .tsx is React-correct.
   // Also captured on CANVAS nodes: a form/search input dragged or pasted onto
@@ -93,6 +95,8 @@ export interface CanvasNode {
   parentId: string | null;
   children: string[];
   styles: Record<string, string>;
+  /** Scope-checked CMS presence condition for this element. */
+  cmsVisibility?: CmsVisibility;
   /**
    * Per-CSS-property variable bindings — maps a CSS property to the React
    * prop / variable identifier that drives it (e.g. `boxShadow → 'cardShadow'`).
@@ -502,6 +506,7 @@ export interface CanvasNode {
   isChildrenSlot?: boolean;     // true if this is a {children} placeholder in layout
   // Code components (live rendered on canvas)
   isCodeComponent?: boolean;              // true if this is a Code component instance (live rendered)
+  codeStyleOwner?: 'component';            // source annotation: inner root owns paint/padding/layout
   componentProps?: Record<string, string>;  // props passed to component instance (expression values)
   /** Literal ARRAY / OBJECT props (`items={[{question,answer},…]}`), each as
    *  its JSON text. A code component fed a list — an FAQ accordion, a pricing
@@ -610,6 +615,7 @@ export function extractComponentPropDefaults(ast: any): Record<string, string> {
         const def = p.value.right;
         if (def?.type === 'StringLiteral') defaults[name] = def.value;
         else if (def?.type === 'NumericLiteral') defaults[name] = String(def.value);
+        else if (def?.type === 'UnaryExpression' && def.operator === '-' && def.argument?.type === 'NumericLiteral') defaults[name] = String(-def.argument.value);
         // Boolean defaults (`hidden = true`) — needed so `condvar:` visibility bindings
         // (`display: hidden ? 'none' : ''`) resolve to the right branch in the resolve pass.
         else if (def?.type === 'BooleanLiteral') defaults[name] = String(def.value);
@@ -1655,6 +1661,19 @@ function extractInstanceExpressionProps(opening: any, tagName: string, attrs: Re
     }
   }
 
+  // Native elements can consume component props too (e.g. <img src={image}/>).
+  // Keep their references alongside the canvas sentinel so instance expansion
+  // can propagate CMS bindings and responsive values onto the actual element.
+  if (!isUppercaseTag) {
+    for (const attr of opening.attributes) {
+      if (attr.type !== 'JSXAttribute' || attr.name?.type !== 'JSXIdentifier') continue;
+      const name = attr.name.name as string;
+      if (name !== 'src' && name !== 'href' && name !== 'alt') continue;
+      const expr = attr.value?.type === 'JSXExpressionContainer' ? attr.value.expression : null;
+      if (expr?.type === 'Identifier' && expr.name !== 'undefined') attrPropRefs[name] = expr.name;
+    }
+  }
+
   return {
     componentProps, componentJsonProps, attrConditional, attrConditionalVarRefs, attrPropRefs,
     responsiveAttrPropVars, responsiveAttrPropVals, responsiveAttrPropBandsAcc,
@@ -2545,6 +2564,13 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
           });
         }
 
+        const visibility = parseCmsVisibilityMarker(getAttr(opening.attributes, 'data-cms-visibility'));
+        if (visibility && path.parentPath?.isLogicalExpression({ operator: '&&' }) && path.parentPath.node.right === el) {
+          const row = ctx.collectionContextStack[ctx.collectionContextStack.length - 1]?.itemVar ?? null;
+          const detail = ctx.detailPageContext?.itemVar ?? null;
+          const owner = visibility.source === 'row' ? row : detail && !ctx.collectionContextStack.some(c => c.itemVar === detail) ? detail : null;
+          if (owner && matchesCmsVisibilityPredicate(path.parentPath.node.left, owner, visibility)) node.cmsVisibility = visibility;
+        }
         nodes.set(id, node);
 
         // Opaque imported graphic: keep the svg's children OUT of the node
@@ -2650,9 +2676,13 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
             const detailVar = ctx.detailPageContext?.itemVar ?? null;
             const shadowedByOuterRow = !!detailVar && ctx.collectionContextStack.some(c => c.itemVar === detailVar);
             if (shadowedByOuterRow) trace.action('parser:currentItem-shadowed-by-outer-row', { detailVar });
-            parsedFilter = parseFilterCallback(cursor.arguments?.[0], shadowedByOuterRow ? null : detailVar);
+            const parentVar = ctx.collectionContextStack[ctx.collectionContextStack.length - 1]?.itemVar ?? null;
+            parsedFilter = parseFilterCallback(cursor.arguments?.[0], shadowedByOuterRow ? null : detailVar, parentVar);
           } else if (method === 'sort') {
-            parsedSort = parseSortCallback(cursor.arguments?.[0]);
+            const detailVar = ctx.detailPageContext?.itemVar ?? null;
+            const parentVar = ctx.collectionContextStack[ctx.collectionContextStack.length - 1]?.itemVar ?? null;
+            const shadowed = !!detailVar && ctx.collectionContextStack.some(c => c.itemVar === detailVar);
+            parsedSort = parseSortCallback(cursor.arguments?.[0], shadowed ? null : detailVar, parentVar);
           } else if (method === 'slice') {
             const sliceArgs = parseSliceArgs(cursor.arguments);
             parsedLimit = sliceArgs.limit;
@@ -3339,7 +3369,7 @@ export function parseJSXToNodes(code: string, propOverrides?: Record<string, str
         for (const [attrName, refName] of Object.entries(node.attrPropRefs)) {
           if (!(refName in propDefaults)) continue;
           // Don't trample a literal that won the race somehow.
-          if (node.attrs[attrName]) continue;
+          if (node.attrs[attrName] && node.attrs[attrName] !== `var:${refName}`) continue;
           node.attrs[attrName] = propDefaults[refName];
         }
       }
@@ -3670,11 +3700,33 @@ function parseSliceArgs(args: any[] | undefined): { offset: number; limit: numbe
  *  `a.F > b.F ? 1 : a.F < b.F ? -1 : 0` — in both, the OUTER consequent
  *  (1 → asc, -1 → desc) is the direction discriminator, so the alternate's
  *  exact shape doesn't matter. */
-function parseSortKey(cond: any): import('@/shared/types').SortConfig | null {
+function parseCollatedSortKey(node: any, leftVar: string, rightVar: string): import('@/shared/types').SortConfig | null {
+  if (node?.type !== 'CallExpression' || node.callee?.type !== 'MemberExpression' || node.callee.computed || node.callee.property?.name !== 'localeCompare' || node.arguments?.length !== 3) return null;
+  const unwrap = (call: any) => {
+    if (call?.type !== 'CallExpression' || call.callee?.name !== 'String' || call.arguments?.length !== 1) return null;
+    const fallback = call.arguments[0];
+    if (fallback?.type !== 'LogicalExpression' || fallback.operator !== '??' || fallback.right?.type !== 'StringLiteral' || fallback.right.value !== '') return null;
+    const field = fallback.left;
+    return field?.type === 'MemberExpression' && !field.computed && field.object?.type === 'Identifier' && field.property?.type === 'Identifier'
+      ? { variable: field.object.name, field: field.property.name } : null;
+  };
+  const left = unwrap(node.callee.object), right = unwrap(node.arguments[0]);
+  const locale = node.arguments[1], opts = node.arguments[2];
+  if (!left || !right || left.field !== right.field || locale?.type !== 'StringLiteral' || opts?.type !== 'ObjectExpression' || opts.properties?.length !== 1) return null;
+  const property = opts.properties[0];
+  if (property?.type !== 'ObjectProperty' || property.computed || (property.key?.name ?? property.key?.value) !== 'sensitivity' || property.value?.type !== 'StringLiteral') return null;
+  const collation = { locale: locale.value, sensitivity: property.value.value };
+  if (!validCmsCollation(collation)) return null;
+  if (left.variable === leftVar && right.variable === rightVar) return { field:left.field, direction:'asc', collation };
+  if (left.variable === rightVar && right.variable === leftVar) return { field:left.field, direction:'desc', collation };
+  return null;
+}
+
+function parseSortKey(cond: any, leftVar: string, rightVar: string): import('@/shared/types').SortConfig | null {
   if (!cond || cond.type !== 'ConditionalExpression') return null;
   const test = cond.test;
   if (!test || test.type !== 'BinaryExpression' || test.operator !== '>') return null;
-  if (test.left?.type !== 'MemberExpression' || test.left.property?.type !== 'Identifier') return null;
+  if (test.left?.type !== 'MemberExpression' || test.left.computed || test.left.object?.name !== leftVar || test.left.property?.type !== 'Identifier' || test.right?.type !== 'MemberExpression' || test.right.computed || test.right.object?.name !== rightVar || test.right.property?.name !== test.left.property.name) return null;
   const field = test.left.property.name;
   const cons = cond.consequent;
   if (cons?.type === 'NumericLiteral' && cons.value === 1) return { field, direction: 'asc' };
@@ -3682,7 +3734,7 @@ function parseSortKey(cond: any): import('@/shared/types').SortConfig | null {
   return null;
 }
 
-function parseSortCallback(arg: any): import('@/shared/types').SortConfig[] | null {
+function parseSortCallback(arg: any, detailVar: string | null = null, parentVar: string | null = null): import('@/shared/types').SortConfig[] | null {
   // Multi-key shape:  `(a, b) => (key0) || (key1) || ...` where each key is a
   // 3-branch conditional. Single key = one bare conditional (new or legacy).
   if (!arg || (arg.type !== 'ArrowFunctionExpression' && arg.type !== 'FunctionExpression')) return null;
@@ -3693,7 +3745,27 @@ function parseSortCallback(arg: any): import('@/shared/types').SortConfig[] | nu
     if (node?.type === 'LogicalExpression' && node.operator === '||') {
       return walk(node.left) && walk(node.right); // left→right preserves precedence
     }
-    const k = parseSortKey(node);
+    const params = arg.params?.map((p: any) => p?.type === 'Identifier' ? p.name : null);
+    let k = params?.length === 2 && params[0] && params[1] ? (parseSortKey(node, params[0], params[1]) ?? parseCollatedSortKey(node, params[0], params[1])) : null;
+    // Canonical guarded index sort: Array.isArray(owner.refs) ?
+    // owner.refs.indexOf(a._id) - owner.refs.indexOf(b._id) : 0.
+    if (!k && node?.type === 'ConditionalExpression' && node.alternate?.type === 'NumericLiteral' && node.alternate.value === 0) {
+      const guard = node.test, diff = node.consequent;
+      const array = guard?.type === 'CallExpression' && guard.callee?.object?.name === 'Array' && guard.callee?.property?.name === 'isArray' && guard.arguments?.length === 1 ? guard.arguments[0] : null;
+      const owner = array?.type === 'MemberExpression' && !array.computed && array.object?.type === 'Identifier' && array.property?.type === 'Identifier' ? array.object.name : null;
+      const source = owner && owner === parentVar ? 'parentItem' : owner && owner === detailVar ? 'currentItem' : null;
+      const extract = (call: any) => {
+        if (call?.type !== 'CallExpression' || call.callee?.property?.name !== 'indexOf' || call.arguments?.length !== 1) return null;
+        const receiver = call.callee.object, item = call.arguments[0];
+        if (receiver?.type !== 'MemberExpression' || receiver.computed || receiver.object?.name !== owner || receiver.property?.name !== array?.property?.name || item?.type !== 'MemberExpression' || item.computed || item.property?.type !== 'Identifier') return null;
+        return { variable: item.object?.name, field: item.property.name };
+      };
+      const left = diff?.operator === '-' ? extract(diff.left) : null, right = diff?.operator === '-' ? extract(diff.right) : null;
+      const vars = arg.params?.map((p: any) => p?.type === 'Identifier' ? p.name : null);
+      if (source && left && right && left.field === right.field && vars?.length === 2 && ((left.variable === vars[0] && right.variable === vars[1]) || (left.variable === vars[1] && right.variable === vars[0]))) {
+        k = { field: left.field, direction: left.variable === vars[0] ? 'asc' : 'desc', valueSource: source, valueField: array.property.name };
+      }
+    }
     if (!k) return false;
     keys.push(k);
     return true;
@@ -3707,6 +3779,7 @@ function parseFilterCallback(
   /** The detail item variable when the file is a `@cmsPage` detail page (else null).
    *  Enables reading `<row>.<field> === <detailVar>.<valueField>` as a currentItem filter. */
   detailItemVar: string | null = null,
+  parentItemVar: string | null = null,
 ): import('@/shared/types').FilterGroup | null {
   // Generator shape: `(item) => item.<field> <op> <value> [&& / ||] ...`
   // We only support a flat `&&`-joined or `||`-joined list of comparisons
@@ -3736,7 +3809,17 @@ function parseFilterCallback(
   // `<row>.<field>` (the row parameter's own member) → the field name, else null.
   const rowFieldName = (n: any): string | null => {
     if (!rowParam || n?.type !== 'MemberExpression' || n.object?.type !== 'Identifier' || n.object.name !== rowParam) return null;
-    return n.property?.type === 'Identifier' && !n.computed ? n.property.name : null;
+    if (!n.computed && n.property?.type === 'Identifier') return n.property.name;
+    return n.computed && n.property?.type === 'StringLiteral' ? n.property.value : null;
+  };
+  const scopedField = (n: any): { source: 'parentItem' | 'currentItem'; field: string } | null => {
+    if (n?.type !== 'MemberExpression' || n.object?.type !== 'Identifier' || n.object.name === rowParam) return null;
+    const field = !n.computed && n.property?.type === 'Identifier' ? n.property.name
+      : n.computed && n.property?.type === 'StringLiteral' ? n.property.value : null;
+    if (!field) return null;
+    if (parentItemVar && n.object.name === parentItemVar) return { source: 'parentItem', field };
+    if (detailItemVar && n.object.name === detailItemVar) return { source: 'currentItem', field };
+    return null;
   };
   const CURRENT_ITEM_OPS: Record<string, import('@/shared/types').FilterConfig['operator']> = {
     '===': 'equals', '==': 'equals', '!==': 'not_equals', '!=': 'not_equals',
@@ -3772,6 +3855,10 @@ function parseFilterCallback(
       && node.callee.property?.type === 'Identifier'
       && node.callee.property.name === 'includes') {
       const fieldNode = unwrapStringCoerce(node.callee.object);
+      if (fieldNode?.type === 'ArrayExpression' && fieldNode.elements.every((e: any) => ['StringLiteral', 'NumericLiteral', 'BooleanLiteral'].includes(e?.type))) {
+        const field = rowFieldName(node.arguments?.[0]);
+        if (field) return { field, operator: 'in', value: fieldNode.elements.map((e: any) => e.value) };
+      }
       if (fieldNode?.type === 'MemberExpression' && fieldNode.property?.type === 'Identifier') {
         const field = fieldNode.property.name;
         const v = unwrapStringCoerce(node.arguments?.[0]);
@@ -3781,18 +3868,29 @@ function parseFilterCallback(
           if (rowFieldName(fieldNode) === null) return null;
           return { field, operator: 'contains', value: '', valueSource: 'currentItem', valueField: cf };
         }
-        const value = v?.type === 'StringLiteral' || v?.type === 'NumericLiteral' ? v.value : '';
+        if (v?.type !== 'StringLiteral' && v?.type !== 'NumericLiteral') return null;
+        const value = v.value;
         return { field, operator: 'contains', value };
       }
     }
     if (node.type === 'UnaryExpression' && node.operator === '!') {
       const inner = parseComparison(node.argument);
+      if (inner?.operator === 'in') return { ...inner, operator: 'not_in' };
       if (inner?.operator === 'contains') return { ...inner, operator: 'not_contains' };
       if (inner?.operator === 'equals') return { ...inner, operator: 'not_equals' };
       if (inner?.operator === 'exists') return { ...inner, operator: 'exists', value: false };
       return null;
     }
     if (node.type === 'BinaryExpression') {
+      const scopedRight = scopedField(node.right);
+      const scopedLeft = !scopedRight ? scopedField(node.left) : null;
+      if (scopedRight || scopedLeft) {
+        const scope = (scopedRight || scopedLeft)!;
+        const field = rowFieldName(scopedRight ? node.left : node.right);
+        const op = CURRENT_ITEM_OPS[node.operator];
+        if (!field || !op) return null;
+        return { field, operator: op, value: '', valueSource: scope.source, valueField: scope.field };
+      }
       // currentItem comparison (detail pages only), canonical `row.F === item.K` or the
       // reversed `item.K === row.F` (the same predicate, sides swapped). The row side
       // MUST be the row parameter's field; the operator must be one the panel offers.
@@ -3813,6 +3911,10 @@ function parseFilterCallback(
       if (left?.type !== 'MemberExpression' || left.property?.type !== 'Identifier') return null;
       const field = left.property.name;
       const v = node.right;
+      if (v?.type === 'NullLiteral' && ['!=', '!==', '==', '==='].includes(node.operator)) {
+        return { field, operator: 'exists', value: node.operator === '!=' || node.operator === '!==' };
+      }
+      if (!['StringLiteral', 'NumericLiteral', 'BooleanLiteral'].includes(v?.type)) return null;
       const value = v?.type === 'StringLiteral' || v?.type === 'NumericLiteral' ? v.value
         : v?.type === 'BooleanLiteral' ? v.value
         : '';
@@ -3825,6 +3927,39 @@ function parseFilterCallback(
       if (!op) return null;
       return { field, operator: op, value };
     }
+    return null;
+  }
+
+  // Exact ID membership, guarded against absent/non-array CMS fields. Match the
+  // whole predicate before flattening &&/|| so the guard is not another filter.
+  function tryParseMembership(node: any): import('@/shared/types').FilterConfig | null {
+    if (node?.type !== 'LogicalExpression') return null;
+    const negated = node.operator === '||';
+    if (!negated && node.operator !== '&&') return null;
+    const guard = negated && node.left?.type === 'UnaryExpression' && node.left.operator === '!' ? node.left.argument : node.left;
+    const call = negated && node.right?.type === 'UnaryExpression' && node.right.operator === '!' ? node.right.argument : node.right;
+    if (negated && (guard === node.left || call === node.right)) return null;
+    if (guard?.type !== 'CallExpression' || guard.callee?.type !== 'MemberExpression'
+      || guard.callee.object?.name !== 'Array' || guard.callee.property?.name !== 'isArray') return null;
+    if (call?.type !== 'CallExpression' || call.callee?.type !== 'MemberExpression'
+      || call.callee.property?.name !== 'includes' || call.arguments?.length !== 1) return null;
+    const guarded = guard.arguments?.[0];
+    const arr = call.callee.object;
+    const sameMember = (a: any, b: any) => a?.type === 'MemberExpression' && b?.type === 'MemberExpression'
+      && a.object?.type === 'Identifier' && b.object?.type === 'Identifier' && a.object.name === b.object.name
+      && a.computed === b.computed && (a.property?.name ?? a.property?.value) === (b.property?.name ?? b.property?.value);
+    const literalArray = (n: any): (string | number)[] | null => n?.type === 'ArrayExpression'
+      && n.elements.every((e: any) => e?.type === 'StringLiteral' || e?.type === 'NumericLiteral')
+      ? n.elements.map((e: any) => e.value) : null;
+    const a = literalArray(guarded), b = literalArray(arr);
+    if (!sameMember(guarded, arr) && !(a && b && JSON.stringify(a) === JSON.stringify(b))) return null;
+    const arg = call.arguments[0];
+    const rowArray = rowFieldName(arr), rowValue = rowFieldName(arg);
+    const scope = scopedField(rowArray ? arg : arr);
+    if (rowArray && scope) return { field: rowArray, operator: negated ? 'array_not_contains' : 'array_contains', value: '', valueSource: scope.source, valueField: scope.field };
+    if (rowValue && scope) return { field: rowValue, operator: negated ? 'value_not_in_array' : 'value_in_array', value: '', valueSource: scope.source, valueField: scope.field };
+    if (rowValue && b) return { field: rowValue, operator: negated ? 'value_not_in_array' : 'value_in_array', value: b };
+    if (rowArray && (arg?.type === 'StringLiteral' || arg?.type === 'NumericLiteral')) return { field: rowArray, operator: negated ? 'array_not_contains' : 'array_contains', value: arg.value };
     return null;
   }
 
@@ -3878,6 +4013,15 @@ function parseFilterCallback(
   }
 
   function flatten(node: any): boolean {
+    const presenceNode = node?.type === 'UnaryExpression' && node.operator === '!' ? node.argument : node;
+    const presenceField = rowFieldName(presenceNode?.type === 'ConditionalExpression' ? presenceNode.test?.arguments?.[0] : null);
+    const presenceCondition = node?.type === 'UnaryExpression' && node.operator === '!' ? 'notSet' : 'isSet';
+    if (presenceField && rowParam && matchesCmsVisibilityPredicate(node, rowParam, { source:'row', field:presenceField, condition:presenceCondition })) {
+      filters.push({ field:presenceField, operator:'exists', value:presenceCondition === 'isSet' });
+      return true;
+    }
+    const membership = tryParseMembership(node);
+    if (membership) { filters.push(membership); return true; }
     const dynamic = tryParseDynamic(node);
     if (dynamic) { filters.push(dynamic); return true; }
     const between = tryParseBetween(node);

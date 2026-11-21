@@ -11,8 +11,8 @@ import { describe, it, expect } from 'vitest';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import { motion } from 'framer-motion';
-import withResponsiveProps from '../../../runtime/src/withResponsiveProps';
-import { planVariantCopies, copiesCss } from '../../../runtime/src/variant-ssr-copies';
+import withResponsiveProps from '../../packages/revyme-runtime-scene/src/withResponsiveProps';
+import { planVariantCopies, copiesCss } from '../../packages/revyme-runtime-scene/src/variant-ssr-copies';
 
 function Navbar({ style, initialVariant = 'default', ...rest }: any) {
   return (

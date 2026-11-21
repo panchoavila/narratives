@@ -5,7 +5,7 @@ import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAtomValue, getDefaultStore } from 'jotai';
 import { nodesAtom, codeAtom } from '@/code/stores/store';
 import { activePreviewItemAtom, cmsPageMetaAtom } from '@/code/stores/cms-page-store';
-import { coerceScalar } from '@/code/values/value-eval';
+import { coerceComponentProp, componentPropControls } from '@/code/components/component-prop-values';
 import { projectFS } from '@/code/project/project-fs';
 import { compileCodeComponent, clearCodeComponentCache } from './code-component-runtime';
 import { createRoot, type Root } from 'react-dom/client';
@@ -42,12 +42,6 @@ const liveCompileOpts = () => ({ previewMode: getDefaultStore().get(previewModeA
  * CodeComponentHost — mounts live React components for Code component nodes on the canvas.
  * Watches nodesAtom for Code component instances, compiles their source, and renders them.
  */
-/** Coerce string prop values to JS types ("true"→true, "42"→42, "16px" stays a string).
- *  Canonical logic in value-eval.coerceScalar (shared with the sandbox's coerceProps). */
-function coerceValue(value: string): any {
-  return coerceScalar(value);
-}
-
 /** On a CMS detail page, the props bound to the page's own item (`headline={item.title}`), with the
  *  previewed record's values — what `applyDetailPageBindings` does for text, attributes and
  *  styles, for code-component props. Rows of a collection list on the page resolve their own item
@@ -74,6 +68,8 @@ function detailPageBoundProps(node: CanvasNode): Record<string, unknown> {
 /** Extract props from node attrs + componentProps, coercing values. */
 export function extractCodeComponentProps(node: CanvasNode): Record<string, any> {
   const props: Record<string, any> = {};
+  const source = node.componentFile && !node.componentFile.startsWith('http') ? projectFS.readFile(node.componentFile) : undefined;
+  const controls = source ? componentPropControls(source) : undefined;
   if (node.attrs) {
     for (const [key, value] of Object.entries(node.attrs)) {
       // Skip most data-* attrs, but pass data-responsive through (per-viewport prop overrides)
@@ -82,12 +78,12 @@ export function extractCodeComponentProps(node: CanvasNode): Record<string, any>
         continue;
       }
       if (key.startsWith('data-') || key === 'style' || key === 'className') continue;
-      props[key] = coerceValue(value);
+      props[key] = coerceComponentProp(value, key, controls);
     }
   }
   if (node.componentProps) {
     for (const [key, value] of Object.entries(node.componentProps)) {
-      props[key] = coerceValue(value);
+      props[key] = coerceComponentProp(value, key, controls);
     }
   }
   // Literal list / object props (`items={[{question, answer}, …]}`), carried
@@ -115,7 +111,7 @@ export function extractCodeComponentProps(node: CanvasNode): Record<string, any>
     for (const [prop, byWidth] of Object.entries(rav)) {
       for (const [wStr, val] of Object.entries(byWidth as Record<string, string>)) {
         if (!dr[wStr]) dr[wStr] = {};
-        if (dr[wStr][prop] === undefined) dr[wStr][prop] = coerceValue(val);
+        if (dr[wStr][prop] === undefined) dr[wStr][prop] = coerceComponentProp(val, prop, controls);
       }
     }
     if (!dr._bp) dr._bp = Object.values(getViewportWidths()).map(Number).sort((a, b) => a - b);
@@ -155,7 +151,7 @@ export function extractCodeComponentProps(node: CanvasNode): Record<string, any>
       // the CONTAINER. Forwarding the base value inward hid the component on
       // every tile INCLUDING the one it was dropped on, because this forward
       // is not per-viewport.
-      if (key === 'display') continue;
+      if (key === 'display' && !node.codeStyleOwner) continue;
       innerStyle[key] = value;
     }
     if (isUrlImportedComponent) {
@@ -228,7 +224,7 @@ export function renderCodeComponentStyleLive(
 ): boolean {
   const node = _codeComponentNodes?.get(nodeId);
   if (!node?.isCodeComponent || !node.componentFile) return false;
-  const forwardable = Object.entries(styles).filter(([k]) => !WRAPPER_ONLY_STYLE_PROPS.has(k) && k !== 'display');
+  const forwardable = Object.entries(styles).filter(([k]) => !WRAPPER_ONLY_STYLE_PROPS.has(k) && (k !== 'display' || node.codeStyleOwner));
   if (forwardable.length === 0) return false;
   const vs: Record<string, Record<string, string>> = { ...(node.conditionalStyles ?? {}) };
   if (variant && variant !== 'default') {
@@ -634,7 +630,17 @@ export default function CodeComponentHost() {
           // templateSlotNodes), so serialize against both.
           const tplNodes = templateSlotNodesRef.current;
           const slotSource = tplNodes ? new Map([...tplNodes, ...nodes]) : nodes;
-          const slotKids = serializeSlotChildren(connectedIds, slotSource, slotConnectionsRef.current, collectionsRef.current);
+          const resolveCodeComponent = (child: CanvasNode) => {
+            if (!child.componentFile || child.componentFile.startsWith('http')) return undefined;
+            const source = projectFS.readFile(child.componentFile);
+            if (!source) return undefined;
+            return { source, name: child.type, props: extractCodeComponentProps(child), previewMode: liveCompileOpts().previewMode };
+          };
+          const slotKids = serializeSlotChildren(connectedIds, slotSource, slotConnectionsRef.current, collectionsRef.current, { resolveCodeComponent });
+          const inlineIds = node.children.filter(id => !connectedIds.includes(id));
+          slotKids.push(...serializeSlotChildren(inlineIds, slotSource, slotConnectionsRef.current, collectionsRef.current,
+            { resolveCodeComponent, preserveRootPosition: true, editableInline: true }));
+          if (inlineIds.length) trace.fn('code-component-host:inline-children', { nodeId: node.id, count: inlineIds.length });
           if (slotKids.length > 0) props.__slotChildren = slotKids;
           rememberMountedSlotChildren(node.id, slotKids);
           const vpWidths = getViewportWidths();

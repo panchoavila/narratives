@@ -18,7 +18,9 @@ export const ANIMATED_COUNTER_COMPONENT = `'use client';
   "color": { "type": "color", "label": "Color", "default": "#111111" },
   "fontSize": { "type": "number", "label": "Font Size", "min": 12, "max": 200, "default": 48, "step": 1 },
   "fontWeight": { "type": "select", "label": "Weight", "default": "700", "options": [{"label":"Regular","value":"400"},{"label":"Medium","value":"500"},{"label":"Semi Bold","value":"600"},{"label":"Bold","value":"700"},{"label":"Black","value":"900"}] },
-  "fontFamily": { "type": "text", "label": "Font", "default": "Inter, sans-serif" }
+  "fontFamily": { "type": "text", "label": "Font", "default": "Inter, sans-serif" },
+  "lineHeight": { "type": "number", "label": "Line height", "default": 1.2, "min": 0.5, "max": 3, "step": 0.1 },
+  "letterSpacing": { "type": "number", "label": "Letter spacing (em)", "default": 0, "min": -0.5, "max": 1, "step": 0.01 }
 } */
 
 import { useState, useEffect, useRef } from 'react';
@@ -26,11 +28,11 @@ import { withResponsiveProps, useStaticCanvas } from '@revyme/runtime';
 
 function AnimatedCounter({
   endValue = 1250, duration = 2000, delayInView = 0, suffix = '+', prefix = '',
-  color = '#111111', fontSize = 48, fontWeight = '700', fontFamily = 'Inter, sans-serif',
+  color = '#111111', fontSize = 48, fontWeight = '700', fontFamily = 'Inter, sans-serif', lineHeight = 1.2, letterSpacing = 0,
   ...props
 }: {
   endValue?: number; duration?: number; delayInView?: number; suffix?: string; prefix?: string;
-  color?: string; fontSize?: number; fontWeight?: string; fontFamily?: string;
+  color?: string; fontSize?: number; fontWeight?: string; fontFamily?: string; lineHeight?: number; letterSpacing?: number;
   [key: string]: any;
 }) {
   const [count, setCount] = useState(0);
@@ -72,7 +74,7 @@ function AnimatedCounter({
   }, [started, endValue, duration, isStatic]);
 
   return (
-    <span {...props} ref={ref} style={{ color, fontSize: fontSize + 'px', fontWeight, fontFamily, ...(props.style || {}) }}>
+    <span {...props} ref={ref} style={{ color, fontSize: fontSize + 'px', fontWeight, fontFamily, lineHeight, letterSpacing: letterSpacing + 'em', ...(props.style || {}) }}>
       {prefix}{count.toLocaleString()}{suffix}
     </span>
   );

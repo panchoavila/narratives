@@ -1,3 +1,30 @@
+import { useReducedMotionValue } from '../../packages/revyme-runtime-scene/src/use-reduced-motion-value';
+import { RevymeCycleHeading } from '../../packages/revyme-runtime-scene/src/cycle-heading';
+import { RevymeNumberText } from '../../packages/revyme-runtime-scene/src/article-widgets';
+import { RevymeCookieSettingsButton } from '../../packages/revyme-runtime-scene/src/cookie-consent';
+import { RevymeCookieConsent } from '../../packages/revyme-runtime-scene/src/cookie-consent';
+import { RevymeViewportVideo } from '../../packages/revyme-runtime-scene/src/viewport-video';
+import { RevymeImageLightbox } from '../../packages/revyme-runtime-scene/src/image-lightbox';
+import { RevymeDeviceTracker } from '../../packages/revyme-runtime-scene/src/device-tracker';
+import { RevymeFormTracker } from '../../packages/revyme-runtime-scene/src/form-tracker';
+import { RevymeDraggableFrame } from '../../packages/revyme-runtime-scene/src/draggable-frame';
+import { RevymeBodyScrollLock } from '../../packages/revyme-runtime-scene/src/body-scroll-lock';
+import { RevymeScrollCarouselControls } from '../../packages/revyme-runtime-scene/src/scroll-carousel-controls';
+import { RevymeSmartSpacer } from '../../packages/revyme-runtime-scene/src/smart-spacer';
+import { RevymeAlternatingRows } from '../../packages/revyme-runtime-scene/src/alternating-rows';
+import workspaceResponsiveProps from '../../packages/revyme-runtime-scene/src/withResponsiveProps';
+import { RevymeGalleryTrail } from '../../packages/revyme-runtime-scene/src/gallery-trail';
+import { RevymeSmartEye } from '../../packages/revyme-runtime-scene/src/smart-eye';
+import { RevymeQRCode } from '../../packages/revyme-runtime-scene/src/article-widgets';
+import { RevymeAudioPlayer } from '../../packages/revyme-runtime-scene/src/article-widgets';
+import { RevymeArticleTOC } from '../../packages/revyme-runtime-scene/src/article-widgets';
+import { RevymeShareButton } from '../../packages/revyme-runtime-scene/src/article-widgets';
+import { RevymeDateText } from '../../packages/revyme-runtime-scene/src/article-widgets';
+import { RevymeReadingTime } from '../../packages/revyme-runtime-scene/src/article-widgets';
+import { RevymeDither } from '../../packages/revyme-runtime-scene/src/image-effects';
+import { RevymePixelRevelation } from '../../packages/revyme-runtime-scene/src/image-effects';
+import { RevymeConfetti } from '../../packages/revyme-runtime-scene/src/celebration';
+import { RevymeHover3D } from '../../packages/revyme-runtime-scene/src/hover-3d';
 // main.tsx — Preview iframe entrypoint.
 //
 // Boot sequence:
@@ -62,6 +89,10 @@ import { runVhsNavigation } from '../../packages/revyme-runtime-scene/src/vhs-na
 import { attachLiquidGlassElements } from '../../packages/revyme-runtime-scene/src/liquid-glass-elements';
 import { RevymeLiquidBackdrop } from '../../packages/revyme-runtime-scene/src/liquid-glass-backdrop';
 import { RevymeCarousel3D } from '../../packages/revyme-runtime-scene/src/carousel-3d';
+import { RevymeNovaWarp } from '../../packages/revyme-runtime-scene/src/nova-warp';
+import { RevymeAdvancedHeading } from '../../packages/revyme-runtime-scene/src/advanced-heading';
+import { RevymeAdvancedFrame } from '../../packages/revyme-runtime-scene/src/advanced-frame';
+import { RevymeRichContent } from '../../packages/revyme-runtime-scene/src/rich-content';
 import { RevymeFlow } from '../../packages/revyme-runtime-scene/src/editorial/RevymeFlow';
 import { pieceDocument } from '../../packages/revyme-runtime-scene/src/editorial/document';
 import { parseEditorialMarkdown } from '../../packages/revyme-runtime-scene/src/editorial/markdown';
@@ -245,6 +276,36 @@ const MODULE_MAP: Record<string, any> = {
     RevymeVhsPage,
     RevymeLiquidBackdrop,
     RevymeCarousel3D,
+    RevymeNovaWarp: RevymeNovaWarp,
+    RevymeAdvancedHeading,
+    RevymeAdvancedFrame,
+  RevymeHover3D,
+  useReducedMotionValue,
+  RevymeCycleHeading,
+  RevymeNumberText,
+  RevymeCookieSettingsButton,
+  RevymeCookieConsent,
+  RevymeViewportVideo,
+  RevymeImageLightbox,
+  RevymeDeviceTracker,
+  RevymeFormTracker,
+  RevymeDraggableFrame,
+  RevymeBodyScrollLock,
+  RevymeScrollCarouselControls,
+  RevymeSmartSpacer,
+  RevymeAlternatingRows,
+  RevymeGalleryTrail,
+  RevymeSmartEye,
+  RevymeQRCode,
+  RevymeAudioPlayer,
+  RevymeArticleTOC,
+  RevymeShareButton,
+  RevymeDateText,
+  RevymeReadingTime,
+  RevymeDither,
+  RevymePixelRevelation,
+  RevymeConfetti,
+    RevymeRichContent,
     RevymeFlow,
     pieceDocument,
     parseEditorialMarkdown,
@@ -256,7 +317,7 @@ const MODULE_MAP: Record<string, any> = {
     normalizeLiquidGlass: normalizeLiquidGlass,
     parseLiquidGlassAttribute: parseLiquidGlassAttribute,
     DEFAULT_LIQUID_GLASS,
-    withResponsiveProps: RevymeRuntime.withResponsiveProps,
+    withResponsiveProps: workspaceResponsiveProps,
     withCursor: RevymeRuntime.withCursor,
     CursorPortal: RevymeRuntime.CursorPortal,
     // The package default returns `false` (= "I am NOT the static canvas
@@ -282,8 +343,8 @@ const MODULE_MAP: Record<string, any> = {
   // Legacy `@/lib/...` entries — old projects that still use these paths
   // resolve to the same package functions, so they keep working without a
   // codemod. Same `esm()` wrapping rationale as above.
-  '@/lib/withResponsiveProps': esm({ default: RevymeRuntime.withResponsiveProps, withResponsiveProps: RevymeRuntime.withResponsiveProps }),
-  'lib/withResponsiveProps': esm({ default: RevymeRuntime.withResponsiveProps, withResponsiveProps: RevymeRuntime.withResponsiveProps }),
+  '@/lib/withResponsiveProps': esm({ default: workspaceResponsiveProps, withResponsiveProps: workspaceResponsiveProps }),
+  'lib/withResponsiveProps': esm({ default: workspaceResponsiveProps, withResponsiveProps: workspaceResponsiveProps }),
   '@/lib/cursor-runtime': esm({
     withCursor: RevymeRuntime.withCursor,
     CursorPortal: RevymeRuntime.CursorPortal,

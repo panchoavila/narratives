@@ -130,6 +130,36 @@ export function buildAutoImports(body) {
   // is missing.
   if (/\blocalizeRows\b/.test(body)) revymeRuntime.push('localizeRows');
   if (/\bRevymeCarousel3D\b/.test(body)) revymeRuntime.push('RevymeCarousel3D');
+  if (/\bRevymeNovaWarp\b/.test(body)) revymeRuntime.push('RevymeNovaWarp');
+  if (/\bRevymeAdvancedHeading\b/.test(body)) revymeRuntime.push('RevymeAdvancedHeading');
+  if (/\bRevymeAdvancedFrame\b/.test(body)) revymeRuntime.push('RevymeAdvancedFrame');
+  if (/\bRevymeConfetti\b/.test(body)) revymeRuntime.push('RevymeConfetti');
+  if (/\bRevymePixelRevelation\b/.test(body)) revymeRuntime.push('RevymePixelRevelation');
+  if (/\bRevymeDither\b/.test(body)) revymeRuntime.push('RevymeDither');
+  if (/\bRevymeReadingTime\b/.test(body)) revymeRuntime.push('RevymeReadingTime');
+  if (/\bRevymeDateText\b/.test(body)) revymeRuntime.push('RevymeDateText');
+  if (/\bRevymeShareButton\b/.test(body)) revymeRuntime.push('RevymeShareButton');
+  if (/\bRevymeArticleTOC\b/.test(body)) revymeRuntime.push('RevymeArticleTOC');
+  if (/\bRevymeAudioPlayer\b/.test(body)) revymeRuntime.push('RevymeAudioPlayer');
+  if (/\bRevymeQRCode\b/.test(body)) revymeRuntime.push('RevymeQRCode');
+  if (/\bRevymeSmartEye\b/.test(body)) revymeRuntime.push('RevymeSmartEye');
+  if (/\bRevymeGalleryTrail\b/.test(body)) revymeRuntime.push('RevymeGalleryTrail');
+  if (/\bRevymeViewportVideo\b/.test(body)) revymeRuntime.push('RevymeViewportVideo');
+  if (/\bRevymeImageLightbox\b/.test(body)) revymeRuntime.push('RevymeImageLightbox');
+  if (/\bRevymeDeviceTracker\b/.test(body)) revymeRuntime.push('RevymeDeviceTracker');
+  if (/\bRevymeFormTracker\b/.test(body)) revymeRuntime.push('RevymeFormTracker');
+  if (/\bRevymeDraggableFrame\b/.test(body)) revymeRuntime.push('RevymeDraggableFrame');
+  if (/\bRevymeBodyScrollLock\b/.test(body)) revymeRuntime.push('RevymeBodyScrollLock');
+  if (/\bRevymeScrollCarouselControls\b/.test(body)) revymeRuntime.push('RevymeScrollCarouselControls');
+  if (/\bRevymeSmartSpacer\b/.test(body)) revymeRuntime.push('RevymeSmartSpacer');
+  if (/\bRevymeAlternatingRows\b/.test(body)) revymeRuntime.push('RevymeAlternatingRows');
+  if (/\bRevymeCookieConsent\b/.test(body)) revymeRuntime.push('RevymeCookieConsent');
+  if (/\bRevymeCookieSettingsButton\b/.test(body)) revymeRuntime.push('RevymeCookieSettingsButton');
+  if (/\bRevymeNumberText\b/.test(body)) revymeRuntime.push('RevymeNumberText');
+  if (/\bRevymeCycleHeading\b/.test(body)) revymeRuntime.push('RevymeCycleHeading');
+  if (/\buseReducedMotionValue\b/.test(body)) revymeRuntime.push('useReducedMotionValue');
+  if (/\bRevymeHover3D\b/.test(body)) revymeRuntime.push('RevymeHover3D');
+  if (/\bRevymeRichContent\b/.test(body)) revymeRuntime.push('RevymeRichContent');
   if (/\bRevymeFlow\b/.test(body)) revymeRuntime.push('RevymeFlow');
   // Code overrides: the page-side wrapper, and the store / host stand-ins
   // that override files (`overrides/*.tsx`) import.

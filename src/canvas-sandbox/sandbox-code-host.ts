@@ -20,8 +20,9 @@ import { buildSlotChildren } from '@/canvas/slot-children';
 import { emitRectAndCornersForElement, scheduleRemeasureAllRects } from './sandbox/rect-emit';
 import { isSandboxDragSettling } from './sandbox-dnd-host';
 import { trace } from '@/shared/debug-trace';
-import { coerceScalar } from '@/code/values/value-eval';
+import { coerceComponentProps } from '@/code/components/component-prop-values';
 import { elementSvgScope } from '@/shared/svg-id-scope';
+import { WRAPPER_ONLY_STYLE_PROPS } from '@/shared/constants';
 
 /**
  * Build the inner React element for a mounted code component, threading any
@@ -35,8 +36,12 @@ function makeInner(
   props: Record<string, any>,
   vpWidth: number,
 ): React.ReactElement {
-  const { __slotChildren, ...rest } = props;
-  const kids = Array.isArray(__slotChildren) ? buildSlotChildren(__slotChildren, vpWidth) : [];
+  const { __slotChildren, __slotIdentityPrefix, ...rest } = props;
+  const kids = Array.isArray(__slotChildren) ? buildSlotChildren(__slotChildren, vpWidth, spec => {
+    const component = compileCodeComponent(spec.source, spec.name, { previewMode: spec.previewMode });
+    if (!component) trace.error('sandbox-code-host:slot-compile-failed', { name: spec.name });
+    return component;
+  }, __slotIdentityPrefix ?? '') : [];
   return React.createElement(Component, { ...rest, __canvasViewportWidth: vpWidth }, ...kids);
 }
 
@@ -418,6 +423,12 @@ export function mountCodeComponent(
     // (keyed by the prefixed containerNodeId), so the resolved style is baked
     // into the hash → a variant change re-renders that tile in place.
     const cProps = resolveVariantProps(props, vpEl?.getAttribute('data-viewport') ?? null);
+    cProps.__slotIdentityPrefix = containerNodeId.slice(0, -nodeId.length);
+    if (container.getAttribute('data-code-style-owner') === 'component') {
+      const resolved = JSON.parse(container.getAttribute('data-code-resolved-styles') || '{}') as Record<string, string>;
+      const owned = Object.fromEntries(Object.entries(resolved).filter(([key]) => !WRAPPER_ONLY_STYLE_PROPS.has(key)));
+      cProps.style = { ...cProps.style, ...owned };
+    }
     const propsHash = hashProps(cProps, containerVpWidth);
     let existing = mounted.get(containerNodeId);
 
@@ -445,7 +456,7 @@ export function mountCodeComponent(
     // Same code, different props → re-render in place (no recompile, no
     // root teardown). Keeps in-flight rAF / observers alive.
     if (existing && existing.codeHash === code && existing.preview === preview) {
-      const coercedProps = coerceProps(cProps);
+      const coercedProps = coerceComponentProps(cProps, code);
       existing.props = coercedProps;
       existing.vpWidth = containerVpWidth;
       existing.propsHash = propsHash;
@@ -507,7 +518,7 @@ export function mountCodeComponent(
       // hand their svg defs the SAME scoped ids and we're back to the
       // document-scoped-id collision (see svg-id-scope).
       const root = createRoot(container, { identifierPrefix: elementSvgScope(container) });
-      const coercedProps = coerceProps(cProps);
+      const coercedProps = coerceComponentProps(cProps, code);
 
       const inner = makeInner(Component, coercedProps, containerVpWidth);
       // CDN imports + vector sets → wrap in MotionConfig with disabled
@@ -632,7 +643,8 @@ export function updateCodeComponentProps(
     // the default-branch size.
     const variant = entry.container.closest('[data-viewport]')?.getAttribute('data-viewport') ?? null;
     const cProps = resolveVariantProps(props, variant);
-    const coercedProps = coerceProps(cProps);
+    cProps.__slotIdentityPrefix = entry.containerNodeId.slice(0, -entry.nodeId.length);
+    const coercedProps = coerceComponentProps(cProps, entry.codeHash);
     const propsHash = hashProps(cProps, entry.vpWidth);
     // Same props (with the same vpWidth) as last render → skip. Avoids
     // redundant React commits during continuous resize / slider drags.
@@ -671,11 +683,3 @@ export function syncCodeComponents(
   }
 }
 
-/** Coerce string props to appropriate types (same as CodeComponentHost). */
-function coerceProps(raw: Record<string, any>): Record<string, any> {
-  // Canonical coercion in value-eval.coerceScalar (shared with CodeComponentHost.coerceValue): only
-  // unambiguous scalars ('true'/'false'/pure-number) coerce; unit-bearing strings ('16px') stay strings.
-  const result: Record<string, any> = {};
-  for (const [key, val] of Object.entries(raw)) result[key] = coerceScalar(val);
-  return result;
-}
