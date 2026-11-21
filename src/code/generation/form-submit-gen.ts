@@ -18,13 +18,13 @@
  */
 
 import * as t from '@babel/types';
+import type { NodePath } from '@babel/traverse';
 import { ensureTextNodeNowrap } from './label-nowrap';
 import { insertAfterLastImportLine } from './generator-utils';
 import { trace } from '@/shared/debug-trace';
 import { projectFS } from '../project/project-fs';
 import { parseJSX, findFirstElementByDataId, findAttribute, getAttributeValue } from '../parsing/ast-utils';
 import {
-  SPINNER_COMPONENT_NAME,
   SPINNER_COMPONENT_PATH,
   buildSpinnerComponentCode,
 } from './cms-pagination-gen';
@@ -46,15 +46,14 @@ const FORMSUBMIT_GEN_TOKEN = '@formsubmit-gen v3';
  */
 export function buildFormSubmitComponentCode(): string {
   return `'use client';
+import { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { withResponsiveProps } from '@revyme/runtime';
+import Spinner from '@/components/Spinner';
 
 /** @name "Form Submit" */
-/* ${FORMSUBMIT_GEN_TOKEN} */
-import React, { useState, useEffect } from 'react';
-import { motion, LayoutGroup } from 'framer-motion';
-import { withResponsiveProps } from '@revyme/runtime';
-import ${SPINNER_COMPONENT_NAME} from '@/components/Spinner';
-
-const variantConfig = [
+/** @comment "${FORMSUBMIT_GEN_TOKEN}" */
+export const variantConfig = [
   { name: 'default', label: 'Default', x: 0, y: 0, isPrimary: true },
   { name: 'default-hover', label: 'Default - Hover', x: 320, y: 0, interactionType: 'hover', parentVariant: 'default' },
   { name: 'default-pressed', label: 'Default - Pressed', x: 320, y: 200, interactionType: 'pressed', parentVariant: 'default' },
@@ -63,160 +62,41 @@ const variantConfig = [
   { name: 'success', label: 'Success', x: 1280, y: 0 },
   { name: 'error', label: 'Error', x: 1600, y: 0 },
 ];
-
 const connections = [
   { from: 'default', to: 'default-hover', trigger: 'mouseEnter', sourceNode: 'formsubmit-root' },
   { from: 'default-hover', to: 'default', trigger: 'mouseLeave', sourceNode: 'formsubmit-root' },
   { from: 'default-hover', to: 'default-pressed', trigger: 'clickStart', sourceNode: 'formsubmit-root' },
   { from: 'default-pressed', to: 'default-hover', trigger: 'click', sourceNode: 'formsubmit-root' },
 ];
-
 const rootVariants = {
-  default: { backgroundColor: '#3b82f6', opacity: 1, pointerEvents: 'auto' },
-  'default-hover': { backgroundColor: '#2563eb', opacity: 1, pointerEvents: 'auto' },
-  'default-pressed': { backgroundColor: '#1d4ed8', opacity: 1, pointerEvents: 'auto' },
-  'loading': { backgroundColor: '#3b82f6', opacity: 1, pointerEvents: 'none' },
-  'disabled': { backgroundColor: '#9ca3af', opacity: 0.6, pointerEvents: 'none' },
-  'success': { backgroundColor: '#22c55e', opacity: 1, pointerEvents: 'none' },
-  'error': { backgroundColor: '#ef4444', opacity: 1, pointerEvents: 'none' },
+  default: { backgroundColor: '#3b82f6', opacity: 1 },
+  'default-hover': { backgroundColor: '#2563eb', opacity: 1 },
+  'default-pressed': { backgroundColor: '#2563eb', opacity: 1 },
+  loading: { backgroundColor: '#3b82f6', opacity: 1 },
+  disabled: { backgroundColor: '#9ca3af', opacity: 0.6 },
+  success: { backgroundColor: '#22c55e', opacity: 1 },
+  error: { backgroundColor: '#ef4444', opacity: 1 },
 };
 
-// the reference builder's Motion cannot interpolate \`display\`, so it applies a SHOW value at the
-// START of the transition but a HIDE value only at the END. Under the default
-// spring that left the old label visible for ~300ms after the state changed —
-// long enough that a fast API response painted "Subscribe" and "Thank you" on
-// top of each other before settling (user report 2026-08-10, measured: hide
-// landed between 200ms and 400ms). These four objects only ever carry
-// \`display\`, so switching them instantly is exactly right; the ROOT keeps its
-// default transition so the background still animates between states.
-const INSTANT = { duration: 0 };
-
-const labelVariants = {
-  default: { display: 'block', transition: INSTANT },
-  'default-hover': { display: 'block', transition: INSTANT },
-  'default-pressed': { display: 'block', transition: INSTANT },
-  'loading': { display: 'none', transition: INSTANT },
-  'disabled': { display: 'block', transition: INSTANT },
-  'success': { display: 'none', transition: INSTANT },
-  'error': { display: 'none', transition: INSTANT },
-};
-
-const spinnerWrapVariants = {
-  default: { display: 'none', transition: INSTANT },
-  'default-hover': { display: 'none', transition: INSTANT },
-  'default-pressed': { display: 'none', transition: INSTANT },
-  'loading': { display: 'flex', transition: INSTANT },
-  'disabled': { display: 'none', transition: INSTANT },
-  'success': { display: 'none', transition: INSTANT },
-  'error': { display: 'none', transition: INSTANT },
-};
-
-const successTextVariants = {
-  default: { display: 'none', transition: INSTANT },
-  'default-hover': { display: 'none', transition: INSTANT },
-  'default-pressed': { display: 'none', transition: INSTANT },
-  'loading': { display: 'none', transition: INSTANT },
-  'disabled': { display: 'none', transition: INSTANT },
-  'success': { display: 'block', transition: INSTANT },
-  'error': { display: 'none', transition: INSTANT },
-};
-
-const errorTextVariants = {
-  default: { display: 'none', transition: INSTANT },
-  'default-hover': { display: 'none', transition: INSTANT },
-  'default-pressed': { display: 'none', transition: INSTANT },
-  'loading': { display: 'none', transition: INSTANT },
-  'disabled': { display: 'none', transition: INSTANT },
-  'success': { display: 'none', transition: INSTANT },
-  'error': { display: 'block', transition: INSTANT },
-};
-
-function ${FORMSUBMIT_COMPONENT_NAME}({ style, label = 'Submit', initialVariant = 'default', ...rest }: { style?: React.CSSProperties; label?: string; initialVariant?: string; [key: string]: any; }) {
+function ${FORMSUBMIT_COMPONENT_NAME}({ style, label = 'Submit', initialVariant = 'default', ...rest }: { style?: React.CSSProperties; label?: string; initialVariant?: string; [key: string]: unknown }) {
   const [variant, setVariant] = useState(initialVariant);
   useEffect(() => { setVariant(initialVariant); }, [initialVariant]);
-  return <LayoutGroup>
-    <motion.button layout={true} data-id="formsubmit-root" {...rest} data-name="Submit" type="submit"
-      variants={rootVariants} initial={['default', initialVariant]} animate={['default', variant]}
-      onHoverStart={() => setVariant(variant === 'default' ? 'default-hover' : variant)}
-      onHoverEnd={() => setVariant(variant === 'default-hover' ? 'default' : variant)}
-      onTapStart={() => setVariant(variant === 'default-hover' ? 'default-pressed' : variant)}
-      onTap={() => setVariant(variant === 'default-pressed' ? 'default-hover' : variant)}
-      style={{
-      position: 'relative',
-      width: '200px',
-      height: 'min-content',
-      padding: '12px 24px',
-      borderRadius: '8px',
-      border: 'none',
-      cursor: 'pointer',
-      flex: '0 0 auto',
-      display: 'flex',
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: '8px',
-      ...style
-    }}>
-    <motion.div layout={true} data-id="formsubmit-spinner-wrap" data-name="Spinner Slot"
-      variants={spinnerWrapVariants} initial={['default', initialVariant]} animate={['default', variant]} style={{
-        display: 'none',
-        alignItems: 'center',
-        justifyContent: 'center',
-        position: 'relative',
-        flex: '0 0 auto'
-      }}>
-      <${SPINNER_COMPONENT_NAME} data-id="formsubmit-spinner" />
-    </motion.div>
-    <motion.p layout={true} data-id="formsubmit-label" data-name="Text"
-      variants={labelVariants} initial={['default', initialVariant]} animate={['default', variant]} style={{
-        display: 'block',
-        fontSize: '14px',
-        whiteSpace: 'nowrap',
-        color: '#ffffff',
-        fontFamily: 'Inter, sans-serif',
-        fontWeight: '600',
-        lineHeight: '1.2',
-        overflowWrap: 'break-word',
-        position: 'relative',
-        flex: '0 0 auto',
-        margin: 0
-      }}>
-      {label}
-    </motion.p>
-    <motion.p layout={true} data-id="formsubmit-success" data-name="Success Text"
-      variants={successTextVariants} initial={['default', initialVariant]} animate={['default', variant]} style={{
-        display: 'none',
-        fontSize: '14px',
-        whiteSpace: 'nowrap',
-        color: '#ffffff',
-        fontFamily: 'Inter, sans-serif',
-        fontWeight: '600',
-        lineHeight: '1.2',
-        position: 'relative',
-        flex: '0 0 auto',
-        margin: 0
-      }}>
-      Thank you
-    </motion.p>
-    <motion.p layout={true} data-id="formsubmit-error" data-name="Error Text"
-      variants={errorTextVariants} initial={['default', initialVariant]} animate={['default', variant]} style={{
-        display: 'none',
-        fontSize: '14px',
-        whiteSpace: 'nowrap',
-        color: '#ffffff',
-        fontFamily: 'Inter, sans-serif',
-        fontWeight: '600',
-        lineHeight: '1.2',
-        position: 'relative',
-        flex: '0 0 auto',
-        margin: 0
-      }}>
-      Something went wrong
-    </motion.p>
-  </motion.button>
-    </LayoutGroup>;
+  return <motion.button layout={true} data-id="formsubmit-root" data-name="Submit" {...rest} type="submit" disabled={variant === 'loading' || variant === 'disabled'}
+    variants={rootVariants} initial={['default', initialVariant]} animate={['default', variant]}
+    onHoverStart={() => setVariant(current => current === 'default' ? 'default-hover' : current)}
+    onHoverEnd={() => setVariant(current => current === 'default-hover' ? 'default' : current)}
+    onTapStart={() => setVariant(current => current === 'default-hover' ? 'default-pressed' : current)}
+    onTap={() => { const _n = variant === 'default-pressed' ? 'default-hover' : null; if (_n) setVariant(_n); }}
+    style={{ width: '200px', height: 'min-content', minHeight: '40px', padding: '10px', borderRadius: '0px', border: '1px solid black', cursor: 'pointer',
+      display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: '8px', backgroundColor: '#3b82f6', opacity: 1, ...style }}>
+    <AnimatePresence mode="popLayout">
+      {variant !== 'loading' && variant !== 'success' && variant !== 'error' && <motion.span layout={true} key="formsubmit-label" data-id="formsubmit-label" data-name="Text" style={{ position: 'relative', flex: '0 0 auto', order: '0', margin: 0, color: 'black', fontFamily: 'Inter, sans-serif', fontSize: '18px', lineHeight: 1 }}>{label}</motion.span>}
+      {variant === 'loading' && <motion.div layout={true} key="formsubmit-loading" data-id="formsubmit-loading" data-name="Loading" style={{ position: 'relative', flex: '0 0 auto', order: '2', display: 'flex', alignItems: 'center', gap: '8px' }}><Spinner data-id="formsubmit-spinner" style={{ position: 'relative', flex: '0 0 auto', order: '0' }} /><motion.span data-id="formsubmit-loading-label" style={{ position: 'relative', flex: '0 0 auto', order: '1', color: 'black', fontFamily: 'Inter, sans-serif', fontSize: '14px' }}>Loading</motion.span></motion.div>}
+      {variant === 'success' && <motion.span layout={true} key="formsubmit-success" data-id="formsubmit-success" data-name="Success Text" style={{ position: 'relative', flex: '0 0 auto', order: '3', color: 'black', fontFamily: 'Inter, sans-serif', fontSize: '14px' }}>Thank you</motion.span>}
+      {variant === 'error' && <motion.span layout={true} key="formsubmit-error" data-id="formsubmit-error" data-name="Error Text" role="status" style={{ position: 'relative', flex: '0 0 auto', order: '4', color: 'black', fontFamily: 'Inter, sans-serif', fontSize: '14px' }}>Something went wrong</motion.span>}
+    </AnimatePresence>
+  </motion.button>;
 }
-
 export default withResponsiveProps(${FORMSUBMIT_COMPONENT_NAME});
 `;
 }
@@ -376,7 +256,7 @@ export function convertSubmitButtonInCode(
 
   findFirstElementByDataId(ast, formId, (formPath) => {
     formPath.traverse({
-      JSXElement(p: any) {
+      JSXElement(p: NodePath<t.JSXElement>) {
         const node = p.node as t.JSXElement;
         const name = tagNameOf(node.openingElement.name);
         if (name === FORMSUBMIT_COMPONENT_NAME) { alreadyConverted = true; return; }

@@ -21,11 +21,13 @@ export interface WebhookDestination {
   fallback?: string;
 }
 
-interface SheetDestination {
+export interface SheetDestination {
   id: string;
   type: 'sheet';
-  /** Reserved — wired when Google Sheets (OAuth) lands. */
+  /** Google spreadsheet ID and tab; credentials stay in server environment variables. */
   sheetId?: string;
+  sheetName?: string;
+  timestampField?: string;
 }
 
 export type FormDestination = EmailDestination | WebhookDestination | SheetDestination;
@@ -41,6 +43,8 @@ export interface FormConfig {
   /** Success redirect — a page route ("/thank-you") or external URL. */
   redirect?: string;
   antispam?: FormAntispam | null;
+  /** Names of supplemental client-side fields such as referrer. */
+  extraFields?: string[];
   /** Analytics / A-B form-goal tracking id. */
   tracking?: string;
 }
@@ -51,7 +55,7 @@ export function readFormConfig(raw: string | undefined | null): FormConfig {
   if (!raw) return { sendTo: [] };
   try {
     const c = JSON.parse(raw) as Partial<FormConfig>;
-    return { sendTo: Array.isArray(c.sendTo) ? c.sendTo : [], redirect: c.redirect, antispam: c.antispam ?? null, tracking: c.tracking };
+    return { sendTo: Array.isArray(c.sendTo) ? c.sendTo : [], redirect: c.redirect, antispam: c.antispam ?? null, tracking: c.tracking, extraFields: Array.isArray(c.extraFields) ? c.extraFields : undefined };
   } catch {
     return { sendTo: [] };
   }
@@ -64,6 +68,7 @@ export function serializeFormConfig(c: FormConfig): string {
   if (c.redirect) out.redirect = c.redirect;
   if (c.antispam) out.antispam = c.antispam;
   if (c.tracking) out.tracking = c.tracking;
+  if (c.extraFields?.length) out.extraFields = c.extraFields;
   return JSON.stringify(out);
 }
 

@@ -17,7 +17,7 @@ import { LinkUrlField } from '../LinkTool/LinkUrlControl';
 import { queueMutation, flushNow } from '@/code/mutation/mutation-queue';
 import { trace } from '@/shared/debug-trace';
 import {
-  type FormConfig, type FormDestination, type EmailDestination, type WebhookDestination,
+  type FormConfig, type FormDestination, type EmailDestination, type WebhookDestination, type SheetDestination,
   readFormConfig, serializeFormConfig, newDestId, destLabel,
 } from './form-config';
 
@@ -94,6 +94,15 @@ function WebhookEditor({ dest, onSave }: { dest: WebhookDestination; onSave: (d:
   );
 }
 
+function SheetEditor({ dest, onSave }: { dest: SheetDestination; onSave: (d: SheetDestination) => void }) {
+  return <div className="flex flex-col gap-2 p-1">
+    <ToolRow label="Spreadsheet ID"><ToolInput value={dest.sheetId ?? ''} onChange={(v) => onSave({ ...dest, sheetId: v })} placeholder="Google spreadsheet ID" /></ToolRow>
+    <ToolRow label="Sheet"><ToolInput value={dest.sheetName ?? ''} onChange={(v) => onSave({ ...dest, sheetName: v })} placeholder="Sheet tab name" /></ToolRow>
+    <ToolRow label="Timestamp column"><ToolInput value={dest.timestampField ?? ''} onChange={(v) => onSave({ ...dest, timestampField: v })} placeholder="Optional" /></ToolRow>
+    <p className="text-[11px] text-[var(--text-secondary)]">The server must be configured with an authorized Google service account.</p>
+  </div>;
+}
+
 // ─── Send To "Add…" — native floating dropdown (Email / Webhook / Sheet) ────
 function SendToAddMenu({ onAdd }: { onAdd: (t: FormDestination['type']) => void }) {
   const [open, setOpen] = useState(false);
@@ -110,9 +119,9 @@ function SendToAddMenu({ onAdd }: { onAdd: (t: FormDestination['type']) => void 
           <div className="fixed inset-0 z-50" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-full mt-1 bg-[var(--dropdown-bg)] shadow-md cut-corners cut-lg cut-border [--cut-border-color:var(--border-light)] py-1.5 z-[51] w-max border border-[var(--border-light)] space-y-0.5">
             {(['email', 'webhook', 'sheet'] as const).map((t) => (
-              <button key={t} type="button" className={ADD_ITEM} disabled={t === 'sheet'}
+              <button key={t} type="button" className={ADD_ITEM}
                 onClick={() => { onAdd(t); setOpen(false); }}>
-                <span className={ADD_ITEM_LABEL}>{t === 'email' ? 'Email' : t === 'webhook' ? 'Webhook' : 'Sheet (soon)'}</span>
+                <span className={ADD_ITEM_LABEL}>{t === 'email' ? 'Email' : t === 'webhook' ? 'Webhook' : 'Sheet'}</span>
               </button>
             ))}
           </div>
@@ -177,7 +186,7 @@ export default function FormTool() {
       if (!d) return null;
       if (d.type === 'email') return <EmailEditor dest={d} onSave={(nd) => saveDest(popup.index, nd)} />;
       if (d.type === 'webhook') return <WebhookEditor dest={d} onSave={(nd) => saveDest(popup.index, nd)} />;
-      return <div className="p-2 text-xs text-[var(--text-secondary)]">Google Sheets connection is coming soon.</div>;
+      return <SheetEditor dest={d} onSave={(nd) => saveDest(popup.index, nd)} />;
     }
     if (popup.kind === 'redirect') {
       return (

@@ -155,13 +155,12 @@ import { projectFS } from '@/code/project/project-fs';
 describe('display variants switch instantly', () => {
   const master = buildFormSubmitComponentCode();
 
-  it('every display-only variant entry carries a zero-duration transition', () => {
-    for (const obj of ['labelVariants', 'spinnerWrapVariants', 'successTextVariants', 'errorTextVariants']) {
-      const block = master.match(new RegExp(`const ${obj} = \\{[\\s\\S]*?\\n\\};`))![0];
-      const entries = block.match(/\{[^{}]*display[^{}]*\}/g) ?? [];
-      expect(entries.length, `${obj} should have one entry per variant`).toBe(7);
-      for (const e of entries) expect(e, `${obj}: ${e}`).toMatch(/transition:/);
-    }
+  it('switches state labels by presence so they never overlap', () => {
+    expect(master).toContain('<AnimatePresence mode="popLayout">');
+    expect(master).toContain("variant === 'loading'");
+    expect(master).toContain("variant === 'success'");
+    expect(master).toContain("variant === 'error'");
+    expect(master).not.toContain("display: 'none'");
   });
 
   it('the ROOT keeps its default transition — the background still animates', () => {
