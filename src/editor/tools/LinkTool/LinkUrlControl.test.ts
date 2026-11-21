@@ -20,8 +20,8 @@ describe('isCmsDetailLink', () => {
 // exercised here (the literal-prefix branch reads listPageFiles(), empty in tests).
 describe('cmsDetailLinkTarget', () => {
   it('extracts the TARGET collection + prefix from a dynamic route', () => {
-    expect(cmsDetailLinkTarget('/blog/[slug]')).toEqual({ collection: 'blog', prefix: '/blog/' });
-    expect(cmsDetailLinkTarget('/our-services/[id]')).toEqual({ collection: 'our-services', prefix: '/our-services/' });
+    expect(cmsDetailLinkTarget('/blog/[slug]')).toEqual({ collection: 'blog', prefix: '/blog/', item: '' });
+    expect(cmsDetailLinkTarget('/our-services/[id]')).toEqual({ collection: 'our-services', prefix: '/our-services/', item: '' });
   });
   it('returns null for plain pages, empty, or non-detail links', () => {
     expect(cmsDetailLinkTarget('/about')).toBeNull();

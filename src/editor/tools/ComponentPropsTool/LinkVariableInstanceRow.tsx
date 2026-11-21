@@ -5,7 +5,7 @@ import { useMemo, useRef, useState } from 'react';
 import { ControlLabel } from '../../controls';
 import ToolPopup from '../../ui/ToolPopup';
 import { HoistMenuItemProvider } from '../../controls/hoist-context';
-import { LinkUrlField, isCmsDetailLink, cmsDetailLinkTarget } from '../LinkTool/LinkUrlControl';
+import { LinkUrlField, cmsDetailLinkTarget } from '../LinkTool/LinkUrlControl';
 import LinkSectionControl from '../LinkTool/LinkSectionControl';
 import LinkSlugControl, { type CmsNavMode } from '../LinkTool/LinkSlugControl';
 import { cmsNavHrefExpr } from '@/code/generation/map-gen';
@@ -46,14 +46,15 @@ export function LinkVariableInstanceRow({
   // The Slug control only makes sense when the link TARGETS a CMS detail route
   // (a `[slug]` dynamic route, a literal item link, or the row binding). A plain
   // page link (`/about`) or empty link gets no Slug control.
-  const isSlugLink = isRowSlug || isCmsDetailLink(value);
-  const navMode: CmsNavMode = isRowSlug ? 'row' : 'none';
   // The Slug picker must follow the collection the link TARGETS, not the one
   // the instance lives in. A row binding (`This Row`) is always the instance's
   // own collection; a static detail link (`/blog/[slug]` or `/blog/post-1`)
   // targets whatever collection appears in the href (blog), so list BLOG slugs
-  // and write back `/blog/<slug>` — NOT `/advisors/<slug>`.
+  // and write back `/blog/<slug>` — NOT `/advisors/<slug>`. Resolved once per
+  // value (it reads the detail pages off ProjectFS) and reused below.
   const detailTarget = useMemo(() => cmsDetailLinkTarget(value), [value]);
+  const isSlugLink = isRowSlug || /\[[^\]]+\]/.test(value) || detailTarget !== null;
+  const navMode: CmsNavMode = isRowSlug ? 'row' : 'none';
   const slugCollection = isRowSlug
     ? (cmsBinding?.slug ?? '')
     : (detailTarget?.collection ?? cmsBinding?.slug ?? '');

@@ -13,6 +13,7 @@ import { createPortal } from 'react-dom';
 import { ControlLabel } from '../../controls';
 import { useHoistMenuItem } from '../../controls/hoist-context';
 import { listPageFiles, getPageSlug } from '@/code/project/active-file-store';
+import { currentCmsDetailRoutes } from '@/code/project/cms-detail-route';
 import { projectFS } from '@/code/project/project-fs';
 import { parseJSXToNodes } from '@/code/parsing/parser';
 import { PageDocumentIcon, CmsIcon } from '@/shared/icons';
@@ -69,40 +70,71 @@ export function getAnchorsForPage(filePath: string): string[] {
   return anchors;
 }
 
-/** `/<collection>/` prefixes for every collection that has a `[slug]` detail
- *  page (e.g. `['/blog/']`). Used to decide whether a link targets a CMS detail
- *  route (→ show the Slug control) vs a plain page. */
-export function getCmsDetailRoutePrefixes(): string[] {
-  const out: string[] = [];
+/** Every detail route a link can target, as `[collection, prefix]`, longest
+ *  prefix first so `/stories/x` matches `/stories/` before a root-mounted `/`.
+ *  The annotated routes come from the detail pages' own `@cmsPage` source
+ *  (`currentCmsDetailRoutes`), so a page at `/stories/[slug]` serving `pieces`
+ *  maps to `pieces`. A `[slug]` page without the annotation still counts, under
+ *  its folder name, as it always has. */
+function detailRouteTargets(): Array<[string, string]> {
+  const routes = new Map<string, string>();
+  for (const [collection, prefix] of currentCmsDetailRoutes()) routes.set(prefix, collection);
   for (const fp of listPageFiles()) {
-    const m = getPageSlug(fp).match(/^(\/[^/]+\/)\[[^\]]+\]$/);
-    if (m) out.push(m[1]);
+    const m = getPageSlug(fp).match(/^(\/([^/]+)\/)\[[^\]]+\]$/);
+    if (m && !routes.has(m[1])) routes.set(m[1], m[2]);
   }
-  return out;
+  return [...routes].map(([prefix, collection]): [string, string] => [collection, prefix])
+    .sort((a, b) => b[1].length - a[1].length);
+}
+
+/** The item slugs of a collection, from its CMS JSON in ProjectFS (the same
+ *  source `collectionDataAtom` reads). */
+function collectionItemSlugs(collection: string): Set<string> {
+  const raw = projectFS.readFile(`cms/${collection}.json`);
+  if (!raw) return new Set();
+  try {
+    const items = JSON.parse(raw) as Array<{ _slug?: unknown }>;
+    return new Set(items.map(i => i?._slug).filter((s): s is string => typeof s === 'string' && s.length > 0));
+  } catch { return new Set(); }
+}
+
+/** For a CMS detail link, the collection the link TARGETS, its route prefix and
+ *  the literal item it names (`''` while the route is still `[param]`):
+ *  `/stories/[slug]` → `{ collection: 'pieces', prefix: '/stories/', item: '' }`
+ *  and `/stories/post-1` → `{ …, item: 'post-1' }` when the `pieces` detail page
+ *  lives at `/stories/[slug]`. A collection mounted at the root (`/[slug]`) is
+ *  matched too, but only for a slug it actually has: nothing in `/pricing` says
+ *  "item", so a page not created yet or a file (`/robots.txt`) stays a plain
+ *  link. A static page always wins (`/about` is the About page even with a root
+ *  `[slug]`), the same precedence the published site has. `#section`, `?query`
+ *  and a trailing slash are ignored. Null for plain pages, external, empty or
+ *  non-detail links. Lets a link picker show the slugs of the collection the
+ *  link points AT, not the one the element lives in (an advisor card linking to
+ *  `/blog/[slug]` must list BLOG items, not advisors). */
+export function cmsDetailLinkTarget(href: string): { collection: string; prefix: string; item: string } | null {
+  if (!href || !href.startsWith('/')) return null;
+  const path = href.split(/[#?]/)[0].replace(/(.)\/$/, '$1');
+  if (!path.includes('[') && listPageFiles().some(fp => getPageSlug(fp) === path)) return null;
+  for (const [collection, prefix] of detailRouteTargets()) {
+    if (!path.startsWith(prefix)) continue;
+    const rest = path.slice(prefix.length);
+    if (!rest || rest.includes('/')) continue;
+    if (/^\[[^\]]+\]$/.test(rest)) return { collection, prefix, item: '' };
+    if (prefix === '/' && !collectionItemSlugs(collection).has(rest)) continue;
+    return { collection, prefix, item: rest };
+  }
+  // No page serves it yet: a bare dynamic route still names its collection.
+  const dyn = path.match(/^\/([^/]+)\/\[[^\]]+\]$/);
+  return dyn ? { collection: dyn[1], prefix: `/${dyn[1]}/`, item: '' } : null;
 }
 
 /** True when `href` targets a CMS detail route — a dynamic `[param]` route
- *  (`/blog/[slug]`) or a literal item link under a detail-route collection
+ *  (`/blog/[slug]`) or a literal item link under a detail route
  *  (`/blog/post-1`). Plain pages (`/about`) and empty links return false. */
 export function isCmsDetailLink(href: string): boolean {
   if (!href) return false;
   if (/\[[^\]]+\]/.test(href)) return true;
-  return getCmsDetailRoutePrefixes().some(p => href.startsWith(p) && href.length > p.length);
-}
-
-/** For a CMS detail link, the collection the link TARGETS + its `/coll/` route
- *  prefix: `/blog/[slug]` or `/blog/post-1` → `{ collection: 'blog', prefix: '/blog/' }`.
- *  Null for plain pages / empty / non-detail links. Lets a link picker show the
- *  slugs of the collection the link points AT — not the one the element lives in
- *  (an advisor card linking to `/blog/[slug]` must list BLOG items, not advisors). */
-export function cmsDetailLinkTarget(href: string): { collection: string; prefix: string } | null {
-  if (!href) return null;
-  const dyn = href.match(/^\/([^/]+)\/\[[^\]]+\]$/);
-  if (dyn) return { collection: dyn[1], prefix: `/${dyn[1]}/` };
-  for (const p of getCmsDetailRoutePrefixes()) {
-    if (href.startsWith(p) && href.length > p.length) return { collection: p.slice(1, -1), prefix: p };
-  }
-  return null;
+  return cmsDetailLinkTarget(href) !== null;
 }
 
 /** Find the file path for a given page slug */

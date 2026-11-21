@@ -34,7 +34,7 @@ import { nodesAtom } from '@/code/stores/store';
 import { cmsPageMetaAtom } from '@/code/stores/cms-page-store';
 import { queueMutation, queueMutations, flushNow } from '@/code/mutation/mutation-queue';
 import { trace } from '@/shared/debug-trace';
-import LinkUrlControl, { LinkUrlField } from './LinkUrlControl';
+import LinkUrlControl, { LinkUrlField, cmsDetailLinkTarget } from './LinkUrlControl';
 import LinkNewTabControl from './LinkNewTabControl';
 import LinkSmoothScrollControl from './LinkSmoothScrollControl';
 import { syncLinkHandlerInCode } from '@/code/generation/generator-styles';
@@ -133,30 +133,65 @@ export default function LinkTool() {
     return null;
   }, [node, nodes]);
 
-  // The collection to drive the Slug control against — detail-page meta
-  // wins over an ancestor map (`<a>` on a detail page that happens to be
-  // inside a "related posts" inline map should still navigate via
-  // `params.slug`, not the row variable). Falls back to the map's
-  // collection otherwise.
-  const slugCollection = (navMode === 'row' ? cmsMapContext?.collection : cmsPageMeta?.collection) ?? cmsMapContext?.collection ?? '';
-  const cmsDetailPrefix = currentCmsDetailRoutes().get(slugCollection) ?? `/${slugCollection}/`;
+  // A literal link (not a variable binding) that TARGETS a CMS detail route:
+  // `/stories/[slug]` (route picked, no item yet) or `/stories/post-1`. The
+  // Slug control then follows the collection the link points AT, wherever the
+  // element lives: a static element on a plain page, or a row of another
+  // collection (a desk card linking to a story). Same resolver as the
+  // component-instance link row. Re-resolved on every flush (projectVersion):
+  // adding a detail page or an item changes what the href targets.
+  const projectVersion = useAtomValue(projectVersionAtom);
+  const linkTarget = useMemo(
+    () => (navMode === 'none' ? cmsDetailLinkTarget(href) : null),
+    [navMode, href, projectVersion],
+  );
+
+  // The collection to drive the Slug control against — the link's own target
+  // when it has one; otherwise detail-page meta wins over an ancestor map (`<a>`
+  // on a detail page that happens to be inside a "related posts" inline map
+  // should still navigate via `params.slug`, not the row variable), falling
+  // back to the map's collection.
+  const slugCollection = linkTarget?.collection
+    ?? (navMode === 'row' ? cmsMapContext?.collection : cmsPageMeta?.collection) ?? cmsMapContext?.collection ?? '';
+  // The route the collection's items live under: the link's own target, else
+  // the collection's detail page (`pieces` may be served at `/stories/`).
+  const cmsDetailPrefix = linkTarget?.prefix
+    ?? (slugCollection ? currentCmsDetailRoutes().get(slugCollection) ?? `/${slugCollection}/` : '');
   // Which Set-Variable submenu items to show (Current/Prev/Next vs This Row
-  // vs both). See `SlugVariantContext` in LinkSlugControl.tsx.
-  const slugVariantContext: SlugVariantContext | null = isDetailPage && cmsMapContext
+  // vs both). See `SlugVariantContext` in LinkSlugControl.tsx. For a link
+  // with a target, a variable is offered only where it resolves to THAT
+  // collection: Current/Prev/Next on its own detail page, This Row inside a
+  // map over it. Anywhere else → 'none' (literal item pick only).
+  const contextVariant: SlugVariantContext | null = isDetailPage && cmsMapContext
     ? 'both'
     : isDetailPage
       ? 'detail'
       : cmsMapContext
         ? 'row'
         : null;
+  const targetOnDetail = !!linkTarget && isDetailPage && cmsPageMeta?.collection === linkTarget.collection;
+  const targetInRow = !!linkTarget && cmsMapContext?.collection === linkTarget.collection;
+  const slugVariantContext: SlugVariantContext | null = !linkTarget
+    ? contextVariant
+    : targetOnDetail && targetInRow
+      ? 'both'
+      : targetOnDetail
+        ? 'detail'
+        : targetInRow
+          ? 'row'
+          : 'none';
 
-  // A literal CMS item link is `href="/<collection>/<item-slug>"` — read
-  // the slug back out so the Slug control's input shows it. Only when not
-  // variable-bound.
-  const cmsRoutePrefix = slugCollection ? `/${slugCollection}/` : '';
-  const literalSlug = (navMode === 'none' && !!cmsRoutePrefix && href.startsWith(cmsRoutePrefix))
-    ? href.slice(cmsRoutePrefix.length)
+  // A literal CMS item link is `href="<route prefix><item-slug>"` — read the
+  // slug back out so the Slug control's input shows it. A bare `[param]` route
+  // (no item picked yet) reads as empty so the input shows its placeholder.
+  // Without a resolved target (the collection has no detail page yet, or it
+  // lives under a dynamic segment the resolver skips), fall back to the prefix
+  // the picker writes with, so what was picked still reads back. Never under a
+  // root prefix: there every plain page would read as an item.
+  const fallbackRest = !linkTarget && navMode === 'none' && cmsDetailPrefix && cmsDetailPrefix !== '/' && href.startsWith(cmsDetailPrefix)
+    ? href.slice(cmsDetailPrefix.length).split(/[#?]/)[0]
     : '';
+  const literalSlug = linkTarget?.item ?? (fallbackRest.includes('/') ? '' : fallbackRest);
   // A/B test tracking id — `data-revyme-track="<slug>"`. The deployed
   // Worker's inline script (see WORKER_ENTRY in build-project.ts) listens
   // for clicks on any element carrying this attribute and beacons the
@@ -258,7 +293,6 @@ export default function LinkTool() {
   // variable" without first typing a URL.
   // Existing master variables (params + @propMeta types) — for the "Set Variable" submenu. Re-read on every
   // mutation flush (projectVersion) so a just-created var shows up.
-  const projectVersion = useAtomValue(projectVersionAtom);
   const masterVars = useMemo(() => {
     if (!isComponentFile || !activeFile) return [] as { name: string; label: string; varType?: string; default?: string }[];
     const code = projectFS.readFile(activeFile);
@@ -733,7 +767,7 @@ export default function LinkTool() {
   // variable.
   const handleLiteralSlugChange = useCallback((slug: string) => {
     if (!nodeId || !slugCollection) return;
-    trace.action('link-tool:literal-slug', { nodeId, slug, collection: slugCollection });
+    trace.action('link-tool:literal-slug', { nodeId, slug, collection: slugCollection, prefix: cmsDetailPrefix });
     const mutations: any[] = [];
     if (slug) {
       // Non-empty slug → ensure it's a link, then point it at the item.
@@ -743,7 +777,8 @@ export default function LinkTool() {
         mutations.push({ type: 'changeTag', nodeId, newTag: 'Link' });
         mutations.push({ type: 'updateStyles', nodeId, styles: { textDecoration: 'none', color: 'inherit' } });
       }
-      mutations.push({ type: 'updateHtmlAttrs', nodeId, attrs: { href: `/${slugCollection}/${slug}`, 'data-cms-nav': '' } });
+      // The route's real prefix (a `pieces` detail page may live at `/stories/`).
+      mutations.push({ type: 'updateHtmlAttrs', nodeId, attrs: { href: `${cmsDetailPrefix}${slug}`, 'data-cms-nav': '' } });
     } else {
       // Cleared the literal slug → navigates nowhere → revert to a plain div
       // (don't leave a href-less <Link>, which crashes SSR).
@@ -751,9 +786,9 @@ export default function LinkTool() {
       mutations.push(...revertLinkToDivMutations());
     }
     queueMutations(mutations);
-  }, [nodeId, node?.type, isComponentFile, slugCollection, revertLinkToDivMutations]);
+  }, [nodeId, node?.type, isComponentFile, slugCollection, cmsDetailPrefix, revertLinkToDivMutations]);
 
-  trace.fn('LinkTool:render', { nodeId, isLink, href });
+  trace.fn('LinkTool:render', { nodeId, isLink, href, slugCollection, slugVariantContext, linkTarget: linkTarget?.prefix ?? null });
 
   // `+` add-menu — the ONLY header action. Toggles the optional Rel /
   // Parameters / Tracking controls. The Link section itself is always present
@@ -865,9 +900,9 @@ export default function LinkTool() {
               value={effHref}
               onChange={handleUrlChange}
               disabled={navMode !== 'none'}
-              displayOverride={navMode !== 'none' && slugCollection ? `/${slugCollection}/:slug` : undefined}
-              cmsRoutes={slugCollection
-                ? [{ slug: `/${slugCollection}/[slug]`, label: `/${slugCollection}/:slug` }]
+              displayOverride={navMode !== 'none' && cmsDetailPrefix ? `${cmsDetailPrefix}:slug` : undefined}
+              cmsRoutes={cmsDetailPrefix
+                ? [{ slug: `${cmsDetailPrefix}[slug]`, label: `${cmsDetailPrefix}:slug` }]
                 : undefined}
             />
           </HoistMenuItemProvider>
