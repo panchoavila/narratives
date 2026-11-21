@@ -612,7 +612,7 @@ const EXECUTORS: Record<string, Executor> = {
     return { success: true, removed: args.name };
   },
 
-  add_connection: (args: { from: string; to: string; trigger: string; sourceNode?: string }) => {
+  add_connection: (args: { from: string; to: string; trigger: string; sourceNode?: string; focusReturnNode?: string; delay?: number }) => {
     if (!args.from || !args.to || !args.trigger) {
       throw new Error('add_connection requires from, to, and trigger');
     }
@@ -621,8 +621,9 @@ const EXECUTORS: Record<string, Executor> = {
       args.from,
       args.to,
       args.trigger as any,
-      undefined,
+      args.delay,
       args.sourceNode,
+      args.focusReturnNode,
     );
     return { success: true, from: args.from, to: args.to, trigger: args.trigger, sourceNode: args.sourceNode };
   },
@@ -690,7 +691,7 @@ const EXECUTORS: Record<string, Executor> = {
       const kind = isTemplate ? 'template' as const
         : isComponent ? (isCodeComponentSource(content) ? 'code-component' as const : 'component' as const)
         : 'page' as const;
-      const vs = checkFile(content, { kind, path: args.path });
+      const vs = checkFile(content, { kind, path: args.path, readProjectFile: p => projectFS.readFile(p) });
       if (vs.length > 0) {
         throw new Error(
           `edit_file: ${args.path} fails ${vs.length} builder check(s) — the content would not resolve in the editor. ` +

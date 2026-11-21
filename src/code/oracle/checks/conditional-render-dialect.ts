@@ -36,10 +36,14 @@
 // is not a gate; this is.
 
 import * as t from '@babel/types';
+import { parseExpression } from '@babel/parser';
+import { parseConnections, buildTriggerHandler, type ConnectionTrigger } from '@/code/variants/connection-config';
+import { findVariantRootId } from '@/shared/variant-root';
 import { traverse, jsxTagName, jsxAttrs, stringAttr, hasAttr } from './shared';
 import { MOTION_ONLY_PROPS } from './motion-tag';
 import { isCodeComponentSource } from './shared';
 import type { OracleViolation, FileKind } from './shared';
+import { parseJSXToNodes } from '@/code/parsing/parser';
 
 /** Identifiers the builder's own variant gating uses. */
 const VARIANT_IDENTS = new Set(['variant', 'initialVariant']);
@@ -220,6 +224,9 @@ export function checkUnreadableHandlers(
   if (kind !== 'page' && kind !== 'component' && kind !== 'template') return;
   if (isCodeComponentSource(code)) return;
   const seen = new Set<string>();
+  const connections = kind === 'component' ? parseConnections(code) : [];
+  const rootId = kind === 'component' ? findVariantRootId(code) : null;
+  const focusTriggers: Record<string, ConnectionTrigger> = { onFocus: 'focusEnter', onBlur: 'focusLeave', onKeyDown: 'escape' };
 
   traverse(ast, {
     JSXOpeningElement(path) {
@@ -231,6 +238,16 @@ export function checkUnreadableHandlers(
       for (const a of attrs) {
         const name = typeof a.name.name === 'string' ? a.name.name : '';
         if (!/^on[A-Z]/.test(name) || READABLE_HANDLERS.has(name)) continue;
+        const trigger = focusTriggers[name];
+        if (trigger && id && t.isJSXExpressionContainer(a.value)) {
+          const matched = connections.filter(c => c.trigger === trigger && (c.sourceNode === id || (!c.sourceNode && id === rootId)));
+          if (matched.length) {
+            try {
+              const canonical = parseExpression(buildTriggerHandler(trigger, matched), { plugins: ['typescript', 'jsx'] });
+              if (t.isNodesEquivalent(a.value.expression, canonical)) continue;
+            } catch { /* malformed handler is not editable */ }
+          }
+        }
         const key = `${id ?? ''}:${name}`;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -392,6 +409,24 @@ export function checkPageHooks(
       const at = path.node.start ?? -1;
       if (at >= 0 && inHelper(at)) return;
       const line = path.node.loc?.start.line;
+
+      // The scroll generator wraps each spatial output to retain its editable
+      // source while providing a static reduced-motion value. Accept only that
+      // exact generated shape, including a literal fallback and source hook.
+      if (callee.name === 'useReducedMotionValue') {
+        const parent = path.parentPath?.node;
+        const [source, fallback, authored] = path.node.arguments;
+        const binding = t.isIdentifier(source) ? path.scope.getBinding(source.name) : undefined;
+        const declaration = binding?.path.node;
+        const init = t.isVariableDeclarator(declaration) ? declaration.init : null;
+        const literal = t.isNumericLiteral(fallback) || t.isStringLiteral(fallback)
+          || (t.isUnaryExpression(fallback, { operator: '-' }) && t.isNumericLiteral(fallback.argument));
+        if (t.isVariableDeclarator(parent) && t.isIdentifier(parent.id)
+          && t.isIdentifier(source) && parent.id.name === `${source.name}Reduced`
+          && t.isCallExpression(init) && t.isIdentifier(init.callee, { name: 'useTransform' })
+          && literal && (authored === undefined || t.isBooleanLiteral(authored, { value: true }))
+          && path.node.arguments.length <= 3) return;
+      }
 
       if (ALLOWED_HOOK_CALLEES.has(callee.name)) return;
 
@@ -557,12 +592,19 @@ export function checkConditionalRenderDialect(
   ast: t.File,
   v: OracleViolation[],
   kind: FileKind,
+  code = '',
 ): void {
   // A CODE COMPONENT is a black box — the builder never reads its internals, so
   // ordinary React conditionals inside it are none of this rule's business.
   if (kind !== 'page' && kind !== 'component' && kind !== 'template') return;
 
   const seen = new Set<number>();
+  // Only accept a marked gate if the parser verified both its exact predicate
+  // and its collection scope. A marker alone never legitimizes arbitrary JS.
+  const cmsVisibleIds = new Set<string>();
+  if (code.includes('data-cms-visibility')) {
+    for (const node of parseJSXToNodes(code).values()) if (node.cmsVisibility) cmsVisibleIds.add(node.id);
+  }
   traverse(ast, {
     // The TERNARY spelling of the same defect. Bouncing `{cond && <X/>}` while
     // accepting `{cond ? <X/> : null}` doesn't close the gap — it TEACHES the
@@ -599,6 +641,8 @@ export function checkConditionalRenderDialect(
       if (!t.isLogicalExpression(expr) || expr.operator !== '&&') return;
       const el = gatedElement(expr.right);
       if (!el) return;                                  // not a conditional RENDER
+      const cmsId = stringAttr(jsxAttrs(el.openingElement), 'data-id');
+      if (cmsId && cmsVisibleIds.has(cmsId)) return;
 
       // A code component's internals can appear inline in a page only via an
       // @controls block; those files are exempted above by kind.

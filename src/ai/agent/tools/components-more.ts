@@ -82,7 +82,7 @@ function masterForInstance(ctx: ToolContext, nodeId: string, inside?: unknown): 
 
 export const VARIANT_NAME_HELP = 'variant NAME as declared in the master (get_component lists them), e.g. "default", "featured", "default-hover"';
 
-const TRIGGERS = ['click', 'clickStart', 'mouseEnter', 'mouseLeave', 'inView', 'afterDelay'] as const;
+const TRIGGERS = ['click', 'clickStart', 'mouseEnter', 'mouseLeave', 'inView', 'afterDelay', 'focusEnter', 'focusLeave', 'escape'] as const;
 
 // ─── show_variant ─────────────────────────────────────────────────────────────
 
@@ -134,7 +134,7 @@ export const addConnectionTool: AgentTool = {
   name: 'add_connection',
   description:
     'Wire a TRIGGER to a variant switch on a design component — the Connections write: "clicking the burger opens the drawer". ' +
-    'component is the name from list_components; from → to are variant names; trigger is click | clickStart | mouseEnter | mouseLeave | inView | afterDelay (with delay in seconds). ' +
+    'component is the name from list_components; from → to are variant names; trigger is click | clickStart | mouseEnter | mouseLeave | inView | afterDelay | focusEnter | focusLeave | escape (with optional delay in seconds). ' +
     'Optional source_node (a data-id INSIDE the master) makes only that element the trigger — omit it and the whole component root triggers. ' +
     'A hover state usually wants two connections (mouseEnter to it, mouseLeave back), or use create_variant with interaction "hover" which wires both.',
   inputSchema: {
@@ -144,6 +144,7 @@ export const addConnectionTool: AgentTool = {
     trigger: z.enum(TRIGGERS),
     delay: z.number().optional().describe('seconds, for afterDelay (0-2)'),
     source_node: z.string().optional().describe('data-id inside the master that carries the trigger; omit for the root'),
+    focus_return_node: z.string().optional().describe('for Escape, data-id to focus inside the trigger before switching variants'),
   },
   category: 'semantic',
   async execute(args, ctx) {
@@ -160,7 +161,7 @@ export const addConnectionTool: AgentTool = {
     if (isBranchedRun(ctx)) return fail('add_connection writes the active branch only — run unbranched.');
     ctx.ensureCheckpoint();
     flushTool(ctx);
-    const connections = addConnection(master.path, String(args.from), String(args.to), args.trigger as ConnectionTrigger, args.delay as number | undefined, args.source_node as string | undefined);
+    const connections = addConnection(master.path, String(args.from), String(args.to), args.trigger as ConnectionTrigger, args.delay as number | undefined, args.source_node as string | undefined, args.focus_return_node as string | undefined);
     trace.action('agent-tool:add_connection', { component: args.component, from: args.from, to: args.to, trigger: args.trigger });
     return ok({ component: args.component, master_path: master.path, connections });
   },
@@ -377,7 +378,7 @@ export function describeVariantAxis(code: string): string {
   const connections = parseConnections(code);
   lines.push(connections.length === 0 ? 'connections: none' : 'connections:');
   for (const c of connections) {
-    lines.push(`  ${c.from} → ${c.to}  on ${c.trigger}${c.delay ? ` after ${c.delay}s` : ''}${c.sourceNode ? `  from "${c.sourceNode}"` : ''}`);
+    lines.push(`  ${c.from} → ${c.to}  on ${c.trigger}${c.delay ? ` after ${c.delay}s` : ''}${c.sourceNode ? `  from "${c.sourceNode}"` : ''}${c.focusReturnNode ? `  focus "${c.focusReturnNode}"` : ''}`);
   }
   return lines.join('\n');
 }

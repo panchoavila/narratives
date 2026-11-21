@@ -18,7 +18,7 @@ import { trace } from '@/shared/debug-trace';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export type ConnectionTrigger = 'click' | 'clickStart' | 'mouseEnter' | 'mouseLeave' | 'inView' | 'afterDelay';
+export type ConnectionTrigger = 'click' | 'clickStart' | 'mouseEnter' | 'mouseLeave' | 'inView' | 'afterDelay' | 'focusEnter' | 'focusLeave' | 'escape';
 
 export interface Connection {
   from: string;           // source variant name
@@ -31,6 +31,8 @@ export interface Connection {
   // When set, codegen places the handler on THAT element's JSX tag, so
   // only clicks on that specific child trigger the variant switch.
   sourceNode?: string;
+  /** Descendant data-id to focus before switching variants. */
+  focusReturnNode?: string;
 }
 
 // ─── Parser ─────────────────────────────────────────────────────────────────
@@ -70,6 +72,7 @@ export function serializeConnections(connections: Connection[]): string {
     ];
     if (c.delay) parts.push(`delay: ${c.delay}`);
     if (c.sourceNode) parts.push(`sourceNode: '${c.sourceNode}'`);
+    if (c.focusReturnNode) parts.push(`focusReturnNode: ${JSON.stringify(c.focusReturnNode)}`);
     return `  { ${parts.join(', ')} }`;
   });
   return `const connections = [\n${entries.join(',\n')},\n];`;
@@ -95,6 +98,7 @@ export function addConnection(
   trigger: ConnectionTrigger,
   delay?: number,
   sourceNode?: string,
+  focusReturnNode?: string,
 ): Connection[] {
   let connections: Connection[] = [];
 
@@ -113,6 +117,7 @@ export function addConnection(
     const newConnection: Connection = { from, to, trigger };
     if (delay) newConnection.delay = delay;
     if (sourceNode) newConnection.sourceNode = sourceNode;
+    if (focusReturnNode && trigger === 'escape') newConnection.focusReturnNode = focusReturnNode;
     connections.push(newConnection);
 
     const serialized = serializeConnections(connections);
@@ -174,6 +179,24 @@ function componentTagNameForDataId(code: string, dataId: string): string | null 
   return m ? m[1] : null;
 }
 
+/** Update one connection atomically, so a panel edit creates one history entry. */
+export function updateConnection(filePath: string, old: Connection, next: Connection): Connection[] {
+  let connections: Connection[] = [];
+  modifyProjectFile(filePath, code => {
+    connections = parseConnections(code);
+    const index = connections.findIndex(c => c.from === old.from && c.to === old.to && c.trigger === old.trigger
+      && (c.sourceNode ?? null) === (old.sourceNode ?? null));
+    if (index < 0) return code;
+    if (connections.some((c, i) => i !== index && c.from === next.from && c.to === next.to
+      && c.trigger === next.trigger && (c.sourceNode ?? null) === (next.sourceNode ?? null))) return code;
+    connections[index] = next;
+    return generateConnectionCode(replaceConnectionsInCode(code, serializeConnections(connections)), connections);
+  });
+  ensureChildComponentsForward(filePath, connections);
+  trace.action('connection-config:update', { filePath, old, next });
+  return connections;
+}
+
 /**
  * Remove a connection.
  */
@@ -230,7 +253,7 @@ function rebuildConnections(code: string, connections: Connection[]): string {
     // container's brace welded to the tag name: `<motion.div}`. The file no
     // longer parsed, the node map came back empty, and the canvas went blank —
     // "I delete variant 2 and it deletes the whole component" (2026-08-08).
-    for (const handler of ['onTap', 'onTapStart', 'onHoverStart', 'onHoverEnd', 'onViewportEnter']) {
+    for (const handler of ['onTap', 'onTapStart', 'onHoverStart', 'onHoverEnd', 'onViewportEnter', 'onFocus', 'onBlur', 'onKeyDown']) {
       updated = stripAllTagAttrsBalanced(updated, handler);
     }
     // Remove useState + useEffect chain
@@ -350,7 +373,7 @@ function findUnbackedTransitions(code: string, conns: Connection[]): string[] {
   const authorised = new Set<string>();
   for (const c of conns) authorised.add(`${c.from}>${c.to}|${triggerToPropName(c.trigger)}`);
   const out: string[] = [];
-  for (const prop of ['onTap', 'onTapStart', 'onHoverStart', 'onHoverEnd', 'onViewportEnter']) {
+  for (const prop of ['onTap', 'onTapStart', 'onHoverStart', 'onHoverEnd', 'onViewportEnter', 'onFocus', 'onBlur', 'onKeyDown']) {
     const re = new RegExp(`\\b${prop}=\\{`, 'g');
     let m: RegExpExecArray | null;
     while ((m = re.exec(code)) !== null) {
@@ -794,6 +817,9 @@ function triggerToPropName(trigger: ConnectionTrigger): string {
     case 'mouseEnter': return 'onHoverStart';
     case 'mouseLeave': return 'onHoverEnd';
     case 'inView': return 'onViewportEnter';
+    case 'focusEnter': return 'onFocus';
+    case 'focusLeave': return 'onBlur';
+    case 'escape': return 'onKeyDown';
     // afterDelay is TIME-driven, not an event: the auto-advance lives in the
     // chain useEffect below, so there is no prop to hang on the element.
     case 'afterDelay': return '';
@@ -805,7 +831,7 @@ function triggerToPropName(trigger: ConnectionTrigger): string {
  *  → ternary keyed on the current `variant` so the right transition
  *  fires for the right starting state. inView always just flips the
  *  isInView flag — the chain useEffect handles delays / targets. */
-function buildTriggerHandler(trigger: ConnectionTrigger, conns: Connection[]): string {
+export function buildTriggerHandler(trigger: ConnectionTrigger, conns: Connection[]): string {
   if (trigger === 'inView') return '() => setIsInView(true)';
   // Gate EVERY connection by its `from` variant — a connection is per-variant
   // ("when in `from`, this trigger → `to`"). A single connection was
@@ -822,6 +848,24 @@ function buildTriggerHandler(trigger: ConnectionTrigger, conns: Connection[]): s
   // the transition", 2026-08-06). The `_n = … : null; if (_n)` guard keeps
   // every handler inert for states it declares no transition for.
   const cases = conns.map(c => `variant === '${c.from}' ? '${c.to}'`).join(' : ');
+  if (trigger === 'focusEnter' || trigger === 'focusLeave' || trigger === 'escape') {
+    const guard = trigger === 'escape'
+      ? `if (event.key !== 'Escape') return;`
+      : `if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;`;
+    const focusCases = conns.map(c => {
+      const selector = c.focusReturnNode ? `[data-id=${JSON.stringify(c.focusReturnNode)}]` : '';
+      return `variant === '${c.from}' ? ${selector ? JSON.stringify(selector) : 'null'}`;
+    }).join(' : ');
+    const focus = trigger === 'escape' && conns.some(c => c.focusReturnNode)
+      ? ` const _selector = ${focusCases} : null; if (_selector) { const _target = event.currentTarget.matches(_selector) ? event.currentTarget : event.currentTarget.querySelector<HTMLElement>(_selector); _target?.focus(); }`
+      : '';
+    const consume = trigger === 'escape' ? ' event.preventDefault(); event.stopPropagation();' : '';
+    const delays = conns.map(c => `variant === '${c.from}' ? ${Math.round((c.delay ?? 0) * 1000)}`).join(' : ');
+    const transition = conns.some(c => (c.delay ?? 0) > 0)
+      ? ` const _d = ${delays} : 0; setTimeout(() => setVariant(_n), _d);`
+      : ' setVariant(_n);';
+    return `(event) => { ${guard} const _n = ${cases} : null; if (_n) {${consume}${focus}${transition} } }`;
+  }
   const delayed = conns.filter(c => (c.delay ?? 0) > 0);
   if (delayed.length === 0) return `() => { const _n = ${cases} : null; if (_n) setVariant(_n); }`;
   const delayCases = conns.map(c => `variant === '${c.from}' ? ${Math.round((c.delay ?? 0) * 1000)}`).join(' : ');
@@ -833,7 +877,7 @@ function buildTriggerHandler(trigger: ConnectionTrigger, conns: Connection[]): s
  *  functions / comparison operators don't get half-stripped. Targets
  *  the five props framer-motion exposes for variant transitions. */
 function stripAllEventHandlers(code: string): string {
-  const PROPS = ['onTap', 'onTapStart', 'onHoverStart', 'onHoverEnd', 'onViewportEnter'];
+  const PROPS = ['onTap', 'onTapStart', 'onHoverStart', 'onHoverEnd', 'onViewportEnter', 'onFocus', 'onBlur', 'onKeyDown'];
   let result = code;
   for (const prop of PROPS) {
     result = stripPropFromAllTags(result, prop);

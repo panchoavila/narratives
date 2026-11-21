@@ -63,6 +63,7 @@ export function parseComponentSpec(code: string, specName: string): ComponentSpe
       const out: SpecConnection = { from: c.from, to: c.to, trigger: c.trigger };
       if (c.delay != null) out.delay = c.delay;
       if (c.sourceNode) out.sourceElement = c.sourceNode;
+      if (c.focusReturnNode) out.focusReturnNode = c.focusReturnNode;
       return out;
     });
 

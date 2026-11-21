@@ -22,6 +22,9 @@ const TRIGGER_OPTIONS: { value: string; label: string }[] = [
   { value: 'clickStart', label: 'Click Start' },
   { value: 'mouseEnter', label: 'Mouse Enter' },
   { value: 'mouseLeave', label: 'Mouse Leave' },
+  { value: 'focusEnter', label: 'Focus Enter' },
+  { value: 'focusLeave', label: 'Focus Leave' },
+  { value: 'escape', label: 'Escape' },
   { value: 'inView', label: 'In View' },
   { value: 'afterDelay', label: 'After Delay' },
 ];
@@ -44,7 +47,9 @@ export default function ConnectionTypeModal({ from, to, position, sourceNodeId, 
   const modalRef = useRef<HTMLDivElement>(null);
   const [trigger, setTrigger] = useState<ConnectionTrigger>('click');
   const [delay, setDelay] = useState(0);
+  const [focusReturnNode, setFocusReturnNode] = useState('');
   const [isVisible, setIsVisible] = useState(false);
+  const isCanvasSource = !!sourceNodeId && !!getNodesSnapshot().get(sourceNodeId)?.isCanvasNode;
 
   // Fade-in animation
   useEffect(() => {
@@ -73,17 +78,16 @@ export default function ConnectionTypeModal({ from, to, position, sourceNodeId, 
     trace.action('connection-modal:create', { from, to, trigger, delay, sourceNodeId });
     // A CANVAS NODE source can't run a live setVariant (module scope) → store the connection as a
     // `data-conn-target` attr on the node (the arrow renderer draws it; drag-back restores the live handler).
-    const isCanvasSource = !!sourceNodeId && !!getNodesSnapshot().get(sourceNodeId)?.isCanvasNode;
     if (isCanvasSource) {
       modifyProjectFile(activeFile, (c) => setCanvasNodeConnectionInCode(c, sourceNodeId!, to, trigger));
     } else {
-      addConnection(activeFile, from, to, trigger, delay, sourceNodeId);
+      addConnection(activeFile, from, to, trigger, delay, sourceNodeId, focusReturnNode || undefined);
     }
     setVersion(v => v + 1);
     const newCode = projectFS.readFile(activeFile);
     if (newCode) setCode(newCode);
     onClose();
-  }, [from, to, trigger, delay, sourceNodeId, activeFile, setCode, setVersion, onClose]);
+  }, [from, to, trigger, delay, sourceNodeId, focusReturnNode, isCanvasSource, activeFile, setCode, setVersion, onClose]);
 
   // Keep modal within viewport
   const left = Math.min(position.x, window.innerWidth - 244);
@@ -122,12 +126,12 @@ export default function ConnectionTypeModal({ from, to, position, sourceNodeId, 
           <ToolSelect
             value={trigger}
             onChange={(v) => setTrigger(v as ConnectionTrigger)}
-            options={TRIGGER_OPTIONS}
+            options={isCanvasSource ? TRIGGER_OPTIONS.filter(o => !['focusEnter', 'focusLeave', 'escape'].includes(o.value)) : TRIGGER_OPTIONS}
           />
         </ToolRow>
 
         {/* Delay — plus/minus stepper, no arbitrary 2s ceiling (max 1000s) */}
-        <ToolRow label="Delay">
+        {!isCanvasSource && <ToolRow label="Delay">
           <ToolPlusMinus
             value={delay}
             min={0}
@@ -142,8 +146,10 @@ export default function ConnectionTypeModal({ from, to, position, sourceNodeId, 
             chevronLabel="s"
             className="!w-16 shrink-0"
           />
-        </ToolRow>
+        </ToolRow>}
+        {isCanvasSource && <p className="text-xs text-[var(--text-secondary)]">Move this layer into a component to configure focus and keyboard interactions.</p>}
 
+        {trigger === 'escape' && <ToolRow label="Focus return"><ToolInput value={focusReturnNode} onChange={setFocusReturnNode} /></ToolRow>}
         {/* Create button */}
         <div className="pt-2">
           <button

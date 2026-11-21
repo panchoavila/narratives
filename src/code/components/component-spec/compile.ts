@@ -294,6 +294,7 @@ function buildConnections(spec: ComponentSpec): Connection[] {
     const conn: Connection = { from: c.from, to: c.to, trigger: c.trigger };
     if (c.delay != null) conn.delay = c.delay;
     if (c.sourceElement) conn.sourceNode = c.sourceElement;
+    if (c.focusReturnNode) conn.focusReturnNode = c.focusReturnNode;
     return conn;
   });
 

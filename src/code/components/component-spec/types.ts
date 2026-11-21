@@ -99,7 +99,7 @@ export interface SpecVariant {
 
 // ─── Connections ─────────────────────────────────────────────────────────────
 
-export type ConnectionTrigger = 'click' | 'clickStart' | 'mouseEnter' | 'mouseLeave' | 'inView' | 'afterDelay';
+export type ConnectionTrigger = 'click' | 'clickStart' | 'mouseEnter' | 'mouseLeave' | 'inView' | 'afterDelay' | 'focusEnter' | 'focusLeave' | 'escape';
 
 export interface SpecConnection {
   from: string;
@@ -110,6 +110,8 @@ export interface SpecConnection {
   /** Element OR instance id where the handler lands; undefined = root.
    *  When this is an instance id, the compiler runs event-prop-forwarding on the child. */
   sourceElement?: string;
+  /** Target data-id for focus restoration on Escape. */
+  focusReturnNode?: string;
 }
 
 // ─── Elements (plain node | nested instance) ─────────────────────────────────

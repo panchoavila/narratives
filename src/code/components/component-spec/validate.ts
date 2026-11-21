@@ -137,7 +137,7 @@ function validateSpec(spec: ComponentSpec, knownComponents: ReadonlySet<string>,
     if (!variantNames.has(c.from)) v.push(tag({ code: 'BAD_CONNECTION_VARIANT', variant: c.from, message: `connection.from "${c.from}" is not a variant.` }));
     if (!variantNames.has(c.to)) v.push(tag({ code: 'BAD_CONNECTION_VARIANT', variant: c.to, message: `connection.to "${c.to}" is not a variant.` }));
     if (c.sourceElement && !elementIds.has(c.sourceElement)) v.push(tag({ code: 'BAD_SOURCE_ELEMENT', elementId: c.sourceElement, message: `connection.sourceElement "${c.sourceElement}" is not an element.` }));
-    if (c.trigger !== 'inView' && c.delay != null) v.push(tag({ code: 'DELAY_ON_NON_INVIEW', message: `delay is only valid on inView connections (trigger="${c.trigger}").` }));
+    if (!['inView', 'focusEnter', 'focusLeave', 'escape'].includes(c.trigger) && c.delay != null) v.push(tag({ code: 'DELAY_ON_NON_INVIEW', message: `delay is only valid on inView or focus and keyboard connections (trigger="${c.trigger}").` }));
     // hover/pressed must be auto-wired, not hand-written
     const toV = spec.variants.find((x) => x.name === c.to);
     const fromV = spec.variants.find((x) => x.name === c.from);

@@ -20,7 +20,7 @@ import { activeFilePathAtom, isLayoutFile } from '@/code/project/active-file-sto
 import { interactingViewportIdAtom } from '@/code/stores/viewport-store';
 import { isPrimaryViewport, forceCanvasRender } from '@/canvas/node-ops';
 import { projectFS, projectVersionAtom } from '@/code/project/project-fs';
-import { parseConnections, addConnection, removeConnection, type ConnectionTrigger, type Connection } from '@/code/variants/connection-config';
+import { parseConnections, addConnection, removeConnection, updateConnection, type ConnectionTrigger, type Connection } from '@/code/variants/connection-config';
 import { parseVariantConfig } from '@/code/variants/variant-config';
 import { pageVariablesAtom } from '@/code/stores/page-variables-store';
 import { pageInteractionsForSelectedAtom, closeOverlayInteractionsForSelectedAtom, enclosingOverlayForSelectedAtom } from '@/code/stores/page-interactions-store';
@@ -49,6 +49,9 @@ const TRIGGER_OPTIONS = [
   { value: 'clickStart', label: 'Click Start' },
   { value: 'mouseEnter', label: 'Mouse Enter' },
   { value: 'mouseLeave', label: 'Mouse Leave' },
+  { value: 'focusEnter', label: 'Focus Enter' },
+  { value: 'focusLeave', label: 'Focus Leave' },
+  { value: 'escape', label: 'Escape' },
   { value: 'inView', label: 'In View' },
   { value: 'afterDelay', label: 'After Delay' },
 ];
@@ -69,6 +72,9 @@ function formatTrigger(trigger: string): string {
     case 'mouseEnter': return 'Mouse Enter';
     case 'mouseLeave': return 'Mouse Leave';
     case 'inView': return 'In View';
+    case 'focusEnter': return 'Focus Enter';
+    case 'focusLeave': return 'Focus Leave';
+    case 'escape': return 'Escape';
     default: return trigger;
   }
 }
@@ -431,8 +437,8 @@ function ComponentInteractions({ selectedId, isRoot }: { selectedId: string; isR
     requestAnimationFrame(() => forceCanvasRender());
   }, [activeFile, setCode, setVersion]);
   const handleRemove = useCallback((conn: Connection) => { removeConnection(activeFile, conn.from, conn.to, { trigger: conn.trigger, sourceNode: conn.sourceNode ?? null }); refresh(); setEditIdx(null); }, [activeFile, refresh]);
-  const handleAdd = useCallback((trigger: ConnectionTrigger, from: string, to: string, delay: number) => { addConnection(activeFile, from, to, trigger, delay || undefined, selectedId); refresh(); setAddOpen(false); }, [activeFile, refresh, selectedId]);
-  const handleUpdate = useCallback((oldConn: Connection, t: ConnectionTrigger, f: string, to: string, d: number) => { removeConnection(activeFile, oldConn.from, oldConn.to, { trigger: oldConn.trigger, sourceNode: oldConn.sourceNode ?? null }); addConnection(activeFile, f, to, t, d || undefined, oldConn.sourceNode ?? selectedId); refresh(); }, [activeFile, refresh, selectedId]);
+  const handleAdd = useCallback((trigger: ConnectionTrigger, from: string, to: string, delay: number, focusReturnNode: string) => { addConnection(activeFile, from, to, trigger, delay || undefined, selectedId, focusReturnNode || undefined); refresh(); setAddOpen(false); }, [activeFile, refresh, selectedId]);
+  const handleUpdate = useCallback((oldConn: Connection, trigger: ConnectionTrigger, from: string, to: string, delay: number, focusReturnNode: string) => { updateConnection(activeFile, oldConn, { from, to, trigger, ...(delay ? { delay } : {}), ...(oldConn.sourceNode ? { sourceNode: oldConn.sourceNode } : {}), ...(trigger === 'escape' && focusReturnNode ? { focusReturnNode } : {}) }); refresh(); }, [activeFile, refresh]);
 
   const setFire = useCallback((trigger: EventFireTrigger, eventVar: string, replace?: EventFireTrigger, delay = 0) => {
     if (replace && replace !== trigger) queueMutation({ type: 'removeChildEventFire', childId: selectedId, trigger: replace, variantName: currentVariant });
@@ -543,7 +549,7 @@ function ComponentInteractions({ selectedId, isRoot }: { selectedId: string; isR
         <ToolPopup isOpen onClose={() => setEditIdx(null)} title="Edit Interaction"
           anchorRef={{ current: connRefs.current.get(editIdx) ?? null } as React.RefObject<HTMLElement>} width={240}>
           <EditInteractionForm conn={connections[editIdx]} variants={variantOptions}
-            onUpdate={(t, f, to, d) => { handleUpdate(connections[editIdx!], t, f, to, d); setEditIdx(null); }}
+            onUpdate={(t, f, to, d, focus) => { handleUpdate(connections[editIdx!], t, f, to, d, focus); setEditIdx(null); }}
             onRemove={() => handleRemove(connections[editIdx!])} />
         </ToolPopup>
       )}
@@ -924,24 +930,25 @@ function AddButton({ onClick, buttonRef }: { onClick: () => void; buttonRef: Rea
 function EditInteractionForm({ conn, variants, onUpdate, onRemove }: {
   conn: Connection;
   variants: { value: string; label: string }[];
-  onUpdate: (trigger: ConnectionTrigger, from: string, to: string, delay: number) => void;
+  onUpdate: (trigger: ConnectionTrigger, from: string, to: string, delay: number, focusReturnNode: string) => void;
   onRemove: () => void;
 }) {
   const [trigger, setTrigger] = useState<ConnectionTrigger>(conn.trigger);
   const [from, setFrom] = useState(conn.from);
   const [to, setTo] = useState(conn.to);
   const [delay, setDelay] = useState<number>(conn.delay ?? 0);
+  const [focusReturnNode, setFocusReturnNode] = useState(conn.focusReturnNode ?? '');
 
   // External re-seed (undo/redo while the edit form is open): the parsed
   // connection comes back via `conn` — re-seed so the form doesn't show a
   // pre-undo state. The form only writes on its Update button, so a source
   // change while it's open is always external.
-  const connSig = `${conn.trigger}|${conn.from}|${conn.to}|${conn.delay ?? 0}`;
+  const connSig = `${conn.trigger}|${conn.from}|${conn.to}|${conn.delay ?? 0}|${conn.focusReturnNode ?? ""}`;
   const prevConnSigRef = useRef(connSig);
   useEffect(() => {
     if (connSig === prevConnSigRef.current) return;
     prevConnSigRef.current = connSig;
-    setTrigger(conn.trigger); setFrom(conn.from); setTo(conn.to); setDelay(conn.delay ?? 0);
+    setTrigger(conn.trigger); setFrom(conn.from); setTo(conn.to); setDelay(conn.delay ?? 0); setFocusReturnNode(conn.focusReturnNode ?? '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connSig]);
 
@@ -959,6 +966,7 @@ function EditInteractionForm({ conn, variants, onUpdate, onRemove }: {
       <ToolRow label="Delay">
         <DelayControl value={delay} onChange={setDelay} />
       </ToolRow>
+      {trigger === 'escape' && <ToolRow label="Focus return"><ToolInput value={focusReturnNode} onChange={setFocusReturnNode} /></ToolRow>}
       <div className="flex gap-2">
         <button
           onClick={onRemove}
@@ -967,7 +975,7 @@ function EditInteractionForm({ conn, variants, onUpdate, onRemove }: {
           Remove
         </button>
         <button
-          onClick={() => onUpdate(trigger, from, to, delay)}
+          onClick={() => onUpdate(trigger, from, to, delay, focusReturnNode)}
           disabled={from === to}
           className="flex-1 h-7 flex items-center justify-center text-xs font-medium text-white cut-corners transition-all cursor-pointer hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
           style={{ backgroundColor: 'var(--accent-secondary, #a855f7)' }}
@@ -1019,12 +1027,13 @@ function DelayControl({ value, onChange }: { value: number; onChange: (v: number
 
 function AddInteractionForm({ variants, onAdd }: {
   variants: { value: string; label: string }[];
-  onAdd: (trigger: ConnectionTrigger, from: string, to: string, delay: number) => void;
+  onAdd: (trigger: ConnectionTrigger, from: string, to: string, delay: number, focusReturnNode: string) => void;
 }) {
   const [trigger, setTrigger] = useState<ConnectionTrigger>('click');
   const [from, setFrom] = useState(variants[0]?.value ?? 'default');
   const [to, setTo] = useState(variants[1]?.value ?? variants[0]?.value ?? 'default');
   const [delay, setDelay] = useState<number>(0);
+  const [focusReturnNode, setFocusReturnNode] = useState('');
 
   return (
     <div className="flex flex-col gap-3">
@@ -1040,8 +1049,9 @@ function AddInteractionForm({ variants, onAdd }: {
       <ToolRow label="Delay">
         <DelayControl value={delay} onChange={setDelay} />
       </ToolRow>
+      {trigger === 'escape' && <ToolRow label="Focus return"><ToolInput value={focusReturnNode} onChange={setFocusReturnNode} /></ToolRow>}
       <button
-        onClick={() => onAdd(trigger, from, to, delay)}
+        onClick={() => onAdd(trigger, from, to, delay, focusReturnNode)}
         disabled={from === to}
         className="w-full h-7 flex items-center justify-center text-xs font-medium text-white cut-corners transition-all cursor-pointer hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
         style={{ backgroundColor: 'var(--accent-secondary, #a855f7)' }}

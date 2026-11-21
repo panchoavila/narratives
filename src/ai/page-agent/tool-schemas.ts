@@ -483,7 +483,9 @@ const VARIANT_TOOLS: ToolSchema[] = [
       properties: {
         from: { type: 'string', description: 'Source variant id.' },
         to: { type: 'string', description: 'Target variant id.' },
-        trigger: { type: 'string', description: 'click | clickStart | mouseEnter | mouseLeave | inView' },
+        trigger: { type: 'string', description: 'click | clickStart | mouseEnter | mouseLeave | inView | afterDelay | focusEnter | focusLeave | escape' },
+        delay: { type: 'number', description: 'Optional delay in seconds.' },
+        focusReturnNode: { type: 'string', description: 'For escape: data-id to focus within the triggering element before changing variant.' },
         sourceNode: {
           type: 'string',
           description: 'Optional data-id of the element that triggers the transition (e.g. a tab button). Omit = the component root.',
