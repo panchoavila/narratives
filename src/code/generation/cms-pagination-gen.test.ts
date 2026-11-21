@@ -162,6 +162,10 @@ describe('buildLoadMoreComponentCode — the Load More component master', () => 
     expect(code).toContain("width: 'min-content'");
     expect(code).toContain("height: 'min-content'");
   });
+  it('leaves root placement to the canvas', async () => {
+    const { checkFile } = await import('@/code/oracle/check-file');
+    expect(checkFile(code, { kind:'component' }).map(v => v.code)).not.toContain('COMPONENT_ROOT_POSITION');
+  });
 });
 
 describe('removePaginationInCode', () => {
@@ -315,7 +319,7 @@ export default function Page() {
     const out = setPaginationInCode(upgraded, 'list', { mode: 'loadMore', perPage: 3 });
     expect(out).toContain('__applyListConfig(advisors, listCfgList).slice(0, visList)');
     expect(out).toContain(`<${LOADMORE_COMPONENT_NAME} data-id="loadmore-list"`);
-    expect(out).toContain('visList < advisors.length');           // slug resolved from __applyListConfig
+    expect(out).toContain('visList < (__applyListConfig(advisors, listCfgList)).length'); // count the responsive filtered result
     expect(out).toContain('data-pagination="loadMore:3"');
     parses(out);
   });
@@ -371,7 +375,7 @@ describe('collectPaginationHooks / paginatedContainerIds — moving a list betwe
     const hooks = collectPaginationHooks(inf, 'list');
     expect(hooks[0]).toBe(`const [${VAR}, ${SETTER}] = useState(6);`);
     expect(hooks[1]).toBe(`const ${VAR}Ref = useRef(null);`);
-    expect(hooks[2]).toMatch(/^useEffect\(\(\) => \{[\s\S]*IntersectionObserver[\s\S]*\}, \[\]\);$/);
+    expect(hooks[2]).toMatch(/^useEffect\(\(\) => \{[\s\S]*IntersectionObserver[\s\S]*\}\);$/);
     expect(collectPaginationHooks(PAGE, 'list')).toEqual([]);
   });
   it('finds the paginated containers inside a JSX subtree', () => {
@@ -390,5 +394,32 @@ function Blogs({ style }) {
 }
 export default Blogs;`;
     expect(syncImports(master)).toMatch(/import React, \{ useState \} from 'react';/);
+  });
+});
+
+describe('pagination with nested collections and filtered counts', () => {
+  it('paginates the outer map without changing a nested list limit and uses filtered length', () => {
+    const nested = `import projects from '@/cms/projects.json'; import tags from '@/cms/tags.json';
+export default function Page(){return <div data-id="list">{projects.filter(row => row._status === 'published').map((project, i) => <div data-id="project" key={i}><div data-id="tags">{tags.slice(0, 10).map((tag, j) => <p data-id="tag" key={j}>{tag.name}</p>)}</div></div>)}</div>}`;
+    const on = setPaginationInCode(nested, 'list', { mode:'infinite', perPage:4 });
+    expect(on).toContain("projects.filter(row => row._status === 'published').slice(0, visList).map");
+    expect(on).toContain('tags.slice(0, 10).map');
+    expect(on).toContain("visList < (projects.filter(row => row._status === 'published')).length");
+    expect(on).not.toContain('Math.min(c + 4, projects.length)');
+    parses(on);
+    const off = removePaginationInCode(on, 'list');
+    expect(off).toContain('tags.slice(0, 10).map');
+    expect(off).not.toContain('sentinel-list');
+    parses(off);
+  });
+  it('removes only the selected pagination marker when two lists coexist', () => {
+    const two = `import a from '@/cms/a.json'; import b from '@/cms/b.json';
+export default function Page(){return <div data-id="root"><div data-id="first">{a.map(row => <p data-id="a-row">{row.name}</p>)}</div><div data-id="second">{b.map(row => <p data-id="b-row">{row.name}</p>)}</div></div>}`;
+    const first = setPaginationInCode(two, 'first', { mode:'loadMore', perPage:2 });
+    const both = setPaginationInCode(first, 'second', { mode:'loadMore', perPage:3 });
+    const onlyFirst = removePaginationInCode(both, 'second');
+    expect(onlyFirst).toMatch(/data-id="first"[^>]*data-pagination="loadMore:2"/);
+    expect(onlyFirst).not.toMatch(/data-id="second"[^>]*data-pagination=/);
+    parses(onlyFirst);
   });
 });

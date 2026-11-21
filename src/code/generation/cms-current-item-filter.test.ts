@@ -144,25 +144,27 @@ describe('F6 — operators offered for currentItem', () => {
   });
 });
 
-describe('F8 — responsive per-viewport JSON cannot carry a currentItem expression', () => {
+describe('F8 — responsive per-viewport filters resolve the current item', () => {
   const viewportOverride = { '768': { sort: [{ field: 'publishedOn', direction: 'desc' as const }] } };
 
-  it('refuses to upgrade when the BASE filter is currentItem (code unchanged, no corruption)', () => {
+  it('passes the detail scope when the BASE filter is currentItem', () => {
     const out = writeResponsiveListConfigInCode(DETAIL, 'desk-list', 'pieces', {
       base: { filterGroup: group(CUR('desk')) },
       viewport: viewportOverride,
       variants: {},
     }, {});
-    expect(out).toBe(DETAIL);
+    expect(out).toContain('__applyListConfig(pieces, listCfgDesklist, { currentItem: item })');
+    expect(readFilters(out).filters[0]).toMatchObject({ valueSource: 'currentItem', valueField: '_id' });
   });
 
-  it('refuses when a per-viewport override carries a currentItem filter', () => {
+  it('retains a currentItem filter in the viewport override', () => {
     const out = writeResponsiveListConfigInCode(DETAIL, 'desk-list', 'pieces', {
       base: {},
       viewport: { '768': { filterGroup: group(CUR('desk')) } },
       variants: {},
     }, {});
-    expect(out).toBe(DETAIL);
+    expect(out).toContain('__applyListConfig(pieces, listCfgDesklist, { currentItem: item })');
+    expect(parseJSXToNodes(out).get('desk-list')!.collectionList!.responsive!['768'].filterGroup!.filters[0]).toMatchObject({ valueSource: 'currentItem', valueField: '_id' });
   });
 
   it('without overrides the base currentItem filter is written inline on the detail page', () => {
@@ -230,10 +232,9 @@ describe('review 1 — an unemittable currentItem filter refuses the write, neve
 describe('review 6 — listConfigRefusal: the guard the AI tool and the writer share', () => {
   const viewportOverride = { '768': { sort: [{ field: 'publishedOn', direction: 'desc' as const }] } };
 
-  it('a base currentItem filter plus a per-viewport override is refused, with a reason', () => {
+  it('a base currentItem filter plus a per-viewport override keeps its scope', () => {
     const reason = listConfigRefusal({ base: { filterGroup: group(CUR('desk')) }, viewport: viewportOverride, variants: {} }, 'item');
-    expect(reason).toMatch(/Current item/);
-    expect(reason).toMatch(/per-viewport|per-variant|breakpoint/);
+    expect(reason).toBeNull();
   });
 
   it('a base currentItem filter with no overrides writes on a detail page (no refusal)', () => {

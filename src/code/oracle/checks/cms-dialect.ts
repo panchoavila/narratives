@@ -236,7 +236,7 @@ const CMS_NAV_LABEL: Record<string, string> = { self: 'Current', prev: 'Previous
  * `<col>.findIndex((i) => i._slug === params?.slug) ∓ 1`) · row (This Row,
  * → the map iterator's `?._slug` for links inside a `.map()`).
  */
-function checkCmsNavDialect(code: string, ast: t.File, v: OracleViolation[], kind: 'page' | 'component' = 'page'): void {
+function checkCmsNavDialect(code: string, ast: t.File, v: OracleViolation[], kind: 'page' | 'component' = 'page', routes?: ReadonlyMap<string, string>): void {
   const norm = (s: string) => s.replace(/\s+/g, '');
   // cms imports: `import products from '@/cms/products.json'` → var → slug map.
   // A page may import more than one collection (e.g. a singleton `site.json`
@@ -385,7 +385,12 @@ function checkCmsNavDialect(code: string, ast: t.File, v: OracleViolation[], kin
       }
 
       // href must equal the canonical generator output for this mode.
-      const expected = cmsNavHrefExpr(effectiveCollection || 'COLLECTION', detailColVar || 'COLLECTION_VAR', mode, itemVar);
+      const fragment = stringAttr(attrs, 'data-cms-nav-fragment') ?? '';
+      if (fragment && !/^[A-Za-z0-9_.:-]+$/.test(fragment)) {
+        v.push({ code: 'CMS_NAV_INVALID_FRAGMENT', tier: 2, line, message: '[CMS nav] The section must be a literal anchor ID using letters, numbers, underscore, hyphen, dot, or colon.' });
+        return;
+      }
+      const expected = cmsNavHrefExpr(effectiveCollection || 'COLLECTION', detailColVar || 'COLLECTION_VAR', mode, itemVar, routes, fragment);
       if (!hrefExpr) {
         v.push({
           code: 'CMS_NAV_HREF_MISMATCH', tier: 2, line,

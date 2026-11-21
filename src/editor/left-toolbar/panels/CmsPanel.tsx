@@ -27,7 +27,8 @@ import {
 import { projectVersionAtom } from '@/code/project/project-fs';
 import { syncUrlToCms } from '@/code/project/active-file-store';
 import type { CollectionSchema, CollectionItem, FieldDefinition } from '@/shared/types';
-import { ToolInput, ToolTextArea, ToolSwitch, ToolSelect, ColorInput, RemoveButton } from '../../controls';
+import RichInlineEditor from '../../ui/RichInlineEditor';
+import { ToolInput, ToolSwitch, ToolSelect, ColorInput, RemoveButton } from '../../controls';
 import Modal from '@/design-system/Modal';
 import { cmsOverlayOpenAtom, activeOverlayCollectionAtom } from './cms/CmsOverlay';
 import { cmsEditorOpenAtom, cmsEditorCollectionAtom } from '@/code/stores/cms-editor-store';
@@ -618,12 +619,10 @@ function FieldControl({ field, value, onChange, allSchemas, allData }: FieldCont
       );
 
     case 'richtext':
-      // Plain multiline string — rich text (HTML) does not resolve in the builder
-      // (text-node bindings render values verbatim). No formatting toolbar.
       return (
         <div className="flex flex-col gap-1">
           <span className="text-[10px] font-bold text-[var(--text-disabled)] uppercase">{field.name}</span>
-          <ToolTextArea value={stringVal} onChange={onChange} rows={8} />
+          <RichInlineEditor mode="document" html={stringVal} label={field.name} onInput={onChange} onCommit={onChange} />
         </div>
       );
 

@@ -34,10 +34,11 @@ import {
   findCollectionChainHead,
   buildFilterExpression,
   unemittableFilterReason,
-  buildSortKeyExpr,
+  buildScopedSortKeyExpr,
   filterRowVar,
 } from './cms-gen';
 import { detailItemVarOf } from '@/code/project/cms-page-meta';
+import { getEnclosingMapIteratorForNode } from './cms-map-scope';
 
 // ─── Config model ─────────────────────────────────────────────────────────────
 
@@ -55,28 +56,20 @@ export interface ResponsiveListConfig {
   variants: Record<string, ListConfigDims>;  // variant name → partial
 }
 
-/** True when any dimension (base, per-viewport or per-variant) carries a currentItem
- *  filter. That expression reads the detail page's item, which the JSON config below
- *  cannot carry (`__applyListConfig` interprets plain data only), so such a config is
- *  refused rather than written with a wrong predicate. */
+/** Whether a list config needs the detail item or enclosing row passed at the map site. */
 export function hasCurrentItemFilter(cfg: ResponsiveListConfig): boolean {
   return [cfg.base, ...Object.values(cfg.viewport), ...Object.values(cfg.variants)]
-    .some(d => !!d.filterGroup?.filters.some(f => f.valueSource === 'currentItem'));
+    .some(d => !!d.filterGroup?.filters.some(f => f.valueSource === 'currentItem' || f.valueSource === 'parentItem') || !!d.sort?.some(k => !!k.valueSource));
 }
 
-/** Why the responsive writer would refuse this config on a page whose detail item is
- *  `detailItemVar` (null off a detail page), or null when it writes. Shared by the writer
- *  and the AI tool, so a refused write is reported as a failure, never as success.
- *  - upgraded (any per-viewport/variant override) + any currentItem → refused (JSON can't carry it);
- *  - inline (no overrides): the base filter is emitted into the chain, so any condition
- *    the generator cannot emit refuses the write. */
-export function listConfigRefusal(cfg: ResponsiveListConfig, detailItemVar: string | null): string | null {
-  if (hasResponsiveOverrides(cfg)) {
-    return hasCurrentItemFilter(cfg)
-      ? 'a "Current item" filter cannot be set per breakpoint or per variant; set it on the base list'
-      : null;
+/** Refuse any base or responsive condition whose scope or operator is unavailable. */
+export function listConfigRefusal(cfg: ResponsiveListConfig, detailItemVar: string | null, parentItemVar: string | null = null): string | null {
+  for (const dims of [cfg.base, ...Object.values(cfg.viewport), ...Object.values(cfg.variants)]) {
+    const reason = dims.filterGroup && unemittableFilterReason(dims.filterGroup, detailItemVar, parentItemVar);
+    if (reason) return reason;
+    if (dims.sort?.some(k => !buildScopedSortKeyExpr(k, detailItemVar, parentItemVar))) return 'Reference order requires a valid in-scope item and field';
   }
-  return cfg.base.filterGroup ? unemittableFilterReason(cfg.base.filterGroup, detailItemVar) : null;
+  return null;
 }
 
 /** True when the config has any NON-EMPTY per-viewport or per-variant override
@@ -143,19 +136,21 @@ function useResponsiveListConfig(base, vpOverrides, vpWidths, variant, variantOv
   if (variant != null && variantOverrides && variantOverrides[variant]) cfg = Object.assign({}, cfg, variantOverrides[variant]);
   return cfg;
 }
-function __matchListFilter(item, fg) {
+function __matchListFilter(item, fg, scope) {
   if (!fg || !fg.filters || !fg.filters.length) return true;
   const DATE = /^\\d{4}-\\d{2}-\\d{2}$/;
   const test = function (f) {
-    const rhs = f.value;
-    const dateCmp = (typeof rhs === 'string' && DATE.test(rhs)) || (Array.isArray(rhs) && ((typeof rhs[0] === 'string' && DATE.test(rhs[0])) || (typeof rhs[1] === 'string' && DATE.test(rhs[1]))));
+    const owner = f.valueSource === 'currentItem' ? scope && scope.currentItem : f.valueSource === 'parentItem' ? scope && scope.parentItem : null;
+    const rhs = f.valueSource === 'currentItem' || f.valueSource === 'parentItem' ? (owner == null ? undefined : owner[f.valueField]) : f.value;
+    const membership = f.operator === 'in' || f.operator === 'not_in' || f.operator === 'array_contains' || f.operator === 'array_not_contains' || f.operator === 'value_in_array' || f.operator === 'value_not_in_array';
+    const dateCmp = !membership && ((typeof rhs === 'string' && DATE.test(rhs)) || (Array.isArray(rhs) && ((typeof rhs[0] === 'string' && DATE.test(rhs[0])) || (typeof rhs[1] === 'string' && DATE.test(rhs[1])))));
     const raw = item[f.field];
     const lhs = dateCmp ? String(raw == null ? '' : raw).slice(0, 10) : raw;
     switch (f.operator) {
       case 'equals': return lhs === rhs;
       case 'not_equals': return lhs !== rhs;
-      case 'contains': return (typeof lhs === 'string' && typeof rhs === 'string') ? lhs.toLowerCase().includes(rhs.toLowerCase()) : (Array.isArray(lhs) ? lhs.includes(rhs) : false);
-      case 'not_contains': return (typeof lhs === 'string' && typeof rhs === 'string') ? !lhs.toLowerCase().includes(rhs.toLowerCase()) : (Array.isArray(lhs) ? !lhs.includes(rhs) : true);
+      case 'contains': return f.valueSource === 'currentItem' || f.valueSource === 'parentItem' ? String(lhs).toLowerCase().includes(String(rhs).toLowerCase()) : (typeof lhs === 'string' && typeof rhs === 'string') ? lhs.toLowerCase().includes(rhs.toLowerCase()) : (Array.isArray(lhs) ? lhs.includes(rhs) : false);
+      case 'not_contains': return f.valueSource === 'currentItem' || f.valueSource === 'parentItem' ? !String(lhs).toLowerCase().includes(String(rhs).toLowerCase()) : (typeof lhs === 'string' && typeof rhs === 'string') ? !lhs.toLowerCase().includes(rhs.toLowerCase()) : (Array.isArray(lhs) ? !lhs.includes(rhs) : true);
       case 'gt': return dateCmp ? String(lhs) > String(rhs) : Number(lhs) > Number(rhs);
       case 'gte': return dateCmp ? String(lhs) >= String(rhs) : Number(lhs) >= Number(rhs);
       case 'lt': return dateCmp ? String(lhs) < String(rhs) : Number(lhs) < Number(rhs);
@@ -163,24 +158,36 @@ function __matchListFilter(item, fg) {
       case 'between': { const lo = Array.isArray(rhs) ? rhs[0] : rhs, hi = Array.isArray(rhs) ? rhs[1] : rhs; return dateCmp ? (lhs >= String(lo) && lhs <= String(hi)) : (Number(lhs) >= Number(lo) && Number(lhs) <= Number(hi)); }
       case 'in': return Array.isArray(rhs) && rhs.includes(lhs);
       case 'not_in': return !(Array.isArray(rhs) && rhs.includes(lhs));
-      case 'exists': { const p = lhs !== undefined && lhs !== null && lhs !== ''; return rhs === false ? !p : p; }
+      case 'array_contains': return Array.isArray(lhs) && lhs.includes(rhs);
+      case 'array_not_contains': return !Array.isArray(lhs) || !lhs.includes(rhs);
+      case 'value_in_array': return Array.isArray(rhs) && rhs.includes(lhs);
+      case 'value_not_in_array': return !Array.isArray(rhs) || !rhs.includes(lhs);
+      case 'exists': { const p = Array.isArray(lhs) ? lhs.length > 0 : lhs !== undefined && lhs !== null && lhs !== ''; return rhs === false ? !p : p; }
       default: return true;
     }
   };
   return fg.combinator === 'or' ? fg.filters.some(test) : fg.filters.every(test);
 }
-function __cmpListSort(a, b, keys) {
+function __cmpListSort(a, b, keys, scope) {
   for (let i = 0; i < keys.length; i++) {
-    const k = keys[i], av = a[k.field], bv = b[k.field];
+    const k = keys[i], owner = k.valueSource === 'currentItem' ? scope && scope.currentItem : k.valueSource === 'parentItem' ? scope && scope.parentItem : null;
+    const order = owner && owner[k.valueField];
+    if (k.valueSource && !Array.isArray(order)) continue;
+    const av = k.valueSource ? order.indexOf(a[k.field]) : a[k.field], bv = k.valueSource ? order.indexOf(b[k.field]) : b[k.field];
+    if (!k.valueSource && k.collation) {
+      const compared = String(av == null ? '' : av).localeCompare(String(bv == null ? '' : bv), k.collation.locale, { sensitivity: k.collation.sensitivity });
+      if (compared) return k.direction === 'desc' ? -compared : compared;
+      continue;
+    }
     if (av > bv) return k.direction === 'desc' ? -1 : 1;
     if (av < bv) return k.direction === 'desc' ? 1 : -1;
   }
   return 0;
 }
-function __applyListConfig(arr, cfg) {
+function __applyListConfig(arr, cfg, scope) {
   let out = arr;
-  if (cfg && cfg.filter) out = out.filter(function (it) { return __matchListFilter(it, cfg.filter); });
-  if (cfg && cfg.sort && cfg.sort.length) out = out.slice().sort(function (a, b) { return __cmpListSort(a, b, cfg.sort); });
+  if (cfg && cfg.filter) out = out.filter(function (it) { return __matchListFilter(it, cfg.filter, scope); });
+  if (cfg && cfg.sort && cfg.sort.length) out = out.slice().sort(function (a, b) { return __cmpListSort(a, b, cfg.sort, scope); });
   return out;
 }
 `.trim();
@@ -202,6 +209,51 @@ export function ensureResponsiveListHooks(code: string): string {
     const out = exportIdx >= 0 ? code.slice(0, exportIdx) + block + code.slice(exportIdx) : code + block;
     trace.action('cms-responsive:hooks-inserted', {});
     return out;
+  }
+  // Upgrade prior editor-owned presence predicates to treat an empty reference array as empty.
+  const presenceBlock = code.match(new RegExp(`${HOOK_BEGIN}[\\s\\S]*?${HOOK_END}`))?.[0];
+  const oldPresence = "case 'exists': { const p = lhs !== undefined && lhs !== null && lhs !== ''; return rhs === false ? !p : p; }";
+  const newPresence = "case 'exists': { const p = Array.isArray(lhs) ? lhs.length > 0 : lhs !== undefined && lhs !== null && lhs !== ''; return rhs === false ? !p : p; }";
+  if (used && presenceBlock?.includes(oldPresence)) return code.replace(presenceBlock, presenceBlock.replace(oldPresence, newPresence));
+  // Upgrade older editor-owned list sort interpreters before writing a scoped order.
+  const oldSortBlock = code.match(new RegExp(`${HOOK_BEGIN}[\\s\\S]*?${HOOK_END}`))?.[0];
+  if (used && oldSortBlock && oldSortBlock.includes('function __cmpListSort(a, b, keys)')) {
+    const old = `function __cmpListSort(a, b, keys) {
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i], av = a[k.field], bv = b[k.field];`;
+    const next = `function __cmpListSort(a, b, keys, scope) {
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i], owner = k.valueSource === 'currentItem' ? scope && scope.currentItem : k.valueSource === 'parentItem' ? scope && scope.parentItem : null;
+    const order = owner && owner[k.valueField];
+    if (k.valueSource && !Array.isArray(order)) continue;
+    const av = k.valueSource ? order.indexOf(a[k.field]) : a[k.field], bv = k.valueSource ? order.indexOf(b[k.field]) : b[k.field];`;
+    if (oldSortBlock.includes(old)) return code.replace(oldSortBlock, oldSortBlock.replace(old, next).replace('__cmpListSort(a, b, cfg.sort);', '__cmpListSort(a, b, cfg.sort, scope);'));
+  }
+  // Upgrade the editor-owned interpreter in older pages without replacing the
+  // rest of their generated block or silently leaving new ID operators inert.
+  const ownedBlock = code.match(new RegExp(`${HOOK_BEGIN}[\\s\\S]*?${HOOK_END}`))?.[0];
+  if (used && ownedBlock && !ownedBlock.includes("case 'array_contains':")) {
+    const marker = "      case 'exists': { const p = Array.isArray(lhs) ? lhs.length > 0 : lhs !== undefined && lhs !== null && lhs !== ''; return rhs === false ? !p : p; }";
+    if (ownedBlock.includes(marker)) {
+      let updated = ownedBlock.replace(marker, `      case 'array_contains': return Array.isArray(lhs) && lhs.includes(rhs);\n      case 'array_not_contains': return !Array.isArray(lhs) || !lhs.includes(rhs);\n      case 'value_in_array': return Array.isArray(rhs) && rhs.includes(lhs);\n      case 'value_not_in_array': return !Array.isArray(rhs) || !rhs.includes(lhs);\n${marker}`);
+      updated = updated.replace("    const dateCmp = (typeof rhs === 'string' && DATE.test(rhs)) || (Array.isArray(rhs) && ((typeof rhs[0] === 'string' && DATE.test(rhs[0])) || (typeof rhs[1] === 'string' && DATE.test(rhs[1]))));", "    const membership = f.operator === 'in' || f.operator === 'not_in' || f.operator === 'array_contains' || f.operator === 'array_not_contains' || f.operator === 'value_in_array' || f.operator === 'value_not_in_array';\n    const dateCmp = !membership && ((typeof rhs === 'string' && DATE.test(rhs)) || (Array.isArray(rhs) && ((typeof rhs[0] === 'string' && DATE.test(rhs[0])) || (typeof rhs[1] === 'string' && DATE.test(rhs[1])))));");
+      return code.replace(ownedBlock, updated);
+    }
+  }
+  if (used && ownedBlock && !ownedBlock.includes('function __matchListFilter(item, fg, scope)')) {
+    let updated = ownedBlock.replace('function __matchListFilter(item, fg) {', 'function __matchListFilter(item, fg, scope) {');
+    updated = updated.replace('    const rhs = f.value;', "    const owner = f.valueSource === 'currentItem' ? scope && scope.currentItem : f.valueSource === 'parentItem' ? scope && scope.parentItem : null;\n    const rhs = f.valueSource === 'currentItem' || f.valueSource === 'parentItem' ? (owner == null ? undefined : owner[f.valueField]) : f.value;");
+    updated = updated.replace('function __applyListConfig(arr, cfg) {', 'function __applyListConfig(arr, cfg, scope) {');
+    updated = updated.replace('__matchListFilter(it, cfg.filter);', '__matchListFilter(it, cfg.filter, scope);');
+    updated = updated.replace("      case 'contains': return (typeof lhs === 'string' && typeof rhs === 'string') ?", "      case 'contains': return f.valueSource === 'currentItem' || f.valueSource === 'parentItem' ? String(lhs).toLowerCase().includes(String(rhs).toLowerCase()) : (typeof lhs === 'string' && typeof rhs === 'string') ?");
+    updated = updated.replace("      case 'not_contains': return (typeof lhs === 'string' && typeof rhs === 'string') ?", "      case 'not_contains': return f.valueSource === 'currentItem' || f.valueSource === 'parentItem' ? !String(lhs).toLowerCase().includes(String(rhs).toLowerCase()) : (typeof lhs === 'string' && typeof rhs === 'string') ?");
+    return code.replace(ownedBlock, updated);
+  }
+  // Preserve existing responsive list blocks while adding locale collation support.
+  if (used && ownedBlock && !ownedBlock.includes('k.collation')) {
+    const before = "    if (av > bv) return k.direction === 'desc' ? -1 : 1;";
+    const after = "    if (!k.valueSource && k.collation) {\n      const compared = String(av == null ? '' : av).localeCompare(String(bv == null ? '' : bv), k.collation.locale, { sensitivity: k.collation.sensitivity });\n      if (compared) return k.direction === 'desc' ? -compared : compared;\n      continue;\n    }\n" + before;
+    if (ownedBlock.includes(before)) return code.replace(ownedBlock, ownedBlock.replace(before, after));
   }
   if (!used && hasDef) {
     const out = code.replace(new RegExp(`\\n?${HOOK_BEGIN}[\\s\\S]*?${HOOK_END}\\n?`), '\n');
@@ -243,17 +295,19 @@ function buildSliceSuffix(opts: WriteListConfigOpts): string {
 /** Inline `.filter(...).sort(...)` for the DOWNGRADE path (no overrides → plain chain).
  *  `detailItemVar` is the page's detail item (null off a detail page): it moves the
  *  filter callback to `row` and lets a currentItem filter emit. */
-function buildInlineFilterSort(base: ListConfigDims, detailItemVar: string | null): string | null {
+function buildInlineFilterSort(base: ListConfigDims, detailItemVar: string | null, parentItemVar: string | null): string | null {
   let s = '';
   if (base.filterGroup && base.filterGroup.filters.length > 0) {
-    const rowVar = filterRowVar(detailItemVar);
-    const expr = buildFilterExpression(base.filterGroup, { rowVar, detailItemVar });
+    const rowVar = filterRowVar(detailItemVar, parentItemVar);
+    const expr = buildFilterExpression(base.filterGroup, { rowVar, detailItemVar, parentItemVar });
     if (expr === null) return null;
     if (expr) s += `.filter(${rowVar} => ${expr})`;
   }
   const keys = base.sort ?? [];
   if (keys.length > 0) {
-    s += `.sort((a, b) => ${keys.map(k => buildSortKeyExpr(k.field, k.direction)).join(' || ')})`;
+    const parts = keys.map(k => buildScopedSortKeyExpr(k, detailItemVar, parentItemVar));
+    if (parts.some(part => part === null)) return null;
+    s += `.sort((a, b) => ${parts.join(' || ')})`;
   }
   return s;
 }
@@ -334,8 +388,9 @@ export function writeResponsiveListConfigInCode(
   trace.fn('cms-responsive:write', { parentId, slug, upgraded: hasResponsiveOverrides(cfg) });
 
   const detailItemVar = detailItemVarOf(code);
+  const parentItemVar = getEnclosingMapIteratorForNode(code, parentId);
   // Refuse, don't corrupt or weaken: the file is left exactly as it was.
-  const refusal = listConfigRefusal(cfg, detailItemVar);
+  const refusal = listConfigRefusal(cfg, detailItemVar, parentItemVar);
   if (refusal) {
     trace.error('cms-responsive:write', { message: refusal, parentId });
     return code;
@@ -370,13 +425,15 @@ export function writeResponsiveListConfigInCode(
   const cfgVar = listConfigVar(parentId);
   const sliceSuffix = buildSliceSuffix(opts);
   const upgraded = hasResponsiveOverrides(cfg);
-  const inline = upgraded ? '' : buildInlineFilterSort(cfg.base, detailItemVar);
+  const inline = upgraded ? '' : buildInlineFilterSort(cfg.base, detailItemVar, parentItemVar);
   if (inline === null) {
     trace.error('cms-responsive:write', { message: 'filter cannot be emitted; list left unchanged', parentId });
     return code;
   }
+  const scope = [detailItemVar ? `currentItem: ${detailItemVar}` : '', parentItemVar ? `parentItem: ${parentItemVar}` : ''].filter(Boolean).join(', ');
+  const scopeArg = hasCurrentItemFilter(cfg) && scope ? `, { ${scope} }` : '';
   const newArrayExpr = upgraded
-    ? `__applyListConfig(${slug}, ${cfgVar})${sliceSuffix}`
+    ? `__applyListConfig(${slug}, ${cfgVar}${scopeArg})${sliceSuffix}`
     : `${slug}${inline}${sliceSuffix}`;
 
   const absStart = closing.contentStart + arrayExprStart;
@@ -386,7 +443,36 @@ export function writeResponsiveListConfigInCode(
   result = upgraded
     ? upsertConfigConst(result, parentId, cfgVar, slug, cfg, opts)
     : removeConfigConst(result, cfgVar);
-  result = ensureResponsiveListHooks(result);
+  // Upgrade every older owned helper in the same mutation; each pass applies at
+  // most one migration. Stop at a fixed point, with a guard against malformed input.
+  for (let i = 0; i < 8; i++) {
+    const next = ensureResponsiveListHooks(result);
+    if (next === result) break;
+    result = next;
+  }
+  const exactMembership = [cfg.base, ...Object.values(cfg.viewport), ...Object.values(cfg.variants)]
+    .some(d => d.filterGroup?.filters.some(f => ['array_contains', 'array_not_contains', 'value_in_array', 'value_not_in_array'].includes(f.operator)));
+  if (upgraded && exactMembership) {
+    const block = result.match(new RegExp(`${HOOK_BEGIN}[\\s\\S]*?${HOOK_END}`))?.[0];
+    if (!block?.includes("case 'array_contains':") || !block.includes('const membership =')) {
+      trace.error('cms-responsive:write', { message: 'cannot upgrade list interpreter for exact membership', parentId });
+      return code;
+    }
+  }
+  const hasCollation = [cfg.base, ...Object.values(cfg.viewport), ...Object.values(cfg.variants)].some(d => d.sort?.some(k => !!k.collation));
+  if (upgraded && hasCollation && !result.match(new RegExp(`${HOOK_BEGIN}[\\s\\S]*?${HOOK_END}`))?.[0].includes('k.collation')) return code;
+  const hasScopedSort = [cfg.base, ...Object.values(cfg.viewport), ...Object.values(cfg.variants)].some(d => d.sort?.some(k => !!k.valueSource));
+  if (upgraded && hasScopedSort) {
+    const block = result.match(new RegExp(`${HOOK_BEGIN}[\\s\\S]*?${HOOK_END}`))?.[0];
+    if (!block?.includes('function __cmpListSort(a, b, keys, scope)') || !block.includes('__cmpListSort(a, b, cfg.sort, scope)')) return code;
+  }
+  if (upgraded && hasCurrentItemFilter(cfg)) {
+    const block = result.match(new RegExp(`${HOOK_BEGIN}[\\s\\S]*?${HOOK_END}`))?.[0];
+    if (!block?.includes('function __matchListFilter(item, fg, scope)') || !block.includes("f.valueSource === 'parentItem' ? String(lhs)")) {
+      trace.error('cms-responsive:write', { message: 'cannot upgrade list interpreter for scoped filters', parentId });
+      return code;
+    }
+  }
 
   trace.action('cms-responsive:write:done', { parentId, slug, upgraded });
   return result;

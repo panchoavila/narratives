@@ -1,12 +1,15 @@
+import { validCmsCollation } from '@/shared/cms-collation';
 // cms-gen.ts — CMS collection code generation.
 // Pure functions: code string in → code string out.
 // Handles collection list creation, field binding/unbinding, and filter/sort/limit config.
 
 import { trace } from '@/shared/debug-trace';
+import { cmsVisibilityPredicate } from '@/code/project/cms-visibility';
 import { escapeJsxText } from '@/code/parsing/rich-text-runs';
 import { findTagClose, findMatchingCloseTagIndex, findStyleObjectEnd, insertAfterLastImportLine } from './generator-utils';
 import type { FilterConfig, FilterGroup, SortConfig } from '@/shared/types';
 import { detailItemVarOf } from '@/code/project/cms-page-meta';
+import { getEnclosingMapIteratorForNode } from './cms-map-scope';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -92,16 +95,20 @@ const isDateVal = (v: any): boolean => typeof v === 'string' && DATE_ONLY_RE.tes
 export interface FilterEmitOpts {
   rowVar?: string;
   detailItemVar?: string | null;
+  parentItemVar?: string | null;
 }
 
 /** The `.filter(...)` callback parameter for a list: `row` on a detail page (so it can't
  *  shadow the detail `item`), `item` everywhere else (today's output, byte for byte). */
-export function filterRowVar(detailItemVar: string | null | undefined): string {
-  return detailItemVar ? 'row' : 'item';
+export function filterRowVar(detailItemVar: string | null | undefined, parentItemVar?: string | null): string {
+  if (!detailItemVar && !parentItemVar) return 'item';
+  let name = 'row';
+  while (name === detailItemVar || name === parentItemVar) name += 'Row';
+  return name;
 }
 
 /** Operators a currentItem filter is emitted for (the panel offers exactly these). */
-const CURRENT_ITEM_OPS: ReadonlySet<FilterConfig['operator']> = new Set(['equals', 'not_equals', 'contains', 'not_contains']);
+const CURRENT_ITEM_OPS: ReadonlySet<FilterConfig['operator']> = new Set(['equals', 'not_equals', 'contains', 'not_contains', 'array_contains', 'array_not_contains', 'value_in_array', 'value_not_in_array']);
 
 /** `item.<field>` for an identifier field, `item["<field>"]` otherwise. */
 function fieldRef(objVar: string, field: string): string {
@@ -112,10 +119,11 @@ function fieldRef(objVar: string, field: string): string {
  *  A currentItem condition needs a detail page, a valueField and an operator the panel
  *  offers. Such a condition is never dropped: dropping one widens the list (or drops an
  *  `or` branch and narrows it), so the whole write is refused instead. */
-export function unemittableFilterReason(fg: FilterGroup, detailItemVar: string | null): string | null {
+export function unemittableFilterReason(fg: FilterGroup, detailItemVar: string | null, parentItemVar: string | null = null): string | null {
   for (const f of fg.filters) {
-    if (f.valueSource !== 'currentItem') continue;
-    if (!detailItemVar) return `"Current item" filter on "${f.field}" needs a detail page`;
+    if (f.valueSource !== 'currentItem' && f.valueSource !== 'parentItem') continue;
+    if (f.valueSource === 'currentItem' && (!detailItemVar || detailItemVar === parentItemVar)) return `"Current item" filter on "${f.field}" needs an unshadowed detail page item`;
+    if (f.valueSource === 'parentItem' && !parentItemVar) return `"Parent item" filter on "${f.field}" needs an enclosing collection`;
     if (!f.valueField) return `"Current item" filter on "${f.field}" has no detail field`;
     if (!CURRENT_ITEM_OPS.has(f.operator)) return `"Current item" filter on "${f.field}" uses unsupported operator "${f.operator}"`;
   }
@@ -137,12 +145,17 @@ function buildCurrentItemCondition(f: FilterConfig, row: string, detail: string)
     case 'not_equals': return `${lhs} !== ${rhs}`;
     case 'contains': return `String(${lhs}).toLowerCase().includes(String(${rhs}).toLowerCase())`;
     case 'not_contains': return `!String(${lhs}).toLowerCase().includes(String(${rhs}).toLowerCase())`;
+    case 'array_contains': return `(Array.isArray(${lhs}) && ${lhs}.includes(${rhs}))`;
+    case 'array_not_contains': return `(!Array.isArray(${lhs}) || !${lhs}.includes(${rhs}))`;
+    case 'value_in_array': return `(Array.isArray(${rhs}) && ${rhs}.includes(${lhs}))`;
+    case 'value_not_in_array': return `(!Array.isArray(${rhs}) || !${rhs}.includes(${lhs}))`;
     default: return null;
   }
 }
 
-function buildFilterCondition(f: FilterConfig, row: string, detail: string | null): string | null {
+function buildFilterCondition(f: FilterConfig, row: string, detail: string | null, parent: string | null): string | null {
   if (f.valueSource === 'currentItem') return detail ? buildCurrentItemCondition(f, row, detail) : null;
+  if (f.valueSource === 'parentItem') return parent ? buildCurrentItemCondition(f, row, parent) : null;
   // Dynamic value (Phase 4) — the predicate reads a page variable (search input /
   // date picker) at runtime, with an empty-guard so a blank input matches all.
   if (f.valueSource === 'searchField' && f.valueVar) {
@@ -152,7 +165,8 @@ function buildFilterCondition(f: FilterConfig, row: string, detail: string | nul
     return `(!${f.valueVar} || ${row}.${f.field} >= ${f.valueVar})`;
   }
   // Date-aware LHS for comparison operators (see DATE_ONLY_RE note above).
-  const dateCmp = isDateVal(f.value) || (Array.isArray(f.value) && (isDateVal(f.value[0]) || isDateVal(f.value[1])));
+  const dateCmp = !['array_contains', 'array_not_contains', 'value_in_array', 'value_not_in_array'].includes(f.operator)
+    && (isDateVal(f.value) || (Array.isArray(f.value) && (isDateVal(f.value[0]) || isDateVal(f.value[1]))));
   const lhs = dateCmp ? `String(${row}.${f.field}).slice(0, 10)` : `${row}.${f.field}`;
   switch (f.operator) {
     case 'equals': return `${lhs} === ${JSON.stringify(f.value)}`;
@@ -167,7 +181,11 @@ function buildFilterCondition(f: FilterConfig, row: string, detail: string | nul
     case 'lte': return `${lhs} <= ${JSON.stringify(f.value)}`;
     case 'in': return `${JSON.stringify(f.value)}.includes(${row}.${f.field})`;
     case 'not_in': return `!${JSON.stringify(f.value)}.includes(${row}.${f.field})`;
-    case 'exists': return `${row}.${f.field} != null`;
+    case 'array_contains': return `(Array.isArray(${lhs}) && ${lhs}.includes(${JSON.stringify(f.value)}))`;
+    case 'array_not_contains': return `(!Array.isArray(${lhs}) || !${lhs}.includes(${JSON.stringify(f.value)}))`;
+    case 'value_in_array': return `(Array.isArray(${JSON.stringify(f.value)}) && ${JSON.stringify(f.value)}.includes(${lhs}))`;
+    case 'value_not_in_array': return `(!Array.isArray(${JSON.stringify(f.value)}) || !${JSON.stringify(f.value)}.includes(${lhs}))`;
+    case 'exists': return cmsVisibilityPredicate(row, { source: 'row', field: f.field, condition: f.value === false ? 'notSet' : 'isSet' });
     case 'between': {
       const [lo, hi] = Array.isArray(f.value) ? f.value : [f.value, f.value];
       return `(${lhs} >= ${JSON.stringify(lo)} && ${lhs} <= ${JSON.stringify(hi)})`;
@@ -180,13 +198,14 @@ function buildFilterCondition(f: FilterConfig, row: string, detail: string | nul
 export function buildFilterExpression(fg: FilterGroup, opts: FilterEmitOpts = {}): string | null {
   const row = opts.rowVar ?? 'item';
   const detail = opts.detailItemVar ?? null;
-  const reason = unemittableFilterReason(fg, detail);
+  const parent = opts.parentItemVar ?? null;
+  const reason = unemittableFilterReason(fg, detail, parent);
   if (reason) {
     trace.error('cms-gen:filter:refused', { reason });
     return null;
   }
   const conditions = fg.filters
-    .map(f => buildFilterCondition(f, row, detail))
+    .map(f => buildFilterCondition(f, row, detail, parent))
     .filter((c): c is string => c !== null);
 
   const joiner = fg.combinator === 'or' ? ' || ' : ' && ';
@@ -198,6 +217,23 @@ export function buildFilterExpression(fg: FilterGroup, opts: FilterEmitOpts = {}
 export function buildSortKeyExpr(field: string, direction: 'asc' | 'desc'): string {
   const [gt, lt] = direction === 'desc' ? ['-1', '1'] : ['1', '-1'];
   return `(a.${field} > b.${field} ? ${gt} : a.${field} < b.${field} ? ${lt} : 0)`;
+}
+
+/** A reference order uses exact IDs; missing arrays leave the existing order unchanged. */
+export function buildScopedSortKeyExpr(sort: SortConfig, detail: string | null, parent: string | null): string | null {
+  if (!sort.valueSource && sort.collation) {
+    if (!/^[$A-Z_a-z][$\w]*$/.test(sort.field) || !validCmsCollation(sort.collation)) return null;
+    const [left, right] = sort.direction === 'desc' ? ['b', 'a'] : ['a', 'b'];
+    return `(String(${left}.${sort.field} ?? '').localeCompare(String(${right}.${sort.field} ?? ''), ${JSON.stringify(sort.collation.locale)}, { sensitivity: ${JSON.stringify(sort.collation.sensitivity)} }))`;
+  }
+  if (!sort.valueSource) return buildSortKeyExpr(sort.field, sort.direction);
+  if (sort.collation) return null;
+  const owner = sort.valueSource === 'currentItem' ? detail : parent;
+  if (sort.valueSource === 'currentItem' && detail === parent) return null;
+  if (!owner || !sort.valueField || !/^[$A-Z_a-z][$\w]*$/.test(sort.valueField) || !/^[$A-Z_a-z][$\w]*$/.test(sort.field) || owner === 'a' || owner === 'b') return null;
+  const array = `${owner}.${sort.valueField}`;
+  const [left, right] = sort.direction === 'desc' ? ['b', 'a'] : ['a', 'b'];
+  return `(Array.isArray(${array}) ? ${array}.indexOf(${left}.${sort.field}) - ${array}.indexOf(${right}.${sort.field}) : 0)`;
 }
 
 export function buildChainCode(
@@ -219,20 +255,22 @@ export function buildChainCode(
   /** The detail item variable when the page is a `@cmsPage` detail page (else null).
    *  Enables currentItem filters and moves the filter callback param to `row`. */
   detailItemVar?: string | null,
+  parentItemVar?: string | null,
 ): string | null {
   let chain = localized ? `localizeRows(${slug}, __activeLocale)` : slug;
 
   if (filterGroup && filterGroup.filters.length > 0) {
-    const rowVar = filterRowVar(detailItemVar);
-    const expr = buildFilterExpression(filterGroup, { rowVar, detailItemVar: detailItemVar ?? null });
+    const rowVar = filterRowVar(detailItemVar, parentItemVar);
+    const expr = buildFilterExpression(filterGroup, { rowVar, detailItemVar: detailItemVar ?? null, parentItemVar: parentItemVar ?? null });
     if (expr === null) return null;   // refused: the caller keeps the code unchanged
     if (expr) chain += `.filter(${rowVar} => ${expr})`;
   }
 
   const sortKeys = Array.isArray(sort) ? sort : sort ? [sort] : [];
   if (sortKeys.length > 0) {
-    const cmp = sortKeys.map(k => buildSortKeyExpr(k.field, k.direction)).join(' || ');
-    chain += `.sort((a, b) => ${cmp})`;
+    const parts = sortKeys.map(k => buildScopedSortKeyExpr(k, detailItemVar ?? null, parentItemVar ?? null));
+    if (parts.some(part => part === null)) return null;
+    chain += `.sort((a, b) => ${parts.join(' || ')})`;
   }
 
   const off = offset && offset > 0 ? offset : 0;
@@ -379,7 +417,7 @@ function bindBackgroundImageFieldInCode(
   itemVar: string,
 ): string {
   const urlValue = `\`url(\${${itemVar}.${fieldId}})\``;
-  let result = setStyleEntryInCode(code, nodeId, 'backgroundImage', urlValue);
+  const result = setStyleEntryInCode(code, nodeId, 'backgroundImage', urlValue);
   return seedBoundImageSizing(result, nodeId);
 }
 
@@ -812,7 +850,7 @@ export function updateCollectionListConfigInCode(
   // Build the new chain
   // Preserve the localized head across a Filter/Sort/Limit edit — dropping it
   // would silently un-translate the list.
-  const newChain = buildChainCode(slug, filterGroup, sort, limit, paginationVar, offset, head.localized, detailItemVarOf(code));
+  const newChain = buildChainCode(slug, filterGroup, sort, limit, paginationVar, offset, head.localized, detailItemVarOf(code), getEnclosingMapIteratorForNode(code, parentId));
   if (newChain === null) {
     trace.error('cms-gen:updateCollectionConfig', { message: 'filter cannot be emitted; list left unchanged', ...{ parentId } });
     return code;

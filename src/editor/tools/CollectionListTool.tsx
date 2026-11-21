@@ -20,7 +20,7 @@ import type { FilterConfig, FilterGroup, SortConfig, CollectionSchema, Paginatio
 import { trace } from '@/shared/debug-trace';
 import FilterControl from './CollectionList/FilterControl';
 import SortControl from './CollectionList/SortControl';
-import { COLLECTION_VALUE_CLS, fieldsForSortFilter, collectionFieldRemap, isNestedInCollectionList } from './CollectionList/cms-filter-utils';
+import { COLLECTION_VALUE_CLS, fieldsForSortFilter, collectionFieldRemap, isNestedInCollectionList, parentCollectionSource } from './CollectionList/cms-filter-utils';
 import PaginationControl from './CollectionList/PaginationControl';
 
 // Mirrors the Animation/Layout tool add-dropdown item styling.
@@ -138,6 +138,7 @@ export default function CollectionListTool() {
       pagination={pagination ?? null}
       collectionSlot={node.attrs?.['data-revyme-collection-slot'] !== undefined}
       nestedInList={isNestedInCollectionList(nodes, node.id)}
+      parentSchema={schemas.get(parentCollectionSource(nodes, node.id) ?? '') ?? null}
     />
   );
 }
@@ -172,9 +173,10 @@ interface InnerProps {
   collectionSlot?: boolean;
   /** This list sits inside another list's template (its row parameter shadows the detail item). */
   nestedInList?: boolean;
+  parentSchema?: CollectionSchema | null;
 }
 
-function CollectionListToolInner({ nodeId, source, schema, schemas, axis, axisKey, variantArg, vpWidths, baseFilterGroup, baseSort, responsive, variantConfigs, initialFilters, initialCombinator, initialSort, initialLimit, initialOffset, pagination, collectionSlot = false, nestedInList = false }: InnerProps) {
+function CollectionListToolInner({ nodeId, source, schema, schemas, axis, axisKey, variantArg, vpWidths, baseFilterGroup, baseSort, responsive, variantConfigs, initialFilters, initialCombinator, initialSort, initialLimit, initialOffset, pagination, collectionSlot = false, nestedInList = false, parentSchema = null }: InnerProps) {
   // Seed local state from the parser's read-back so the panel reflects
   // what's actually in the JSX. Re-mount key in the wrapper resets these
   // when the user switches source — fresh slate per collection.
@@ -417,7 +419,6 @@ function CollectionListToolInner({ nodeId, source, schema, schemas, axis, axisKe
   const sortOverridden = !!activeOverride && 'sort' in activeOverride;
   // A currentItem filter cannot live in the per-viewport/variant JSON config
   // (the writer refuses it), so once the list is in the upgraded shape it is not offered.
-  const isResponsiveUpgraded = (!!responsive && Object.keys(responsive).length > 0) || (!!variantConfigs && Object.keys(variantConfigs).length > 0);
 
   // Reset = drop the dim from the active axis (empty → inherits base) + restore
   // the displayed buffer to base so the popup reflects the revert immediately.
@@ -481,12 +482,17 @@ function CollectionListToolInner({ nodeId, source, schema, schemas, axis, axisKe
         onResetOverride={filterOverridden ? resetFilterOverride : undefined}
         allowDynamic={axis === 'base' && !variantArg}
         onAddSearchField={handleAddSearchField}
-        allowCurrentItem={axis === 'base' && !variantArg && !isResponsiveUpgraded && !nestedInList}
+        allowCurrentItem={!variantArg && !nestedInList}
+        allowParentItem={!variantArg && nestedInList}
+        parentSchema={parentSchema}
       />
 
       {/* Sort — popup with N type-aware sort rules (precedence = order). */}
       <SortControl
         schema={schema}
+        allowCurrentItem={!variantArg && !nestedInList}
+        allowParentItem={!variantArg && nestedInList}
+        parentSchema={parentSchema}
         sort={sort}
         onChange={handleSortChange}
         overridden={sortOverridden}

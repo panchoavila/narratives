@@ -6,10 +6,13 @@
 // `children` (re-rendered fresh) so the active editor never goes stale.
 
 import { useRef, useState } from 'react';
+import { useAtomValue } from 'jotai';
+import { collectionSchemasAtom } from '@/code/stores/cms-store';
+import { cmsPageMetaAtom } from '@/code/stores/cms-page-store';
 import EntryList from '../../controls/EntryList';
 import ToolRow from '../../controls/ToolRow';
 import ToolPopup from '../../ui/ToolPopup';
-import { ToolSelect } from '../../controls';
+import { ToolInput, ToolSelect } from '../../controls';
 import type { SortConfig, CollectionSchema, FieldDefinition } from '@/shared/types';
 import { orderLabels, effectiveFieldType, fieldsForSortFilter, COLLECTION_VALUE_CLS } from './cms-filter-utils';
 import CollectionRowIcon from './CollectionRowIcon';
@@ -19,12 +22,19 @@ interface Props {
   schema: CollectionSchema | null;
   sort: SortConfig[];
   onChange: (sort: SortConfig[]) => void;
+  allowCurrentItem?: boolean;
+  allowParentItem?: boolean;
+  parentSchema?: CollectionSchema | null;
   /** Active per-viewport/variant override on this row → accent label + Reset Override. */
   overridden?: boolean;
   onResetOverride?: () => void;
 }
 
-export default function SortControl({ schema, sort, onChange, overridden, onResetOverride }: Props) {
+export default function SortControl({ schema, sort, onChange, overridden, onResetOverride, allowCurrentItem, allowParentItem, parentSchema }: Props) {
+  const pageMeta = useAtomValue(cmsPageMetaAtom);
+  const schemas = useAtomValue(collectionSchemasAtom);
+  const detailSchema = pageMeta?.kind === 'detail' ? schemas.get(pageMeta.collection) : null;
+  const referenceFields = (source: CollectionSchema | null | undefined) => (source?.fields ?? []).filter(f => f.type === 'multi-reference' && f.referenceCollection === schema?.slug);
   const [open, setOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
   const btnRef = useRef<HTMLElement>(null);
@@ -51,6 +61,8 @@ export default function SortControl({ schema, sort, onChange, overridden, onRese
   };
 
   const active = sort[activeIdx];
+  const currentRefs = allowCurrentItem ? referenceFields(detailSchema) : [];
+  const parentRefs = allowParentItem ? referenceFields(parentSchema) : [];
 
   return (
     <>
@@ -75,19 +87,37 @@ export default function SortControl({ schema, sort, onChange, overridden, onRese
           const inactive = isInactive(active.field);
           return (
           <div className="flex flex-col gap-2">
+            {(currentRefs.length > 0 || parentRefs.length > 0 || !!active.valueSource) && <ToolRow label="Sort by">
+              <ToolSelect value={active.valueSource ?? 'field'} onChange={(v) => {
+                const refs = v === 'currentItem' ? currentRefs : v === 'parentItem' ? parentRefs : [];
+                update(activeIdx, v === 'field' ? { valueSource: undefined, valueField: undefined } : { field: '_id', valueSource: v as 'currentItem' | 'parentItem', valueField: refs[0]?.id, collation: undefined });
+              }} options={[{ value: 'field', label: 'Field' }, ...(currentRefs.length ? [{ value: 'currentItem', label: 'Current item reference order' }] : []), ...(parentRefs.length ? [{ value: 'parentItem', label: 'Parent item reference order' }] : [])]} />
+            </ToolRow>}
+            {active.valueSource && <ToolRow label="Reference">
+              <ToolSelect value={active.valueField ?? ''} onChange={(v) => update(activeIdx, { valueField: v })} options={(active.valueSource === 'currentItem' ? currentRefs : parentRefs).map(f => ({ value: f.id, label: f.name }))} />
+            </ToolRow>}
             <ToolRow label="Field">
               <ToolSelect
                 value={inactive ? '' : active.field}
-                onChange={(v) => { if (v) update(activeIdx, { field: v }); }}
+                onChange={(v) => { if (v) update(activeIdx, { field: v, ...(!['text', 'textarea', 'richtext', 'slug'].includes(effectiveFieldType(fieldDef(v), v) ?? '') ? { collation: undefined } : {}) }); }}
                 options={[...(inactive ? [{ value: '', label: 'Select…' }] : []), ...fields.map(f => ({ value: f.id, label: f.name }))]}
               />
             </ToolRow>
+            {!inactive && !active.valueSource && ['text', 'textarea', 'richtext', 'slug'].includes(effectiveFieldType(fieldDef(active.field), active.field) ?? '') && <>
+              <ToolRow label="Collation">
+                <ToolSelect value={active.collation ? 'locale' : 'default'} onChange={(v) => update(activeIdx, { collation: v === 'locale' ? { locale:'en', sensitivity:'variant' } : undefined })} options={[{ value:'default', label:'Default' }, { value:'locale', label:'Locale' }]} />
+              </ToolRow>
+              {active.collation && <>
+                <ToolRow label="Locale"><ToolInput text value={active.collation.locale} onChange={(locale) => update(activeIdx, { collation: { ...active.collation!, locale } })} /></ToolRow>
+                <ToolRow label="Sensitivity"><ToolSelect value={active.collation.sensitivity} onChange={(sensitivity) => update(activeIdx, { collation: { ...active.collation!, sensitivity: sensitivity as 'base' | 'accent' | 'case' | 'variant' } })} options={[{ value:'base', label:'Base' }, { value:'accent', label:'Accent' }, { value:'case', label:'Case' }, { value:'variant', label:'Variant' }]} /></ToolRow>
+              </>}
+            </>}
             {!inactive && (
               <ToolRow label="Order">
                 <ToolSelect
                   value={active.direction}
                   onChange={(v) => update(activeIdx, { direction: v as 'asc' | 'desc' })}
-                  options={orderLabels(effectiveFieldType(fieldDef(active.field), active.field))}
+                  options={active.valueSource ? [{ value: 'asc', label: 'Reference order' }, { value: 'desc', label: 'Reverse reference order' }] : orderLabels(effectiveFieldType(fieldDef(active.field), active.field))}
                 />
               </ToolRow>
             )}

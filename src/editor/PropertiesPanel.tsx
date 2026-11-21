@@ -42,6 +42,7 @@ import AudioTool from './tools/AudioTool';
 import OverlayTool from './tools/OverlayTool';
 import { overlayCallsAtom } from '@/code/stores/overlay-store';
 import CollectionListTool from './tools/CollectionListTool';
+import CmsVisibilityTool from './tools/CmsVisibilityTool';
 import FormTool from './tools/FormTool';
 import FormStateTool from './tools/FormStateTool';
 import InputTool from './tools/InputTool';
@@ -638,6 +639,8 @@ function PropertiesPanelInner({ isMultiSelect = false }: { isMultiSelect?: boole
             <ToolDivider />
           </>
         )}
+
+        <CmsVisibilityTool />
 
         {/* Collection List (nodes with collectionList) — placed ABOVE Animation
             so the CMS source/filter/sort/pagination controls sit near the top of

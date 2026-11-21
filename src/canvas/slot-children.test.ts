@@ -247,4 +247,9 @@ describe('slot-target eligibility — block the component\'s own hierarchy', () 
     expect(el.props.dangerouslySetInnerHTML).toBeUndefined();
     expect(el.props.children).toBe('just words');
   });
+
+  it('does not pass a source ref identifier into a React ghost', () => {
+    const [element] = buildSlotChildren([{ type: 'div', styles: {}, attrs: { ref: 'var:scrollRef' }, children: [] }]);
+    expect((element as import('react').ReactElement<{ ref?: unknown }>).props.ref).toBeUndefined();
+  });
 });

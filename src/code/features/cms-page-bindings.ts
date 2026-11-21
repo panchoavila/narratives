@@ -17,6 +17,7 @@ import type { CanvasNode } from '../parsing/parser';
 import type { FilterGroup } from '@/shared/types';
 import { formatBoundStyleValue } from './cms-style-format';
 import { resolveCurrentItemFilter } from '@/canvas/renderer/collection-data';
+import { cmsValueIsSet } from '@/shared/cms-visibility';
 import { trace } from '@/shared/debug-trace';
 
 /**
@@ -117,11 +118,28 @@ export function applyDetailPageBindings(
       }
     }
 
+    // Resolve detail-item presence without changing its persistent source binding.
+    if (node.cmsVisibility?.source === 'currentItem') {
+      const present = cmsValueIsSet(item[node.cmsVisibility.field]);
+      const base = cloned ?? node;
+      cloned = { ...base, cmsVisibility: { ...node.cmsVisibility, resolved: node.cmsVisibility.condition === 'isSet' ? present : !present } };
+    }
+
     // currentItem list filters (`row.desk === item._id`) → resolved against this item.
     const cl = node.collectionList;
-    if (cl?.filterGroup && cl.filterGroup.filters.some(f => f.valueSource === 'currentItem')) {
+    const resolveSort = (sort: NonNullable<CanvasNode['collectionList']>['sort']) => sort?.map(key => key.valueSource === 'currentItem' && key.valueField ? { ...key, resolvedOrder: Array.isArray(item[key.valueField]) ? item[key.valueField] as unknown[] : [] } : key);
+    const resolveOverrides = (input: NonNullable<CanvasNode['collectionList']>['responsive']) => input && Object.fromEntries(Object.entries(input).map(([key, value]) => [key, {
+      ...value, ...(value.filterGroup ? { filterGroup: resolveCurrentItemFilters(value.filterGroup, item) } : {}), ...(value.sort ? { sort: resolveSort(value.sort) } : {}),
+    }]));
+    const hasScoped = cl && (cl.sort?.some(s => s.valueSource === 'currentItem') || Object.values(cl.responsive ?? {}).some(v => v.sort?.some(s => s.valueSource === 'currentItem')) || Object.values(cl.variantConfigs ?? {}).some(v => v.sort?.some(s => s.valueSource === 'currentItem')) || cl.filterGroup?.filters.some(f => f.valueSource === 'currentItem')
+      || Object.values(cl.responsive ?? {}).some(v => v.filterGroup?.filters.some(f => f.valueSource === 'currentItem'))
+      || Object.values(cl.variantConfigs ?? {}).some(v => v.filterGroup?.filters.some(f => f.valueSource === 'currentItem')));
+    if (cl && hasScoped) {
       const base = cloned ?? node;
-      cloned = { ...base, collectionList: { ...cl, filterGroup: resolveCurrentItemFilters(cl.filterGroup, item) } };
+      cloned = { ...base, collectionList: { ...cl,
+        filterGroup: cl.filterGroup ? resolveCurrentItemFilters(cl.filterGroup, item) : cl.filterGroup, sort: resolveSort(cl.sort),
+        responsive: resolveOverrides(cl.responsive), variantConfigs: resolveOverrides(cl.variantConfigs),
+      } };
       trace.action('cms-page-bindings:current-item-filter', { nodeId: id });
     }
 

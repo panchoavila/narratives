@@ -8,7 +8,7 @@ import { CDN_HOST_BARE } from '@/shared/hosts';
 import { isTruthy } from '@/code/values/value-eval';
 import { extractImports, resolveImportPath } from '../components/import-resolver';
 import { buildComponentRegistry, type ComponentInfo } from '../components/component-registry';
-import { hasComponentControls } from '../components/controls-parser';
+import { hasComponentControls, componentOwnsCanvasStyle } from '../components/controls-parser';
 import { isIconSetCode } from '../icons/icon-set-template';
 import { parseIconSetConfig } from '../icons/icon-set-config';
 import { parseVariantConfig } from '../variants/variant-config';
@@ -186,6 +186,7 @@ export function parseProjectFile(
           const isLiveCodeComponent = componentCode ? hasComponentControls(componentCode) : false;
           if (isLiveCodeComponent) {
             node.isCodeComponent = true;
+            if (componentCode && componentOwnsCanvasStyle(componentCode)) node.codeStyleOwner = 'component';
             node.componentFile = resolvedPath;
             expanded.add(nodeId);
             expandedAny = true;
@@ -624,7 +625,11 @@ function expandComponent(
   // the outer FAQ's map said 'variant-2' there, the answer is hidden on the ITEM's 'variant-1', and the
   // tablet tile only looked right because both instances happened to name that variant 'variant-1'.
   const ownViewportSwitching = !!respAttr || !!instanceNode.responsiveAttrPropValues?.initialVariant;
-  const fixedChildVariant = !instanceConditional && !ownViewportSwitching && !!responsiveVariantMap;
+  // `initialVariant={initialVariant}` is an identity mapping, not a fixed
+  // choice. The parent's viewport selection flows straight into the child's
+  // same-named variants (a common responsive layout/header shell).
+  const forwardsParentVariant = instanceNode.attrPropRefs?.initialVariant === 'initialVariant';
+  const fixedChildVariant = !instanceConditional && !ownViewportSwitching && !forwardsParentVariant && !!responsiveVariantMap;
 
   // PER-VIEWPORT TEXT props → the child's responsiveTextValues rail. The
   // style-driving props lower via styleVariables below, but a TEXT variable's

@@ -7,6 +7,7 @@
 // DOM Diffing: patches only what changed instead of replaceChildren.
 
 import type { CanvasNode } from '../code/parsing/parser';
+import { cmsValueIsSet } from '@/shared/cms-visibility';
 import { resolveActiveVariant, bandForTile, responsiveVariantForWidth } from './resolve-core';
 import { pinnedResolveWidth, viewportBandPinOps } from './resize/viewport-band-pin-store';
 import { extractStyleCSS } from '../code/parsing/parser';
@@ -17,7 +18,7 @@ import { renderWidth } from '@/shared/types';
 import { resolveOverlayConfig } from '@/code/parsing/overlay-parser';
 import { trace, pauseDOMObserver, resumeDOMObserver } from '@/shared/debug-trace';
 import { jsxStyleToHTML, coerceCssNumberToPx, mergeStyleLayers } from '@/shared/css-utils';
-import { isSvgTag, isTextTag, WRAPPER_ONLY_STYLE_PROPS, isFitSize, isInlineLevelTag } from '@/shared/constants';
+import { isSvgTag, isTextTag, WRAPPER_ONLY_STYLE_PROPS, isFitSize, isInlineLevelTag, codeComponentContainerStyles } from '@/shared/constants';
 import { resolveResponsiveUnits, resolveContainerQueryUnits, canvasFixedAnchor } from '@/shared/responsive-units';
 import { mediaToCanvasContainer } from '@/shared/canvas-band-queries';
 import { hasMotionTransformProp, motionPropsToCSSTransform, MOTION_TRANSFORM_PROPS } from '@/shared/motion-transform';
@@ -1959,6 +1960,35 @@ function applyTickerStamp(el: HTMLElement, node: CanvasNode, vpWidth?: number, v
   }
 }
 
+/** Parent-scoped nested lists must rebuild each ghost with its own parent row. */
+function hasParentScopedNestedList(node: CanvasNode, nodes: Map<string, CanvasNode>): boolean {
+  for (const childId of node.children) {
+    const child = nodes.get(childId);
+    if (!child) continue;
+    const cl = child.collectionList;
+    if (cl && [cl.filterGroup, ...Object.values(cl.responsive ?? {}).map(v => v.filterGroup), ...Object.values(cl.variantConfigs ?? {}).map(v => v.filterGroup)]
+      .some(group => group?.filters.some(f => f.valueSource === 'parentItem'))) return true;
+    if (cl && [cl.sort, ...Object.values(cl.responsive ?? {}).map(v => v.sort), ...Object.values(cl.variantConfigs ?? {}).map(v => v.sort)]
+      .some(sorts => sorts?.some(s => s.valueSource === 'parentItem'))) return true;
+    if (hasParentScopedNestedList(child, nodes)) return true;
+  }
+  return false;
+}
+
+function applyCmsPresence(el: HTMLElement, node: CanvasNode, row: CollectionItem | null | undefined, styles: Record<string, string>): void {
+  const config = node.cmsVisibility;
+  const visible = !config ? true : config.source === 'row' && row
+    ? (config.condition === 'isSet' ? cmsValueIsSet(row[config.field]) : !cmsValueIsSet(row[config.field]))
+    : config.source === 'currentItem' && config.resolved !== undefined ? config.resolved : true;
+  if (!visible) {
+    el.style.display = 'none';
+    el.setAttribute('data-cms-presence-hidden', 'true');
+  } else if (el.hasAttribute('data-cms-presence-hidden')) {
+    el.removeAttribute('data-cms-presence-hidden');
+    el.style.display = styles.display ?? '';
+  }
+}
+
 export function patchElement(
   el: HTMLElement,
   node: CanvasNode,
@@ -2075,7 +2105,14 @@ export function patchElement(
     // resolveVariantProps drops motion-transform props from the inner's style, so
     // only the container rotates here and the inner `animate` springs on the LIVE
     // site (where there is no container).
-    for (const [key, value] of Object.entries(resolvedContainerStyles)) {
+    if (node.codeStyleOwner) {
+      el.setAttribute('data-code-style-owner', node.codeStyleOwner);
+      el.setAttribute('data-code-resolved-styles', JSON.stringify(resolvedContainerStyles));
+    } else {
+      el.removeAttribute('data-code-style-owner');
+      el.removeAttribute('data-code-resolved-styles');
+    }
+    for (const [key, value] of Object.entries(codeComponentContainerStyles(resolvedContainerStyles, node.codeStyleOwner))) {
       const v = (key === 'position' && value === 'fixed') ? 'absolute' : value;
       const cur = key.startsWith('--') ? el.style.getPropertyValue(key) : (el.style as any)[key];
       if (cur !== coerceCssNumberToPx(key, v)) setElStyle(el, key, v);
@@ -2648,7 +2685,7 @@ export function patchElement(
     // Per-tile variant wins over base variantName, then componentVariant — shared resolve-core helper.
     // (`__listVariant ?? undefined` below normalizes the null fallback exactly as the old `?? undefined`.)
     const __listVariant = resolveActiveVariant(node, { vpWidth, variant: variantName });
-    const data = applyChainConfig(rawData as CollectionItem[], node.collectionList, vpWidth, __listVariant ?? undefined);
+    const data = applyChainConfig(rawData as CollectionItem[], node.collectionList, vpWidth, __listVariant ?? undefined, bindingData);
 
     // Template was dragged OUT / removed (`.map(() => null)` → templateIds empty, or
     // its node no longer exists): the list can't render rows. Drop any stale ghosts +
@@ -2666,7 +2703,8 @@ export function patchElement(
     // Check if ghost count matches data — skip rebuild if unchanged
     const existingGhosts = el.querySelectorAll(':scope > [data-collection-ghost]');
     const expectedGhostCount = Math.max(0, data.length - 1);
-    const ghostCountMatch = existingGhosts.length === expectedGhostCount;
+    const templateForScope = allNodes.get(__tplId);
+    const ghostCountMatch = existingGhosts.length === expectedGhostCount && (!templateForScope || !hasParentScopedNestedList(templateForScope, allNodes));
 
     // Also remove empty placeholder if present
     el.querySelectorAll('[data-collection-empty]').forEach(ph => ph.remove());
@@ -2865,6 +2903,7 @@ export function patchElement(
       el.appendChild(placeholder);
     }
   }
+  applyCmsPresence(el, node, bindingData, resolvedStyles as Record<string, string>);
 }
 
 /**
@@ -3363,7 +3402,11 @@ function buildNodeElement(
       ...resolveVariantStyles(node, variantName, vpWidth),
       ...getResponsiveOverridesForNode(node.id, vpWidth),
     };
-    for (const [key, value] of Object.entries(containerStyles)) {
+    if (node.codeStyleOwner) {
+      el.setAttribute('data-code-style-owner', node.codeStyleOwner);
+      el.setAttribute('data-code-resolved-styles', JSON.stringify(containerStyles));
+    }
+    for (const [key, value] of Object.entries(codeComponentContainerStyles(containerStyles, node.codeStyleOwner))) {
       const v = (key === 'position' && value === 'fixed') ? 'absolute' : value;
       setElStyle(el, key, v); // setElStyle handles `--custom-props` (bracket assign no-ops them)
     }
@@ -3374,7 +3417,10 @@ function buildNodeElement(
     // Mousedown for selection
     el.addEventListener('mousedown', (e) => {
       e.stopPropagation();
-      onNodeMouseDown(node.id, e);
+      // Inline children are real editable nodes. Connected slot ghosts omit
+      // this marker and continue selecting their owning component.
+      const inline = (e.target as Element)?.closest?.('[data-revyme-inline-node]');
+      onNodeMouseDown(inline?.getAttribute('data-id') || node.id, e);
     });
     trace.dom('renderer:build-code-component-container', { nodeId: node.id, component: node.type });
     return el; // Skip child rendering — live React will fill this
@@ -3666,7 +3712,7 @@ function buildNodeElement(
     // Per-tile variant wins over base variantName, then componentVariant — shared resolve-core helper.
     // (`__listVariant ?? undefined` below normalizes the null fallback exactly as the old `?? undefined`.)
     const __listVariant = resolveActiveVariant(node, { vpWidth, variant: variantName });
-    const data = applyChainConfig(rawData as CollectionItem[], node.collectionList, vpWidth, __listVariant ?? undefined);
+    const data = applyChainConfig(rawData as CollectionItem[], node.collectionList, vpWidth, __listVariant ?? undefined, bindingData);
     const schema = getCollectionSchema(source);
     const hasLayouts = !!(schema?.layouts && schema.layouts.length > 1);
 
@@ -3681,7 +3727,7 @@ function buildNodeElement(
       // too — otherwise a stale row (e.g. "Marcus Chen") shows on top of the empty
       // placeholder. Patch cycles restore it via `data-collection-empty-hidden`.
       const tplId0 = templateIds['default'] || Object.values(templateIds)[0];
-      const tplEl0 = el.querySelector(`[data-node-id="${idPrefix + tplId0}"]`) as HTMLElement | null;
+      const tplEl0 = el.querySelector(`[data-node-id="${idPrefix + tplId0 + idSuffix}"]`) as HTMLElement | null;
       if (tplEl0) {
         tplEl0.style.display = 'none';
         tplEl0.setAttribute('data-collection-empty-hidden', 'true');
@@ -3724,10 +3770,10 @@ function buildNodeElement(
           // First item: the template is already rendered as a normal child above.
           // Re-render it with binding data so bound fields resolve to item 0's values.
           // Remove the existing template child first, then re-build with binding data.
-          const existingTemplateEl = el.querySelector(`[data-node-id="${idPrefix + templateNode.id}"]`);
+          const existingTemplateEl = el.querySelector(`[data-node-id="${idPrefix + templateNode.id + idSuffix}"]`);
           // Replace in-place to maintain position among siblings
           const templateEl = buildNodeElement(
-            templateNode, nodes, onNodeMouseDown, idPrefix, variantName, bindingItem, '', localeOverrides, vpWidth,
+            templateNode, nodes, onNodeMouseDown, idPrefix, variantName, bindingItem, idSuffix, localeOverrides, vpWidth,
           );
           if (existingTemplateEl) {
             existingTemplateEl.replaceWith(templateEl);
@@ -3740,7 +3786,7 @@ function buildNodeElement(
           });
         } else {
           // Ghost copies — insert right after template/previous ghost
-          const ghostSuffix = `__${i}`;
+          const ghostSuffix = `${idSuffix}__${i}`;
           const ghostEl = buildNodeElement(
             templateNode, nodes, onNodeMouseDown, idPrefix, variantName, bindingItem, ghostSuffix, localeOverrides, vpWidth,
           );
@@ -3791,6 +3837,8 @@ function buildNodeElement(
   // would wipe an earlier insert. Autoplay/loop are forced off in there, so the
   // canvas keeps its frozen-first-frame contract.
   syncBgVideoChild(el, node.bgVideo);
+
+  applyCmsPresence(el, node, bindingData, resolvedStyles as Record<string, string>);
 
   return el;
 }

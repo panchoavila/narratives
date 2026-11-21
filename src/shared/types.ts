@@ -268,7 +268,8 @@ export interface CollectionItem {
 export interface FilterConfig {
   field: string;
   operator: 'equals' | 'not_equals' | 'contains' | 'not_contains'
-          | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'not_in' | 'exists' | 'between';
+          | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'not_in' | 'exists' | 'between'
+          | 'array_contains' | 'array_not_contains' | 'value_in_array' | 'value_not_in_array';
   /** Static value. For `between` it's a `[min, max]` tuple. */
   value: any;
   /** Dynamic value source (Phase 4 — search field / date picker bound to a page
@@ -276,10 +277,10 @@ export interface FilterConfig {
    *  instead of the literal `value`.
    *  'currentItem' (CMS detail pages only): the value is a field of the page's own
    *  detail item — `valueField` names it — e.g. `row.desk === item._id`. */
-  valueSource?: 'static' | 'searchField' | 'dateField' | 'currentItem';
+  valueSource?: 'static' | 'searchField' | 'dateField' | 'currentItem' | 'parentItem';
   /** Page-variable name driving a dynamic filter (when valueSource !== 'static'). */
   valueVar?: string;
-  /** Detail-item field read when valueSource is 'currentItem' (e.g. '_id'). */
+  /** Field of the detail item or immediately enclosing collection row. */
   valueField?: string;
   /** Canvas only: a currentItem filter whose `value` was filled from the previewed detail item.
    *  A field, not an outside mark, so it survives the copy to the canvas iframe. */
@@ -294,6 +295,13 @@ export interface FilterGroup {
 export interface SortConfig {
   field: string;
   direction: 'asc' | 'desc';
+  /** Sort by this field's position in the enclosing row/detail item's reference array. */
+  valueSource?: 'currentItem' | 'parentItem';
+  valueField?: string;
+  /** Optional explicit locale-aware text comparison. */
+  collation?: import('./cms-collation').CmsCollation;
+  /** Canvas-only resolved reference order for a previewed detail item. */
+  resolvedOrder?: unknown[];
 }
 
 /** Pagination config for a collection list. `loadMore` = a button reveals the next

@@ -47,8 +47,7 @@ describe('F2 — hand-written currentItem comparisons on a detail page', () => {
 
   it('when the row parameter is itself named item, item._id is the ROW field (not the detail item)', () => {
     const fg = filtersOf(detailPage('(item) => item.desk === item._id', 'item'));
-    expect(fg!.filters[0].valueSource).toBeUndefined();
-    expect(fg!.filters[0]).toMatchObject({ field: 'desk', operator: 'equals', value: '' });
+    expect(fg).toBeNull();
   });
 
   it('a comparison whose left side is not the row parameter is not a field filter', () => {
@@ -58,9 +57,9 @@ describe('F2 — hand-written currentItem comparisons on a detail page', () => {
 });
 
 describe('F3 — without a detail annotation, `row.desk === item._id` is NOT a currentItem filter', () => {
-  it('keeps today\'s behaviour: a literal-less comparison reads as value ""', () => {
+  it('refuses a literal-less comparison outside an accessible scope', () => {
     const fg = filtersOf(plainPage('(row) => row.desk === item._id'));
-    expect(fg!.filters).toEqual([{ field: 'desk', operator: 'equals', value: '' }]);
+    expect(fg).toBeNull();
   });
 });
 
@@ -126,7 +125,7 @@ describe('review 2 — a list nested in a list whose row parameter is named like
   it('`item` inside the nested filter is the OUTER row: not read as currentItem', () => {
     const fg = parseJSXToNodes(nestedPage('item', '(row) => row.id === item._id')).get('inner-list')!.collectionList!.filterGroup!;
     expect(fg.filters.some(f => f.valueSource === 'currentItem')).toBe(false);
-    expect(fg.filters).toEqual([{ field: 'id', operator: 'equals', value: '' }]);
+    expect(fg.filters).toEqual([{ field: 'id', operator: 'equals', value: '', valueSource: 'parentItem', valueField: '_id' }]);
   });
 
   it('keeps reading currentItem when the outer row parameter has another name', () => {

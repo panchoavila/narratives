@@ -10,6 +10,7 @@ import { trace } from '@/shared/debug-trace';
 import ImageSearchModal from '../../../ui/ImageSearchModal';
 import ToolPopup from '../../../ui/ToolPopup';
 import ColorPicker from '../../../ui/ColorPicker';
+import RichInlineEditor from '../../../ui/RichInlineEditor';
 
 // ─── Shared Input Classes ───────────────────────────────────────────────────
 
@@ -107,19 +108,9 @@ export default function FieldControl({ field, value, onChange }: FieldControlPro
       );
 
     case 'richtext':
-      // Rich text (HTML) does NOT resolve in the builder — a CMS field bound to
-      // a text node ({item.body}) renders its value verbatim, so HTML tags show
-      // as literal characters on the live site. CMS long-text content is a plain
-      // multiline string (no formatting toolbar). See DANGEROUS_INNER_HTML oracle rule.
-      return (
-        <textarea
-          value={value ?? ''}
-          onChange={(e) => handleChange(e.target.value)}
-          placeholder={field.name}
-          rows={8}
-          className={TEXTAREA_BASE}
-        />
-      );
+      return <RichInlineEditor mode="document" html={String(value ?? '')} label={'cms:' + field.id}
+        minHeightClass="min-h-[180px]" fieldAttributes={{ 'data-cms-rich-field': field.id }}
+        onInput={handleChange} onCommit={handleChange} />;
 
     case 'number':
       return (

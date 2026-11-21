@@ -15,8 +15,8 @@ describe('F9 — currentItem panel helpers', () => {
     expect(canOfferCurrentItem(null)).toBe(false);
   });
 
-  it('currentItemOperators offers exactly equals / not equals / contains / does not contain', () => {
-    expect(currentItemOperators().map(o => o.value)).toEqual(['equals', 'not_equals', 'contains', 'not_contains']);
+  it('currentItemOperators includes exact ID membership in either direction', () => {
+    expect(currentItemOperators().map(o => o.value)).toEqual(['equals', 'not_equals', 'contains', 'not_contains', 'array_contains', 'array_not_contains', 'value_in_array', 'value_not_in_array']);
   });
 
   it('currentItemFieldOptions lists _id and _slug of the detail item, then its schema fields', () => {

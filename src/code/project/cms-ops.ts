@@ -32,6 +32,7 @@ import { parseCmsPageMeta } from './cms-page-meta';
 export const FIELD_TYPES: { value: FieldDefinition['type']; label: string }[] = [
   { value: 'text', label: 'Text' },
   { value: 'textarea', label: 'Text Area' },
+  { value: 'richtext', label: 'Rich Text' },
   { value: 'number', label: 'Number' },
   { value: 'boolean', label: 'Boolean' },
   { value: 'date', label: 'Date' },

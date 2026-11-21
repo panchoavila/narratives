@@ -827,6 +827,20 @@ export default function Page() {
     expect(innerRoot!.motionVariants?.['variant-1']).toEqual({ backgroundColor: '#00ff00' });
   });
 
+  it('forwards initialVariant itself through a responsive component shell', () => {
+    const PAGE = `import Outer from '@/components/Outer';
+      export default function Page() { return <div data-id="root"><Outer data-id="hero" data-responsive='{"768":{"initialVariant":"variant-1"},"_bp":[768,1200]}' /></div>; }`;
+    const outer = OUTER_WITH_TERNARY_TSX.replace(
+      `initialVariant={initialVariant === 'variant-1' ? 'variant-2' : 'default'}`,
+      `initialVariant={initialVariant}`,
+    );
+    const fs = new InMemoryProjectFS(new Map([['app/page.tsx', PAGE], ['components/Outer.tsx', outer], ['components/Inner.tsx', INNER_WITH_VARIANTS_TSX]]));
+    const nodes = parseProjectFile('app/page.tsx', fs);
+    const inner = nodes.get('hero:inner:inner-root');
+    expect(inner?.responsiveVariantMap).toEqual({ 768: 'variant-1' });
+    expect(inner?.motionVariants?.['variant-1']).toEqual({ backgroundColor: '#ff0000' });
+  });
+
   it('KEEPS the root motionVariants for a top-level instance with its own data-responsive', () => {
     // A top-level variant-component instance with `data-responsive` switches its
     // OWN variant per viewport via responsiveVariantMap. Its root motionVariants

@@ -180,7 +180,7 @@ export function buildCmsDetailServerWrapper(input: BuildDetailWrapperInput): str
   return `import PageClient from './page.client';
 import ${varName} from '@/cms/${collection}.json';
 
-const seoDefaults = ${defaultsLiteral};
+const seoDefaults = ${defaultsLiteral} as Record<string, string>;
 
 const seoBindings = ${bindingsLiteral};
 
@@ -194,7 +194,7 @@ export async function generateMetadata({ params }) {
     const value = item[field];
     return typeof value === 'string' && value ? value : undefined;
   };
-  const pick = (slot, fallbackSlot) =>
+  const pick = (slot: string, fallbackSlot?: string) =>
     bound(slot) ?? seoDefaults[slot] ?? (fallbackSlot ? bound(fallbackSlot) ?? seoDefaults[fallbackSlot] : undefined) ?? undefined;
 
   const title = pick('title');
@@ -214,7 +214,7 @@ export async function generateMetadata({ params }) {
       card: seoDefaults.twitterCard || undefined,
       title: pick('twitterTitle', 'title'),
       description: pick('twitterDescription', 'description'),
-      image: twitterImage,
+      images: twitterImage ? [twitterImage] : [],
     },
     alternates: { canonical: seoDefaults.canonical || undefined },${robots}
   };

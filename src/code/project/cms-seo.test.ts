@@ -49,7 +49,8 @@ async function runGenerateMetadata(src: string, items: unknown[] | null, slug: s
     // A distinct name: the emitted code declares its own `items`, so reusing
     // that identifier would shadow the injection and throw on its own TDZ.
     .replace(new RegExp(`\\b${importVar}\\b`, 'g'), '__cmsData');
-  const factory = new Function('__cmsData', `${body}\nreturn generateMetadata;`);
+  const executable = ts.transpileModule(body, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
+  const factory = new Function('__cmsData', `${executable}\nreturn generateMetadata;`);
   const fn = factory(items) as (a: { params: unknown }) => Promise<Record<string, any>>;
   // vinext passes params as a THENABLE, matching Next 15 — the emitted code
   // must await it, so hand it a promise rather than a plain object.
@@ -115,7 +116,7 @@ describe('buildCmsDetailServerWrapper', () => {
     expect(meta.openGraph.title).toBe('First Post');
     expect(meta.twitter.title).toBe('First Post');
     // Twitter image falls back to the OG image rather than going blank.
-    expect(meta.twitter.image).toBe('https://cdn/a.png');
+    expect(meta.twitter.images).toEqual(['https://cdn/a.png']);
   });
 
   it('round-trips its bindings and defaults', () => {

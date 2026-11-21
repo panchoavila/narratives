@@ -571,7 +571,8 @@ describe('updateCollectionListConfigInCode', () => {
       { combinator: 'and', filters: [{ field: 'photo', operator: 'exists', value: true }] },
     );
 
-    expect(result).toContain('item.photo != null');
+    expect(result).toContain('Array.isArray(item.photo) ? item.photo.length > 0');
+    expect(result).toContain("item.photo !== undefined && item.photo !== ''");
   });
 
   it('supports desc sort direction (single config also accepted, emits 3-branch)', () => {

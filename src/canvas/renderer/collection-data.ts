@@ -1,5 +1,7 @@
+import { validCmsCollation } from '@/shared/cms-collation';
 // Shared CMS row selection for native lists and collection-backed slots.
 import type { CollectionItem, FilterConfig, FilterGroup, SortConfig } from '@/shared/types';
+import { cmsValueIsSet } from '@/shared/cms-visibility';
 
 // ─── Collection chain config (filter / sort / limit) ───────────────────────
 //
@@ -36,13 +38,17 @@ function evalCurrentItem(item: CollectionItem, filter: FilterConfig): boolean {
     case 'not_equals': return lhs !== rhs;
     case 'contains': return String(lhs).toLowerCase().includes(String(rhs).toLowerCase());
     case 'not_contains': return !String(lhs).toLowerCase().includes(String(rhs).toLowerCase());
+    case 'array_contains': return Array.isArray(lhs) && lhs.includes(rhs);
+    case 'array_not_contains': return !Array.isArray(lhs) || !lhs.includes(rhs);
+    case 'value_in_array': return Array.isArray(rhs) && rhs.includes(lhs);
+    case 'value_not_in_array': return !Array.isArray(rhs) || !rhs.includes(lhs);
     default: return true;
   }
 }
 
 function evalFilter(item: CollectionItem, filter: FilterConfig): boolean {
   const rhs = filter.value;
-  if (filter.valueSource === 'currentItem' && filter.resolvedFromItem === true) return evalCurrentItem(item, filter);
+  if ((filter.valueSource === 'currentItem' || filter.valueSource === 'parentItem') && filter.resolvedFromItem === true) return evalCurrentItem(item, filter);
   // Dynamic-value filters (search field / date picker) have no author-time value on
   // the canvas — pass through so the canvas previews every row (the deployed page
   // applies the real predicate against the live variable). See Phase 4.
@@ -50,7 +56,8 @@ function evalFilter(item: CollectionItem, filter: FilterConfig): boolean {
   // Date-day comparison (mirrors cms-gen): a date-only value compares against the
   // field's "YYYY-MM-DD" prefix so a full ISO timestamp (_createdAt/_updatedAt) or
   // a date-only field both match, and gt/lt/between compare lexically (chronologically).
-  const dateCmp = isDateVal(rhs) || (Array.isArray(rhs) && (isDateVal(rhs[0]) || isDateVal(rhs[1])));
+  const dateCmp = !['in', 'not_in', 'array_contains', 'array_not_contains', 'value_in_array', 'value_not_in_array'].includes(filter.operator)
+    && (isDateVal(rhs) || (Array.isArray(rhs) && (isDateVal(rhs[0]) || isDateVal(rhs[1]))));
   const lhs = dateCmp ? String(item[filter.field] ?? '').slice(0, 10) : item[filter.field];
   switch (filter.operator) {
     case 'between': {
@@ -70,12 +77,18 @@ function evalFilter(item: CollectionItem, filter: FilterConfig): boolean {
       if (typeof lhs === 'string' && typeof rhs === 'string') return !lhs.toLowerCase().includes(rhs.toLowerCase());
       if (Array.isArray(lhs)) return !lhs.includes(rhs);
       return true;
+    case 'in': return Array.isArray(rhs) && rhs.includes(lhs);
+    case 'not_in': return !Array.isArray(rhs) || !rhs.includes(lhs);
+    case 'array_contains': return Array.isArray(lhs) && lhs.includes(rhs);
+    case 'array_not_contains': return !Array.isArray(lhs) || !lhs.includes(rhs);
+    case 'value_in_array': return Array.isArray(rhs) && rhs.includes(lhs);
+    case 'value_not_in_array': return !Array.isArray(rhs) || !rhs.includes(lhs);
     case 'gt': return dateCmp ? String(lhs) > String(rhs) : Number(lhs) > Number(rhs);
     case 'gte': return dateCmp ? String(lhs) >= String(rhs) : Number(lhs) >= Number(rhs);
     case 'lt': return dateCmp ? String(lhs) < String(rhs) : Number(lhs) < Number(rhs);
     case 'lte': return dateCmp ? String(lhs) <= String(rhs) : Number(lhs) <= Number(rhs);
     case 'exists': {
-      const present = lhs !== undefined && lhs !== null && lhs !== '';
+      const present = cmsValueIsSet(lhs);
       return rhs === false ? !present : present;
     }
     default: return true;
@@ -97,6 +110,8 @@ export function applyChainConfig(
   /** Active variant (master artboard / resolved instance variant) — selects the
    *  per-variant override. */
   variantName?: string,
+  /** The row of the immediately enclosing list, if this list is nested. */
+  parentItem?: CollectionItem | null,
 ): CollectionItem[] {
   if (!cfg) return raw;
   let data = raw;
@@ -120,7 +135,9 @@ export function applyChainConfig(
   }
 
   if (filterGroup && filterGroup.filters.length > 0) {
-    const { combinator, filters } = filterGroup;
+    const { combinator } = filterGroup;
+    const filters = filterGroup.filters.map(f => f.valueSource === 'parentItem' && parentItem && f.valueField
+      ? resolveCurrentItemFilter(f, parentItem[f.valueField]) : f);
     data = data.filter(item => combinator === 'or'
       ? filters.some(f => evalFilter(item, f))
       : filters.every(f => evalFilter(item, f)));
@@ -129,11 +146,19 @@ export function applyChainConfig(
   const sortKeys = Array.isArray(sort) ? sort : sort ? [sort] : [];
   if (sortKeys.length > 0) {
     data = [...data].sort((a, b) => {
-      for (const { field, direction } of sortKeys) {
-        const av = a[field];
-        const bv = b[field];
-        if (av === bv) continue;
+      for (const key of sortKeys) {
+        const { field, direction } = key;
+        const order = key.valueSource === 'parentItem' && key.valueField ? parentItem?.[key.valueField] : key.resolvedOrder;
+        if (key.valueSource && !Array.isArray(order)) continue;
+        const av = key.valueSource ? (order as unknown[]).indexOf(a[field]) : a[field];
+        const bv = key.valueSource ? (order as unknown[]).indexOf(b[field]) : b[field];
         const dir = direction === 'desc' ? -1 : 1;
+        if (!key.valueSource && key.collation && validCmsCollation(key.collation)) {
+          const compared = String(av ?? '').localeCompare(String(bv ?? ''), key.collation.locale, { sensitivity: key.collation.sensitivity });
+          if (compared) return compared * dir;
+          continue;
+        }
+        if (av === bv) continue;
         return av > bv ? dir : -dir;
       }
       return 0;

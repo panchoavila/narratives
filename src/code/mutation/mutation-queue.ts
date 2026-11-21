@@ -169,6 +169,8 @@ import { addCloseOverlayInCode, removeCloseOverlayInCode, setCloseOverlayDelayIn
 import type { InteractionTrigger } from '../features/page-interactions';
 import { unbindStyleFromMapInCode, bindPropToMapInCode, unbindPropFromMapInCode, bindToCmsCollectionInCode, unbindFromCmsCollectionInCode, changeCollectionSourceInCode, bindCmsFieldOnDropInCode, bindCmsNavLinkOnDropInCode, setCmsNavHrefInCode, getEnclosingMapIteratorForNode } from '../generation/map-gen';
 import { dormantizeCmsBindings, rehydrateCmsBindings, clearCmsOrphanInCode, healDanglingCanvasNodeBindings, detachCmsSubtreeWithValues } from '../generation/cms-detach-gen';
+import { setCmsVisibilityInCode, reconcileCmsVisibilityMove } from '../generation/cms-visibility-gen';
+import { toast } from 'sonner';
 import { resolveDetailPageRow, resolveCmsRowForNodeInCode } from '../generation/cms-row-resolve';
 import { dormantizeComponentVarBindings, rehydrateComponentVarBindings, clearVarOrphanInCode, isCanvasNode } from '../generation/component-var-detach-gen';
 import { dormantizeTranslationBinding, rehydrateTranslationBinding } from '../generation/i18n-gen';
@@ -443,7 +445,7 @@ export type Mutation =
   /** Update arbitrary HTML attributes (aria-label, role, tabindex, etc.) on any element. Empty string removes the attribute. */
   | { type: 'updateHtmlAttrs'; nodeId: string; attrs: Record<string, string> }
   /** Set/clear a CMS navigation binding on an element — writes an expression-valued `href` resolving the current/adjacent detail item, plus the `data-cms-nav` marker. `mode: 'none'` clears it. */
-  | { type: 'setCmsNavHref'; nodeId: string; mode: 'self' | 'prev' | 'next' | 'row' | 'none'; collection: string; itemVar?: string }
+  | { type: 'setCmsNavHref'; nodeId: string; mode: 'self' | 'prev' | 'next' | 'row' | 'none'; collection: string; itemVar?: string; fragment?: string }
   // Code-component slots — connect/disconnect a canvas node into a
   // component's `slot` control (becomes a real JSX child).
   | { type: 'connectSlot'; componentId: string; canvasNodeId: string }
@@ -538,6 +540,7 @@ export type Mutation =
   | { type: 'bindField'; nodeId: string; property: string; fieldId: string; itemVar: string; fieldType?: string }
   /** Unbind a node's property from a CMS field and set a static value. */
   | { type: 'unbindField'; nodeId: string; property: string; staticValue: string }
+  | { type: 'setCmsVisibility'; nodeId: string; config: import('@/shared/cms-visibility').CmsVisibility | null }
   /** Per-VARIANT CMS text binding on a raw element inside a .map() in a component master:
    *  rebind that variant to `fieldId` (kind:'field'), unbind→literal default (kind:'literal'),
    *  or clear the variant override (kind:'clear'). Other variants keep the base binding. */
@@ -2839,6 +2842,13 @@ function applyMutationCore(code: string, mutation: Mutation): string {
           nextCode = stripDataResponsiveInSubtree(nextCode, mutation.nodeId);
         }
         let moved = moveNodeInCode(nextCode, mutation.nodeId, mutation.newParentId, moveStyles, mutation.index, mutation.canvasNode, mutation.sourceVpWidth, mutation.sourceVariant, mutation.insertBeforeId);
+        const presence = reconcileCmsVisibilityMove(code, moved, mutation.nodeId, !!mutation.canvasNode || (!!mutation.newParentId && isCanvasNode(moved, mutation.newParentId)));
+        if (presence.error) {
+          toast.error(presence.error);
+          trace.error('cms-visibility:move-refused', { nodeId: mutation.nodeId, reason: presence.error });
+          return code;
+        }
+        moved = presence.code;
         // CMS prop-binding round-trip (the reference "Missing" parity). Compare the
         // node's map scope before vs after the move:
         //  • LEFT its source map (canvas, or a frame outside the `.map()`) →
@@ -3513,7 +3523,7 @@ function applyMutationCore(code: string, mutation: Mutation): string {
       }
 
       case 'setCmsNavHref':
-        return setCmsNavHrefInCode(code, mutation.nodeId, mutation.mode, mutation.collection, mutation.itemVar);
+        return setCmsNavHrefInCode(code, mutation.nodeId, mutation.mode, mutation.collection, mutation.itemVar, mutation.fragment);
 
       case 'connectSlot':
         return connectSlotInCode(code, mutation.componentId, mutation.canvasNodeId);
@@ -3756,24 +3766,32 @@ function applyMutationCore(code: string, mutation: Mutation): string {
         return bindFieldInCode(code, mutation.nodeId, mutation.property, mutation.fieldId, mutation.itemVar, mutation.fieldType);
       case 'unbindField':
         return unbindFieldInCode(code, mutation.nodeId, mutation.property, mutation.staticValue);
+      case 'setCmsVisibility':
+        return setCmsVisibilityInCode(code, mutation.nodeId, mutation.config);
       case 'setVariantCmsText':
         return setVariantTextBindingInCode(code, mutation.nodeId, mutation.variantName, mutation.override, mutation.itemVar);
       case 'setVariantCmsStyle':
         return setVariantStyleBindingInCode(code, mutation.nodeId, mutation.styleProp, mutation.variantName, mutation.override, mutation.itemVar);
-      case 'updateCollectionConfig':
-        return updateCollectionListConfigInCode(code, mutation.parentId, mutation.filterGroup, mutation.sort, mutation.limit, mutation.offset);
+      case 'updateCollectionConfig': {
+        const marker = readPaginationMarker(code, mutation.parentId);
+        const updated = updateCollectionListConfigInCode(code, mutation.parentId, mutation.filterGroup, mutation.sort, mutation.limit, mutation.offset);
+        return marker && updated !== code ? setPaginationInCode(updated, mutation.parentId, marker) : updated;
+      }
 
       // Responsive (per-viewport / per-variant) list config — re-emits the whole
       // list from the model: upgrades to `__applyListConfig(slug, cfg)` when there
       // are overrides, downgrades to the inline chain when none.
-      case 'setListResponsiveConfig':
-        return writeResponsiveListConfigInCode(code, mutation.parentId, mutation.slug, mutation.config, {
+      case 'setListResponsiveConfig': {
+        const marker = readPaginationMarker(code, mutation.parentId);
+        const updated = writeResponsiveListConfigInCode(code, mutation.parentId, mutation.slug, mutation.config, {
           limit: mutation.limit ?? undefined,
           offset: mutation.offset ?? undefined,
           paginationVar: mutation.paginationVar ?? undefined,
           variantArg: mutation.variantArg,
           vpWidths: mutation.vpWidths,
         });
+        return marker && updated !== code ? setPaginationInCode(updated, mutation.parentId, marker) : updated;
+      }
 
       case 'setPagination':
         // Each mode injects a component instance — make sure its master file

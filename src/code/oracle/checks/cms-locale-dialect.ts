@@ -380,7 +380,31 @@ export function checkCmsMapResolves(
       const key = `${hostId ?? ''}:${line ?? 0}`;
       if (reported.has(key)) return;
 
-      if (hostId && nodes.get(hostId)?.collectionList?.source) return;   // resolved → fine
+      const list = hostId ? nodes.get(hostId)?.collectionList : undefined;
+      if (list?.source) {
+        // A resolved list can still lose its filter: the parser must read the
+        // entire predicate, or the editor would silently widen the list on save.
+        let chain: t.Node = obj;
+        let filterCount = 0;
+        let sortCount = 0;
+        while (t.isCallExpression(chain) && t.isMemberExpression(chain.callee)
+          && t.isIdentifier(chain.callee.property) && ['filter', 'sort', 'slice'].includes(chain.callee.property.name)) {
+          if (chain.callee.property.name === 'filter') filterCount++;
+          if (chain.callee.property.name === 'sort') sortCount++;
+          chain = chain.callee.object;
+        }
+        if (filterCount && (!list.filterGroup || filterCount > 1)) {
+          reported.add(key);
+          v.push({ code: 'CMS_FILTER_UNRESOLVED', tier: 2, line, elementId: hostId ?? undefined,
+            message: `[CMS list] The filter on <${hostId}> cannot be read back as one editable filter group. Use the editor's filter conditions, including guarded exact ID membership, and combine conditions in one .filter() call.` });
+        }
+        if (sortCount && (!list.sort?.length || sortCount > 1)) {
+          reported.add(key);
+          v.push({ code: 'CMS_SORT_UNRESOLVED', tier: 2, line, elementId: hostId ?? undefined,
+            message: `[CMS list] The sort on <${hostId}> cannot be read back as editable sort rules. Use the editor's field or reference-order sorting and combine rules in one .sort() call.` });
+        }
+        return;
+      }
       reported.add(key);
 
       const rooted = [...cmsVars].find((c) => new RegExp(`\\b${c}\\b`).test(headSrc)) ?? '<collection>';

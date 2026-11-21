@@ -26,6 +26,7 @@ import { isComponentFilePath } from '@/code/project/file-path-kind';
 import { getSortedBreakpointWidths } from '@/code/stores/viewport-store';
 import { paginationStateVar } from '@/code/generation/cms-pagination-gen';
 import { listConfigRefusal, type ResponsiveListConfig } from '@/code/generation/cms-responsive-gen';
+import { unemittableFilterReason } from '@/code/generation/cms-gen';
 import { detailItemVarOf } from '@/code/project/cms-page-meta';
 import type { FilterGroup, SortConfig } from '@/shared/types';
 import { cmsEditorCollectionAtom } from '@/code/stores/cms-editor-store';
@@ -40,7 +41,8 @@ function fail(message: string): AgentToolResult {
   return { content: [{ type: 'text', text: JSON.stringify({ error: message }) }], isError: true };
 }
 
-const OPERATORS = ['equals', 'not_equals', 'contains', 'not_contains', 'gt', 'gte', 'lt', 'lte', 'in', 'not_in', 'exists', 'between'] as const;
+const OPERATORS = ['equals', 'not_equals', 'contains', 'not_contains', 'gt', 'gte', 'lt', 'lte', 'in', 'not_in', 'exists', 'between', 'array_contains', 'array_not_contains', 'value_in_array', 'value_not_in_array'] as const;
+type ToolFilter = { field: string; operator: (typeof OPERATORS)[number]; value?: unknown; valueSource?: 'currentItem' | 'parentItem'; valueField?: string };
 
 /** The collection a `.map()` reads, by the identifier at the head of its source. */
 function collectionOfMap(code: string, nodeId: string): { slug: string; itemVar: string } | null {
@@ -59,6 +61,15 @@ function listContainerFor(ctx: ToolContext, nodeId: string): { containerId: stri
   const nodes = getToolNodes(ctx);
   const node = nodes.get(nodeId);
   if (!node) return { error: `No node "${nodeId}" in the active file.` };
+  // Prefer parsed list hosts: an inner host is itself inside the OUTER map,
+  // so looking up its nearest enclosing iterator first selects the wrong list.
+  let host = node;
+  while (host) {
+    if (host.collectionList) return { containerId: host.id, slug: host.collectionList.source, itemVar: host.collectionList.itemVar };
+    const parent = host.parentId ? nodes.get(host.parentId) : undefined;
+    if (!parent) break;
+    host = parent;
+  }
   // A node inside the map → its container is the nearest ancestor whose `.map()` this is.
   const inMap = collectionOfMap(code, nodeId);
   if (inMap) {
@@ -86,11 +97,11 @@ export const setListConfigTool: AgentTool = {
   name: 'set_list_config',
   description:
     'Configure a bound collection LIST — the Collection List panel: which items (filter), in what order (sort), how many (limit / offset). node_id is the list container or any node inside it. ' +
-    'filters: [{field, operator, value}] joined by combinator "and" | "or"; operators equals | not_equals | contains | not_contains | gt | gte | lt | lte | in | not_in | exists | between ([min, max]). ' +
+    'filters: [{field, operator, value, valueSource?, valueField?}] joined by combinator "and" | "or". valueSource currentItem reads the detail item; parentItem reads the enclosing collection row. Use array_contains / value_in_array for exact ID membership. ' +
     'sort: [{field, direction: "asc" | "desc"}] — "newest first" is [{field: "date", direction: "desc"}]. Pass an empty filters list / sort list / limit 0 to clear. Fields are ids (cms_get_collection).',
   inputSchema: {
     node_id: z.string(),
-    filters: z.array(z.object({ field: z.string(), operator: z.enum(OPERATORS), value: z.unknown().optional() })).optional(),
+    filters: z.array(z.object({ field: z.string(), operator: z.enum(OPERATORS), value: z.unknown().optional(), valueSource: z.enum(['currentItem', 'parentItem']).optional(), valueField: z.string().optional() })).optional(),
     combinator: z.enum(['and', 'or']).optional(),
     sort: z.array(z.object({ field: z.string(), direction: z.enum(['asc', 'desc']) })).optional(),
     limit: z.number().optional().describe('max items, 0 = no limit'),
@@ -103,12 +114,15 @@ export const setListConfigTool: AgentTool = {
     if ('error' in list) return fail(list.error);
     if (typeof args.viewport === 'number') return setListConfigOnBreakpoint(args, ctx, list);
     const ids = new Set(fieldIds(list.slug));
-    const filters = (args.filters as { field: string; operator: (typeof OPERATORS)[number]; value?: unknown }[] | undefined);
+    const filters = args.filters as ToolFilter[] | undefined;
     const sort = (args.sort as SortConfig[] | undefined);
     for (const f of [...(filters ?? []), ...(sort ?? [])]) {
       if (!ids.has(f.field) && !f.field.startsWith('_')) return fail(`"${f.field}" is not a field of ${list.slug}. Fields: ${[...ids].join(', ')}.`);
     }
-    const filterGroup: FilterGroup | undefined = filters === undefined ? undefined : { combinator: (args.combinator as 'and' | 'or') ?? 'and', filters: filters.map((f) => ({ field: f.field, operator: f.operator, value: f.value ?? null })) };
+    const filterGroup: FilterGroup | undefined = filters === undefined ? undefined : { combinator: (args.combinator as 'and' | 'or') ?? 'and', filters: filters.map((f) => ({ ...f, value: f.value ?? null })) };
+    const code = getToolCode(ctx);
+    const refusal = filterGroup && unemittableFilterReason(filterGroup, detailItemVarOf(code), getEnclosingMapIteratorForNode(code, list.containerId));
+    if (refusal) return fail(refusal);
     ctx.ensureCheckpoint();
     queueToolMutation(ctx, {
       type: 'updateCollectionConfig', parentId: list.containerId,
@@ -137,13 +151,13 @@ function setListConfigOnBreakpoint(args: Record<string, unknown>, ctx: ToolConte
   const cl = container?.collectionList;
   if (!cl) return fail(`"${list.containerId}" is not a bound list.`);
   const ids = new Set(fieldIds(list.slug));
-  const filters = args.filters as { field: string; operator: (typeof OPERATORS)[number]; value?: unknown }[] | undefined;
+  const filters = args.filters as ToolFilter[] | undefined;
   const sort = args.sort as SortConfig[] | undefined;
   for (const f of [...(filters ?? []), ...(sort ?? [])]) {
     if (!ids.has(f.field) && !f.field.startsWith('_')) return fail(`"${f.field}" is not a field of ${list.slug}. Fields: ${[...ids].join(', ')}.`);
   }
   const partial: { filterGroup?: FilterGroup | null; sort?: SortConfig[] | null } = { ...(cl.responsive?.[String(width)] ?? {}) };
-  if (filters !== undefined) partial.filterGroup = filters.length ? { combinator: (args.combinator as 'and' | 'or') ?? 'and', filters: filters.map((f) => ({ field: f.field, operator: f.operator, value: f.value ?? null })) } : null;
+  if (filters !== undefined) partial.filterGroup = filters.length ? { combinator: (args.combinator as 'and' | 'or') ?? 'and', filters: filters.map((f) => ({ ...f, value: f.value ?? null })) } : null;
   if (sort !== undefined) partial.sort = sort.length ? sort : null;
   const clean = (d: { filterGroup?: FilterGroup | null; sort?: SortConfig[] | null }) => {
     const out: { filterGroup?: FilterGroup; sort?: SortConfig[] } = {};
@@ -160,7 +174,8 @@ function setListConfigOnBreakpoint(args: Record<string, unknown>, ctx: ToolConte
   const config: ResponsiveListConfig = { base: { filterGroup: cl.filterGroup ?? null, sort: cl.sort ?? [] }, viewport, variants };
   // The writer refuses this config silently (the file stays as it was); report it instead
   // of returning ok for a change that did not land.
-  const refusal = listConfigRefusal(config, detailItemVarOf(getToolCode(ctx)));
+  const code = getToolCode(ctx);
+  const refusal = listConfigRefusal(config, detailItemVarOf(code), getEnclosingMapIteratorForNode(code, list.containerId));
   if (refusal) return fail(`The list was not changed: ${refusal}.`);
   ctx.ensureCheckpoint();
   queueToolMutation(ctx, {

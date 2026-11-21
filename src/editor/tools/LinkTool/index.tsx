@@ -44,6 +44,7 @@ import LinkParamsControl from './LinkParamsControl';
 import { parseRelTokens, isUserRelToken } from './link-rel-utils';
 import LinkSlugControl, { type CmsNavMode, type SlugVariantContext } from './LinkSlugControl';
 import { expediteStableAtomSync } from '@/canvas/hooks/useStableAtomSync';
+import { currentCmsDetailRoutes } from '@/code/project/cms-detail-route';
 
 /** Slugify an anchor name. NOT cms-ops' slugify: this one hyphenates punctuation ('a.b' -> 'a-b', cms-ops deletes it) and has no 'untitled' fallback — ids/tokens generated here must stay stable. Do not merge (phase-9 9.1c). */
 function slugify(str: string): string {
@@ -111,6 +112,7 @@ export default function LinkTool() {
   const cmsPageMeta = useAtomValue(cmsPageMetaAtom);
   const isDetailPage = cmsPageMeta?.kind === 'detail';
   const navMode = (node?.attrs?.['data-cms-nav'] as CmsNavMode) || 'none';
+  const cmsFragment = node?.attrs?.['data-cms-nav-fragment'] || '';
 
   // Detect a CMS-backed map ancestor. Walks up from the selected node
   // looking for a wrapper whose `collectionList.source` is the collection slug.
@@ -136,7 +138,8 @@ export default function LinkTool() {
   // inside a "related posts" inline map should still navigate via
   // `params.slug`, not the row variable). Falls back to the map's
   // collection otherwise.
-  const slugCollection = cmsPageMeta?.collection ?? cmsMapContext?.collection ?? '';
+  const slugCollection = (navMode === 'row' ? cmsMapContext?.collection : cmsPageMeta?.collection) ?? cmsMapContext?.collection ?? '';
+  const cmsDetailPrefix = currentCmsDetailRoutes().get(slugCollection) ?? `/${slugCollection}/`;
   // Which Set-Variable submenu items to show (Current/Prev/Next vs This Row
   // vs both). See `SlugVariantContext` in LinkSlugControl.tsx.
   const slugVariantContext: SlugVariantContext | null = isDetailPage && cmsMapContext
@@ -485,7 +488,7 @@ export default function LinkTool() {
   // controls don't try to interpret `var:linkHref` as a URL.
   const isExternal = !hrefVar && (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('mailto:'));
   const [pagePart, sectionPart] = isExternal ? [href, ''] : href.split('#');
-  const hasSection = !!sectionPart;
+  const hasSection = !!(sectionPart || cmsFragment);
 
   // Keep tracking id in sync — code-side edits / file switches reset it.
   useEffect(() => { setLocalTracking(trackingId); }, [trackingId]);
@@ -669,6 +672,10 @@ export default function LinkTool() {
 
   const handleSectionChange = useCallback((section: string) => {
     if (!nodeId) return;
+    if (navMode !== 'none' && slugCollection) {
+      queueMutations([{ type: 'setCmsNavHref', nodeId, mode: navMode, collection: slugCollection, itemVar: cmsMapContext?.itemVar, fragment: section }]);
+      return;
+    }
     // Build href: use /#section format so it works from any page
     const base = pagePart || '/';
     const newHref = section ? `${base}#${section}` : base;
@@ -680,7 +687,7 @@ export default function LinkTool() {
       { type: 'updateHtmlAttrs', nodeId, attrs: { href: newHref } },
       { type: 'syncLinkHandler', nodeId },
     ]);
-  }, [nodeId, pagePart]);
+  }, [nodeId, pagePart, navMode, slugCollection, cmsMapContext]);
 
   // CMS slug binding. Picks one of:
   //   - Detail page: Current / Previous / Next → resolve via `params.slug`.
@@ -705,7 +712,7 @@ export default function LinkTool() {
       type: 'setCmsNavHref',
       nodeId,
       mode,
-      collection: slugCollection,
+      collection: mode === 'row' ? (cmsMapContext?.collection ?? slugCollection) : (cmsPageMeta?.collection ?? slugCollection),
       // itemVar is required ONLY for 'row' mode. For other modes the
       // generator ignores it. Pulled off the wrapping map's
       // `collectionList.itemVar` (e.g. 'item', 'post', etc.).
@@ -717,7 +724,7 @@ export default function LinkTool() {
     // to a div (a href-less link crashes SSR). Re-adding a slug re-links it.
     if (mode === 'none') mutations.push(...revertLinkToDivMutations());
     queueMutations(mutations);
-  }, [nodeId, node?.type, isComponentFile, slugCollection, cmsMapContext, revertLinkToDivMutations]);
+  }, [nodeId, node?.type, isComponentFile, slugCollection, cmsMapContext, cmsPageMeta?.collection, revertLinkToDivMutations]);
 
   // Literal CMS item link — a plain string href to one specific item.
   // Works on EITHER a detail page or inside a CMS map — same shape: pick
@@ -884,6 +891,9 @@ export default function LinkTool() {
 
         {/* Section/anchor selector — shows only when a page URL is set
             (and not when the href itself is a variable). */}
+        {navMode !== 'none' && slugCollection && (
+          <LinkSectionControl pageSlug={`${cmsDetailPrefix}[slug]`} value={cmsFragment} onChange={handleSectionChange} />
+        )}
         {!isExternal && href && !hrefVar && navMode === 'none' && (
           <LinkSectionControl
             pageSlug={pagePart || '/'}

@@ -39,6 +39,8 @@ export const COLLECTION_VALUE_CLS = 'grow-0 shrink-0 basis-[61.6%] min-w-0';
  *  `schema.fields` (so they don't show as editable columns) but ARE sortable +
  *  filterable date fields — design-tool parity (Created / Updated). */
 const SYSTEM_SORT_FIELDS: FieldDefinition[] = [
+  { id: '_id', name: 'ID', type: 'text' },
+  { id: '_status', name: 'Publication status', type: 'enum', options: ['published', 'draft'] },
   { id: '_createdAt', name: 'Created', type: 'date' },
   { id: '_updatedAt', name: 'Updated', type: 'date' },
 ];
@@ -77,11 +79,16 @@ export function operatorsForFieldType(type: FieldType | undefined): { value: Fil
         { value: 'exists', label: 'is set' },
       ];
     case 'reference':
+      return [
+        { value: 'equals', label: 'is' },
+        { value: 'not_equals', label: 'is not' },
+        { value: 'exists', label: 'is set' },
+      ];
     case 'multi-reference':
     case 'tags':
       return [
-        { value: 'contains', label: 'contains' },
-        { value: 'not_contains', label: 'does not contain' },
+        { value: 'array_contains', label: 'contains ID' },
+        { value: 'array_not_contains', label: 'does not contain ID' },
         { value: 'exists', label: 'is set' },
       ];
     default: // text, textarea, richtext, slug, link, url, color, image, file
@@ -150,6 +157,22 @@ export function isNestedInCollectionList(
   return false;
 }
 
+/** Nearest enclosing list provides the row available to a nested filter. */
+export function parentCollectionSource(
+  nodes: ReadonlyMap<string, { parentId: string | null; collectionList?: { source: string } | null }>, nodeId: string,
+): string | null {
+  const seen = new Set<string>();
+  let cur = nodes.get(nodeId)?.parentId ?? null;
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    const parent = nodes.get(cur);
+    if (!parent) break;
+    if (parent.collectionList) return parent.collectionList.source;
+    cur = parent.parentId;
+  }
+  return null;
+}
+
 /** Operators a currentItem filter can use — the generator and parser only emit these. */
 export function currentItemOperators(): { value: FilterConfig['operator']; label: string }[] {
   return [
@@ -157,6 +180,10 @@ export function currentItemOperators(): { value: FilterConfig['operator']; label
     { value: 'not_equals', label: 'not equals' },
     { value: 'contains', label: 'contains' },
     { value: 'not_contains', label: 'does not contain' },
+    { value: 'array_contains', label: 'contains ID' },
+    { value: 'array_not_contains', label: 'does not contain ID' },
+    { value: 'value_in_array', label: 'ID is in value' },
+    { value: 'value_not_in_array', label: 'ID is not in value' },
   ];
 }
 
@@ -172,11 +199,13 @@ export function currentItemFieldOptions(detailSchema: CollectionSchema | null): 
 
 const CURRENT_ITEM_SYMBOL: Partial<Record<FilterConfig['operator'], string>> = {
   equals: '=', not_equals: '≠', contains: 'contains', not_contains: 'does not contain',
+  array_contains: 'contains ID', array_not_contains: 'does not contain ID', value_in_array: 'is in', value_not_in_array: 'is not in',
 };
 
 const OP_SUMMARY: Record<FilterConfig['operator'], string> = {
   equals: 'is', not_equals: 'is not', contains: 'contains', not_contains: 'excludes',
   gt: '>', gte: '≥', lt: '<', lte: '≤', in: 'in', not_in: 'not in', exists: 'is set', between: 'between',
+  array_contains: 'contains ID', array_not_contains: 'does not contain ID', value_in_array: 'is in', value_not_in_array: 'is not in',
 };
 
 /** Human-readable one-line summary for a filter row (e.g. "Category is News"). */
@@ -186,6 +215,7 @@ export function filterSummary(f: FilterConfig, fieldName: string): string {
   if (f.valueSource === 'currentItem') {
     return `${fieldName} ${CURRENT_ITEM_SYMBOL[f.operator] ?? f.operator} current item's ${f.valueField ?? '…'}`;
   }
+  if (f.valueSource === 'parentItem') return `${fieldName} ${CURRENT_ITEM_SYMBOL[f.operator] ?? f.operator} parent item's ${f.valueField ?? '…'}`;
   const op = OP_SUMMARY[f.operator] ?? f.operator;
   if (operatorTakesNoValue(f.operator)) return `${fieldName} ${op}`;
   if (f.operator === 'between' && Array.isArray(f.value)) return `${fieldName} ${op} ${f.value[0]}–${f.value[1]}`;

@@ -18,9 +18,11 @@ import {
   findClosingTag,
   COLLECTION_MAP_CALL_RE,
   extractCollectionSlug,
+  extractCollectionSlugSpan,
 } from './cms-gen';
 import { insertConstIntoEnclosingFn, listConfigVar } from './cms-responsive-gen';
 import { ensureTextNodeNowrap } from './label-nowrap';
+import { findMatchingParen } from '../parsing/parse-utils';
 
 export type PaginationMode = 'loadMore' | 'infinite';
 
@@ -58,7 +60,6 @@ const variantConfig = [{ name: 'default', label: 'Load More', x: 0, y: 0, isPrim
 function ${LOADMORE_COMPONENT_NAME}({ style, initialVariant = 'default', onLoadMore, ...rest }: { style?: React.CSSProperties; initialVariant?: string; [key: string]: any; }) {
   return <LayoutGroup>
     <motion.div layout={true} data-id="loadmore-root" {...rest} data-name="Load More" onClick={onLoadMore} style={{
-      position: 'relative',
       width: 'min-content',
       height: 'min-content',
       padding: '10px 20px',
@@ -119,6 +120,29 @@ export function readPaginationMarker(
 }
 const setterFor = (v: string) => 'set' + v.charAt(0).toUpperCase() + v.slice(1);
 
+/** Locate the editor's observer effect by balanced call syntax, not by its
+ * dependency-array spelling (or an inner arrow function's closing `});`). */
+function paginationEffects(code: string, refVar: string): Array<{ start: number; end: number }> {
+  const out: Array<{ start: number; end: number }> = [];
+  const re = /\buseEffect\s*\(/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(code))) {
+    const open = code.indexOf('(', match.index), close = findMatchingParen(code, open);
+    if (close < 0) continue;
+    let end = close + 1;
+    if (code[end] === ';') end++;
+    const call = code.slice(match.index, end);
+    if (call.includes(`${refVar}.current`) && call.includes('IntersectionObserver')) out.push({ start:match.index, end });
+    re.lastIndex = end;
+  }
+  return out;
+}
+function removePaginationEffects(code: string, refVar: string): string {
+  let result = code;
+  for (const span of paginationEffects(code, refVar).reverse()) result = result.slice(0, span.start) + result.slice(span.end);
+  return result;
+}
+
 /** Remove ORPHANED pagination hooks — `useState`/`useRef`/`useEffect` for a
  *  `vis*` state var that is no longer SLICED by any `.map()` chain (i.e. its
  *  collection list was deleted, but its body hooks were left behind). Those
@@ -138,7 +162,7 @@ export function pruneOrphanedPaginationHooks(code: string): string {
     const refVar = stateVar + 'Ref';
     result = result.replace(new RegExp(`\\n?\\s*const \\[${stateVar}, set[A-Za-z0-9]+\\] = useState\\([^)]*\\);`, 'g'), '');
     result = result.replace(new RegExp(`\\n?\\s*const ${refVar} = useRef\\([^)]*\\);`, 'g'), '');
-    result = result.replace(new RegExp(`\\n?\\s*useEffect\\(\\s*\\(\\)\\s*=>\\s*\\{[\\s\\S]*?${refVar}\\.current[\\s\\S]*?\\}\\s*,\\s*\\[\\]\\s*\\);`, 'g'), '');
+    result = removePaginationEffects(result, refVar);
     trace.action('cms-pagination:prune-orphan', { stateVar });
   }
   return result;
@@ -212,7 +236,7 @@ export function buildSpinnerComponentCode(): string {
   return `'use client';
 
 /** @name "Spinner" */
-/* @spinner-gen v4 */
+/** @comment "@spinner-gen v4" */
 import React from 'react';
 import { motion, LayoutGroup } from 'framer-motion';
 import { withResponsiveProps } from '@revyme/runtime';
@@ -222,7 +246,6 @@ const variantConfig = [{ name: 'default', label: 'Spinner', x: 0, y: 0, isPrimar
 function ${SPINNER_COMPONENT_NAME}({ style, initialVariant = 'default', ...rest }: { style?: React.CSSProperties; initialVariant?: string; [key: string]: any; }) {
   return <LayoutGroup>
     <motion.div layout={true} data-id="spinner-root" {...rest} data-name="Spinner" style={{
-      position: 'relative',
       width: '20px',
       height: '20px',
       flex: '0 0 auto',
@@ -230,18 +253,18 @@ function ${SPINNER_COMPONENT_NAME}({ style, initialVariant = 'default', ...rest 
       maskImage: 'radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px))',
       ...style
     }}>
-    <motion.div data-id="spinner-conic" data-name="Conic" animate={{ rotate: 360 }} transition={{ repeat: Infinity, ease: 'linear', duration: 1 }} style={{
+    <motion.div data-id="spinner-conic" data-name="Conic" animate={{ rotate: 360 }} data-loop='{"props":{"rotate":"360"},"transition":{"repeat":"Infinity","ease":"linear","duration":1}}' transition={{ repeat: Infinity, ease: 'linear', duration: 1 }} style={{
         position: 'relative',
         width: '100%',
         height: '100%',
-        borderRadius: '50%',
+        borderRadius: '9999px',
         background: 'conic-gradient(rgba(153, 153, 153, 0) 18deg, #999999 342deg)'
       }}>
       <motion.div layout={true} data-id="spinner-round" data-name="Round" style={{
           position: 'absolute',
-          top: 0,
+          top: '0px',
           left: '50%',
-          transform: 'translateX(-50%)',
+          marginLeft: '-1px',
           width: '2px',
           height: '4px',
           borderRadius: '1px',
@@ -324,21 +347,25 @@ export function setPaginationInCode(
   const stateVar = paginationStateVar(parentId);
   const setter = setterFor(stateVar);
 
-  // 1. slice(0, stateVar) right before .map() — replace an existing slice or insert.
-  let newContent: string;
-  const sliceBeforeMap = /\.slice\(\s*0\s*,\s*[^)]+\)\s*(?=\.map\()/;
-  if (sliceBeforeMap.test(content)) {
-    newContent = content.replace(sliceBeforeMap, `.slice(0, ${stateVar})`);
-  } else {
-    newContent = content.slice(0, mapMatch.index) + `.slice(0, ${stateVar})` + content.slice(mapMatch.index);
-  }
+  // Only inspect the chain immediately BEFORE this map. Looking through the
+  // whole container can replace a nested collection's .slice instead.
+  const sliceBeforeMap = /\.slice\(\s*0\s*,\s*[^)]+\)\s*$/;
+  const prefix = content.slice(0, mapMatch.index).replace(sliceBeforeMap, '');
+  const span = extractCollectionSlugSpan(content, mapMatch.index);
+  if (!span) return code;
+  const applyIdx = content.lastIndexOf('__applyListConfig(', span.slugStart);
+  const sourceStart = applyIdx >= 0 && applyIdx < span.slugStart ? applyIdx : span.slugStart;
+  const filteredSource = prefix.slice(sourceStart).trim();
+  if (!filteredSource) return code;
+  const countSource = filteredSource === slug ? slug : `(${filteredSource})`;
+  let newContent = prefix + `.slice(0, ${stateVar})` + content.slice(mapMatch.index);
 
   // 2. Scaffold appended as the last child of the list container.
   //   loadMore → a <LoadMore> COMPONENT instance whose event prop `onLoadMore`
   //     is the page setter (design-tool parity: a real component, not a raw button);
   //   infinite → an IntersectionObserver sentinel <div>.
   if (mode === 'loadMore') {
-    newContent += `\n      {${stateVar} < ${slug}.length && <${LOADMORE_COMPONENT_NAME} data-id="loadmore-${parentId}" data-pagination-ui="true" onLoadMore={() => ${setter}((c) => c + ${perPage})} />}\n    `;
+    newContent += `\n      {${stateVar} < ${countSource}.length && <${LOADMORE_COMPONENT_NAME} data-id="loadmore-${parentId}" data-pagination-ui="true" onLoadMore={() => ${setter}((c) => c + ${perPage})} />}\n    `;
   } else {
     // Infinite scroll: the sentinel is the IntersectionObserver target AND shows
     // the animated Spinner loader while more rows can load (hidden once exhausted).
@@ -347,7 +374,7 @@ export function setPaginationInCode(
     // (flex column default) — otherwise its full-width box made the spinner's
     // hit-area swallow hovers/clicks across the whole list. Now it hugs the
     // spinner and centres itself.
-    newContent += `\n      {${stateVar} < ${slug}.length && <div ref={${refVar}} data-id="sentinel-${parentId}" data-pagination-ui="true" style={{ display: 'flex', justifyContent: 'center', alignSelf: 'center', padding: '12px' }}><${SPINNER_COMPONENT_NAME} data-id="spinner-${parentId}" /></div>}\n    `;
+    newContent += `\n      {${stateVar} < ${countSource}.length && <div ref={${refVar}} data-id="sentinel-${parentId}" data-pagination-ui="true" style={{ display: 'flex', justifyContent: 'center', alignSelf: 'center', padding: '12px' }}><${SPINNER_COMPONENT_NAME} data-id="spinner-${parentId}" /></div>}\n    `;
   }
 
   let result = working.slice(0, closing.contentStart) + newContent + working.slice(closing.closeTagStart);
@@ -364,7 +391,7 @@ export function setPaginationInCode(
   if (mode === 'infinite') {
     const refVar = stateVar + 'Ref';
     result = ensureHook(result, parentId, `const ${refVar} = useRef(null);`);
-    result = ensureHook(result, parentId, `useEffect(() => { const el = ${refVar}.current; if (!el) return; const io = new IntersectionObserver((entries) => { if (entries[0].isIntersecting) ${setter}((c) => Math.min(c + ${perPage}, ${slug}.length)); }); io.observe(el); return () => io.disconnect(); }, []);`);
+    result = ensureHook(result, parentId, `useEffect(() => { const el = ${refVar}.current; if (!el) return; const io = new IntersectionObserver((entries) => { if (entries[0].isIntersecting) ${setter}((c) => c + ${perPage}); }); io.observe(el); return () => io.disconnect(); });`);
   }
 
   // 5. LoadMore component import LAST (inserts at top → shifts positions, so all
@@ -385,14 +412,19 @@ export function removePaginationInCode(code: string, parentId: string): string {
   const refVar = stateVar + 'Ref';
   let result = code;
 
-  // Strip the data-pagination attr.
-  result = result.replace(new RegExp(`\\s*data-pagination="[^"]*"`), '');
+  // Strip only this list's marker: another list may be paginated in the same file.
+  const listStart = findJSXElementByDataId(result, parentId);
+  const listTagEnd = listStart < 0 ? -1 : findTagClose(result, listStart);
+  if (listTagEnd >= 0) {
+    const tag = result.slice(listStart, listTagEnd);
+    result = result.slice(0, listStart) + tag.replace(/\s*data-pagination="[^"]*"/, '') + result.slice(listTagEnd);
+  }
   // Strip the Load More COMPONENT instance block (`{cond && <LoadMore .../>}`).
-  result = result.replace(new RegExp(`\\s*\\{${stateVar} < \\w+\\.length && <${LOADMORE_COMPONENT_NAME} data-id="loadmore-${parentId}"[\\s\\S]*?/>\\}`), '');
+  result = result.replace(new RegExp(`\\s*\\{${stateVar} < [\\s\\S]*? && <${LOADMORE_COMPONENT_NAME} data-id="loadmore-${parentId}"[\\s\\S]*?/>\\}`), '');
   // (legacy) Strip an old raw-button Load More block, if any remains.
-  result = result.replace(new RegExp(`\\s*\\{${stateVar} < \\w+\\.length && <button data-id="loadmore-${parentId}"[\\s\\S]*?</button>\\}`), '');
+  result = result.replace(new RegExp(`\\s*\\{${stateVar} < [\\s\\S]*? && <button data-id="loadmore-${parentId}"[\\s\\S]*?</button>\\}`), '');
   // Strip the infinite-scroll sentinel+Spinner block (`{cond && <div ref>...<Spinner/></div>}`).
-  result = result.replace(new RegExp(`\\s*\\{${stateVar} < \\w+\\.length && <div ref=\\{${refVar}\\} data-id="sentinel-${parentId}"[\\s\\S]*?</div>\\}`), '');
+  result = result.replace(new RegExp(`\\s*\\{${stateVar} < [\\s\\S]*? && <div ref=\\{${refVar}\\} data-id="sentinel-${parentId}"[\\s\\S]*?</div>\\}`), '');
   // (legacy) Strip an old self-closing sentinel div, if any remains.
   result = result.replace(new RegExp(`\\s*<div ref=\\{${refVar}\\} data-id="sentinel-${parentId}"[^>]*/>`), '');
   // Drop the LoadMore + Spinner imports if no instance of each remains.
@@ -409,7 +441,7 @@ export function removePaginationInCode(code: string, parentId: string): string {
   // `removeHook` left `(N);` residue (babel then simplified it to a stray `N;`).
   result = result.replace(new RegExp(`\\n?\\s*const \\[${stateVar}, ${setter}\\] = useState\\([^)]*\\);`, 'g'), '');
   result = result.replace(new RegExp(`\\n?\\s*const ${refVar} = useRef\\([^)]*\\);`, 'g'), '');
-  result = result.replace(new RegExp(`\\n?\\s*useEffect\\(\\s*\\(\\)\\s*=>\\s*\\{[\\s\\S]*?${refVar}\\.current[\\s\\S]*?\\}\\s*,\\s*\\[\\]\\s*\\);`, 'g'), '');
+  result = removePaginationEffects(result, refVar);
 
   // Heal stray bare-number expression-statements left by the OLD buggy removal
   // (`removeHook` left `(N);` → babel → `N;`, accumulating a `;2;3;3;…` trail).
@@ -460,7 +492,8 @@ export function collectPaginationHooks(code: string, containerId: string): strin
   grab(new RegExp(`const ${listConfigVar(containerId)} = useResponsiveListConfig\\([\\s\\S]*?\\);`));
   grab(new RegExp(`const \\[${stateVar}, ${setter}\\] = useState\\([^)]*\\);`));
   grab(new RegExp(`const ${refVar} = useRef\\([^)]*\\);`));
-  grab(new RegExp(`useEffect\\(\\(\\) => \\{[\\s\\S]*?${refVar}[\\s\\S]*?\\}, \\[\\]\\);`));
+  const effect = paginationEffects(code, refVar)[0];
+  if (effect) hooks.push(code.slice(effect.start, effect.end));
   return hooks;
 }
 
