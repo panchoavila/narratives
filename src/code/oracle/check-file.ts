@@ -21,7 +21,7 @@ import { isSvgTag, isTextTag } from '@/shared/constants';
 import { formattedBranchesOfDangerAttr } from '@/shared/rich-message';
 import { parseJSXToNodes } from '@/code/parsing/parser';
 import { parseComponentCursorCalls } from '@/code/parsing/cursor-parser';
-import { parseCodeComponentDefaultSize, parseComponentControlsMeta, hasComponentControls, CONTROL_TYPES } from '@/code/components/controls-parser';
+import { parseCodeComponentDefaultSize, parseComponentControlsMeta, hasComponentControls, componentOwnsCanvasStyle, CONTROL_TYPES } from '@/code/components/controls-parser';
 import { validateGeneratedCode } from '@/code/mutation/mutation-queue';
 import { traverse, TRANSPARENT_TAGS, jsxTagName, jsxAttrs, stringAttr, hasAttr, needsDataId, isAllowedTextExpression, isCodeComponentSource, booleanPropNames } from './checks/shared';
 import type { FileKind, OracleViolation } from './checks/shared';
@@ -199,6 +199,10 @@ export function checkFile(
     path?: string;
     existingDataIds?: Set<string>;
     schemas?: ReadonlyMap<string, CollectionSchema>;
+    /** Effective collection-to-detail routes derived from page annotations and paths. */
+    cmsRoutes?: ReadonlyMap<string, string>;
+    /** Effective project sources (including pending batch writes), supplied by the caller. */
+    readProjectFile?: (path: string) => string | null | undefined;
   },
 ): OracleViolation[] {
   // A template (LayoutClient.tsx — Next.js layout semantics) is page dialect
@@ -503,6 +507,8 @@ export function checkFile(
   // component INSTANCES (imports precede JSX, so the set is complete before
   // any JSXElement is visited).
   const componentLocalNames = new Set<string>();
+  const inlineCodeComponents = new Set<string>();
+  const styleOwningComponents = new Set<string>();
   // Select caret pairing (Input tool Icon row): every select[data-id="…"]
   // rule in the <style> block must pair with a data-select-icon marker on
   // that element — collected here, cross-checked after the walk.
@@ -516,7 +522,15 @@ export function checkFile(
       const src = path.node.source.value;
       if (/^@\/(components|icons)\//.test(src)) {
         for (const spec of path.node.specifiers) {
-          if (t.isImportDefaultSpecifier(spec)) componentLocalNames.add(spec.local.name);
+          if (t.isImportDefaultSpecifier(spec)) {
+            componentLocalNames.add(spec.local.name);
+            const file = src.slice(2);
+            const source = opts.readProjectFile?.(file) ?? opts.readProjectFile?.(file + '.tsx') ?? opts.readProjectFile?.(file + '.ts');
+            if (source && hasComponentControls(source)) {
+              inlineCodeComponents.add(spec.local.name);
+              if (componentOwnsCanvasStyle(source)) styleOwningComponents.add(spec.local.name);
+            }
+          }
         }
       }
       if (/gsap/i.test(src)) {
@@ -895,7 +909,9 @@ export function checkFile(
       // with /^-?[\d.]+px$/ — right/bottom percentages are invisible to it and
       // get overwritten by the first drag. fixed only resolves on direct
       // children of the page root.
-      const parentNode = path.parentPath?.node;
+      // A supported JSX gate adds expression containers, but does not add a DOM
+      // ancestor. Find the actual nearest element (CMS/variant gates included).
+      const parentNode = path.findParent(p => p.isJSXElement())?.node;
       const parentDataId = parentNode && t.isJSXElement(parentNode)
         ? stringAttr(jsxAttrs(parentNode.openingElement), 'data-id')
         : undefined;
@@ -964,7 +980,7 @@ export function checkFile(
         // The builder's own instance writes redirect these into the component
         // file, so internal props on the wrapper are always a hand-written
         // mistake: they double-apply or silently do nothing.
-        if (kind !== 'code-component' && componentLocalNames.has(tag)) {
+        if (kind !== 'code-component' && componentLocalNames.has(tag) && !styleOwningComponents.has(tag)) {
           const offenders: string[] = [];
           for (const p of styleAttr.value.expression.properties) {
             if (!t.isObjectProperty(p)) continue;
@@ -1440,7 +1456,7 @@ export function checkFile(
     checkGridChildSpan(ast, v, existingDataIds);
     checkNoLayoutParentRelativeChild(ast, v, existingDataIds);
     checkMediaColumnFlipRebase(ast, v);
-    checkSlotComponentInlineChildren(ast, v);
+    checkSlotComponentInlineChildren(ast, v, inlineCodeComponents);
     if (/<(?:motion\.)?img[\s/>]/.test(code)) checkImageBackgroundFrame(ast, v);
   }
 
@@ -1465,7 +1481,7 @@ export function checkFile(
   //    generator (cmsNavHrefExpr) or the panel lies / the link breaks. ───────
   if ((kind === 'page' || kind === 'component')
       && (/data-cms-nav/.test(code) || /\.findIndex\(\s*\([^)]*\)\s*=>\s*[A-Za-z_$][\w$]*\._slug\s*===\s*params\?\.slug\)/.test(code))) {
-    checkCmsNavDialect(code, ast, v, kind);
+    checkCmsNavDialect(code, ast, v, kind, opts.cmsRoutes);
   }
 
   // ── CMS COLLECTION LIST dialect — the `.map()` repeater + filters/sort/
@@ -1486,7 +1502,7 @@ export function checkFile(
   // What may gate a MOUNTED element. The canvas is rendered from the parsed
   // source, so a condition it can't evaluate paints the element in every
   // viewport while the live site mounts it conditionally.
-  checkConditionalRenderDialect(ast, v, opts.kind);
+  checkConditionalRenderDialect(ast, v, opts.kind, code);
   // …and the SOURCE of a breakpoint boolean, which otherwise escapes the rule
   // above through a ternary or a prop.
   checkHandWrittenMediaQuery(code, ast, v, opts.kind);

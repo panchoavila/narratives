@@ -771,8 +771,8 @@ export const bridgeHandlers: Record<string, BridgeHandler> = {
             : targetFile.startsWith('components/')
               ? (isCodeComponentSource(pageAfter) ? 'code-component' as const : 'component' as const)
               : 'page' as const;
-          const before = new Set(checkFile(pageBefore, { kind, path: targetFile }).map((x) => `${x.code}::${x.elementId ?? ''}`));
-          introducedCodes = checkFile(pageAfter, { kind, path: targetFile })
+          const before = new Set(checkFile(pageBefore, { kind, path: targetFile, readProjectFile: p => projectFS.readFile(p) }).map((x) => `${x.code}::${x.elementId ?? ''}`));
+          introducedCodes = checkFile(pageAfter, { kind, path: targetFile, readProjectFile: p => projectFS.readFile(p) })
             .filter((x) => !before.has(`${x.code}::${x.elementId ?? ''}`))
             .map((x) => x.code);
         } catch { /* checker diagnostics must never take the insert down */ }

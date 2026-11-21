@@ -201,7 +201,7 @@ export async function runCase(c: CapabilityCase): Promise<CaseResult> {
     // as the editor's own drop path never gates them.
     if (isBuilderRuntimeFile(code)) continue;
     let violations: OracleViolation[] = [];
-    try { violations = checkFile(code, { kind, path }); } catch (err) { failures.push(`oracle threw on ${path}: ${String(err)}`); }
+    try { violations = checkFile(code, { kind, path, readProjectFile: p => projectFS.readFile(p) }); } catch (err) { failures.push(`oracle threw on ${path}: ${String(err)}`); }
     // Only what the case INTRODUCED: the fixture is kept clean by its own test.
     const baseline = new Set((before.get(path) ? safeCheck(before.get(path)!, kind, path) : []).map((v) => v.code));
     for (const v of violations) {
@@ -257,5 +257,5 @@ function resolveRefs(args: Record<string, unknown>, replies: CaseWorld['replies'
 }
 
 function safeCheck(code: string, kind: FileKind, path: string): OracleViolation[] {
-  try { return checkFile(code, { kind, path }); } catch { return []; }
+  try { return checkFile(code, { kind, path, readProjectFile: p => projectFS.readFile(p) }); } catch { return []; }
 }

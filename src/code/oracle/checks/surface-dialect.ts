@@ -75,7 +75,7 @@ export const CONTROLLED_STYLE_PROPS = new Set<string>([
   'pointerEvents', 'userSelect', 'cursor', 'visibility',
   // Typography (TextStyleTool — WHERE they may sit is TEXT_STYLE_ON_FRAME's business)
   'color', 'fontFamily', 'fontSize', 'fontStyle', 'fontWeight', 'letterSpacing', 'lineHeight',
-  'textAlign', 'textTransform', 'whiteSpace', 'textOverflow', 'writingMode', 'wordBreak',
+  'textAlign', 'textTransform', 'textWrap', 'whiteSpace', 'textOverflow', 'writingMode', 'wordBreak',
   'overflowWrap',   // TextCreator + form-submit/cms-pagination generators emit it
   'textDecoration', 'textDecorationLine', 'textDecorationStyle', 'textDecorationColor',
   'textDecorationThickness', 'textUnderlineOffset', 'textShadow',
@@ -83,7 +83,7 @@ export const CONTROLLED_STYLE_PROPS = new Set<string>([
   // Media tools
   'objectFit', 'objectPosition',
   // Scroll section
-  'scrollMarginTop',
+  'scrollMarginTop', 'scrollSnapType', 'scrollSnapAlign', 'scrollPaddingLeft',
   // Generator-emitted (verified in generation/ + real project output +
   // the Insert catalogue: `resize` ships on its textarea).
   // `transformBox` — the rotation channel's carrier pair with transformOrigin
@@ -99,8 +99,6 @@ export const CONTROLLED_STYLE_PROPS = new Set<string>([
 /** The confirmed dead-end cluster gets a tailored redirect. */
 const KNOWN_DEAD_ENDS: Record<string, string> = {
   touchAction: 'no control exists; if you added it for tap-delay, the builder does not need it',
-  scrollSnapType: 'scroll-snap carousels are not a native pattern — build a variants-driven slider or use a Carousel code component',
-  scrollSnapAlign: 'scroll-snap carousels are not a native pattern — build a variants-driven slider or use a Carousel code component',
   scrollSnapStop: 'scroll-snap carousels are not a native pattern',
   overscrollBehavior: 'no control exists; overlays already manage body scroll natively',
   float: 'floats are not a layout the builder expresses — use flex or grid',
@@ -153,22 +151,7 @@ export function checkStyleSurface(
           continue;
         }
 
-        if (CONTROLLED_STYLE_PROPS.has(key)) {
-          // Key is controlled, but ONE value has no slot: the Overflow select
-          // offers visible/hidden/scroll/clip — `auto` renders the control
-          // BLANK and the first touch rewrites it. Redirect to `scroll`.
-          if (/^overflow[XY]?$/.test(key) && t.isStringLiteral(prop.value) && prop.value.value === 'auto') {
-            const dk = `${id}:${key}:auto`;
-            if (seen.has(dk)) continue;
-            seen.add(dk);
-            v.push({
-              code: 'STYLE_PROP_NO_CONTROL', tier: 2, elementId: id ?? undefined,
-              line: prop.loc?.start.line,
-              message: `[style surface] data-id="${id ?? '?'}" sets \`${key}: 'auto'\` — the Overflow control offers visible / hidden / scroll / clip, so 'auto' shows as a BLANK select and the first interaction silently rewrites it. Use \`'scroll'\`.`,
-            });
-          }
-          continue;
-        }
+        if (CONTROLLED_STYLE_PROPS.has(key)) continue;
 
         if (MOTION_CHANNELS.has(key)) {
           // Canonical on motion elements (the Transform popup owns them);
@@ -208,7 +191,7 @@ const TEXT_STYLE_PROPS = new Set<string>([
   'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing',
   'textTransform', 'textAlign', 'textDecoration', 'textDecorationLine', 'textDecorationStyle',
   'textDecorationColor', 'textDecorationThickness', 'textUnderlineOffset', 'textShadow',
-  'whiteSpace', 'textOverflow', 'wordBreak', 'textIndent', 'color',
+  'textWrap', 'whiteSpace', 'textOverflow', 'wordBreak', 'textIndent', 'color',
   'WebkitTextStroke', 'WebkitTextStrokeWidth', 'WebkitTextStrokeColor', 'WebkitTextFillColor',
 ]);
 

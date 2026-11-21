@@ -35,10 +35,11 @@ describe('STYLE_PROP_NO_CONTROL', () => {
       .toContain('STYLE_PROP_NO_CONTROL');
   });
 
-  it("rejects overflow: 'auto' (blank select) and suggests scroll", () => {
+  it("accepts overflow: 'auto' once it is available in the editor control", async () => {
     const code = page(`      <div data-id="s" style={{ position: 'relative', width: '100%', height: '300px', overflow: 'auto' }}>x</div>`);
-    const hit = checkFile(code, { kind: 'page' }).find((v) => v.code === 'STYLE_PROP_NO_CONTROL')!;
-    expect(hit.message).toContain("'scroll'");
+    const { OVERFLOW_OPTIONS } = await import('@/editor/controls/css-property-options');
+    expect(OVERFLOW_OPTIONS.some(option => option.value === 'auto')).toBe(true);
+    expect(codesOf(code)).not.toContain('STYLE_PROP_NO_CONTROL');
   });
 
   it('rejects bare transform channels on PLAIN tags, allows them on motion.*', () => {

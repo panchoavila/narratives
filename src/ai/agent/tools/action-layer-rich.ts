@@ -517,7 +517,7 @@ export const setVariantTool: AgentTool = {
       preview = updateVariantTextInCode(preview, targetNodeId, variant, text);
     }
     if (preview !== masterBefore) {
-      const blocked = checkFile(preview, { kind: 'component', path: targetPath })
+      const blocked = checkFile(preview, { kind: 'component', path: targetPath, readProjectFile: p => projectFS.readFile(p) })
         .filter((v) => isBlockingModifyViolation(v.code));
       if (blocked.length > 0) {
         return fail(

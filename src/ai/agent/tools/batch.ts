@@ -157,12 +157,12 @@ export function checkBatchEndGate(beforeCode: string, endCode: string, activePat
     : isLayoutFile(activePath)
       ? 'template'
       : 'page';
-  const endBlocking = checkFile(endCode, { kind: endKind, path: activePath }).filter((v) =>
+  const endBlocking = checkFile(endCode, { kind: endKind, path: activePath, readProjectFile: p => projectFS.readFile(p) }).filter((v) =>
     isAgentBlockingOracleViolation(v.code),
   );
   if (endBlocking.length === 0) return null;
   const beforeCodes = new Set(
-    checkFile(beforeCode, { kind: endKind, path: activePath })
+    checkFile(beforeCode, { kind: endKind, path: activePath, readProjectFile: p => projectFS.readFile(p) })
       .filter((v) => isAgentBlockingOracleViolation(v.code))
       .map((v) => v.code),
   );

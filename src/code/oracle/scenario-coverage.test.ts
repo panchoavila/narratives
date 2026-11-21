@@ -48,8 +48,6 @@ const MUST_BOUNCE: Array<{ id: string; code: string; kind?: 'page' | 'component'
     fixture: page(`    <div data-id="rail" style={{ position: 'relative', width: '100%', height: 'auto', display: 'flex', touchAction: 'pan-y', scrollSnapType: 'x mandatory' }}>x</div>`) },
   { id: 'S10 CSS custom property', code: 'STYLE_PROP_NO_CONTROL',
     fixture: page(`    <div data-id="brand" style={{ position: 'relative', width: '100%', height: 'auto', '--brand': '#ff4524' }}>x</div>`) },
-  { id: 'S11 overflow auto (blank select)', code: 'STYLE_PROP_NO_CONTROL',
-    fixture: page(`    <div data-id="s" style={{ position: 'relative', width: '100%', height: '400px', overflow: 'auto' }}>x</div>`) },
   { id: 'S11f input outside form (MAISON enquiry div)', code: 'INPUT_OUTSIDE_FORM',
     fixture: page(`    <div data-id="fake-form-x" data-name="Form" style={{ position: 'relative', width: '100%', height: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}><input data-id="email-x" data-name="Email" type="email" name="email" style={{ position: 'relative', width: '100%', height: '40px' }} /></div>`) },
   { id: 'S11e handler content state (MAISON carousel)', code: 'HANDLER_CONTENT_STATE',

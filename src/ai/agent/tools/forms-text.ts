@@ -459,7 +459,7 @@ export const checkProjectTool: AgentTool = {
       if (!kind || isBuilderMaterializedFile(code)) continue;
       checked++;
       let violations: ReturnType<typeof checkFile> = [];
-      try { violations = checkFile(code, { kind, path }); } catch (err) { violations = [{ code: 'SYNTAX_ERROR', tier: 3, message: String(err) }]; }
+      try { violations = checkFile(code, { kind, path, readProjectFile: p => projectFS.readFile(p) }); } catch (err) { violations = [{ code: 'SYNTAX_ERROR', tier: 3, message: String(err) }]; }
       if (violations.length) report.push({ file: path, kind, violations: violations.map((v) => ({ code: v.code, tier: v.tier, line: v.line, element: v.elementId ?? undefined, message: v.message.slice(0, 300) })) });
     }
     const blocking = report.reduce((n, f) => n + f.violations.filter((v) => v.tier >= 3).length, 0);

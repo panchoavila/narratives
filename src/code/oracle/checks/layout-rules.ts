@@ -34,7 +34,7 @@ import type { OracleViolation } from './shared';
  * const with `data-canvas-node="true"` and reference it `{cn_<id>}` inside the
  * slot (see the home page's CompanyMarquee + `cn_co_*` consts).
  */
-function checkSlotComponentInlineChildren(ast: t.File, v: OracleViolation[]): void {
+function checkSlotComponentInlineChildren(ast: t.File, v: OracleViolation[], inlineCodeComponents: ReadonlySet<string> = new Set()): void {
   const componentNames = new Set<string>();
   for (const node of ast.program.body) {
     if (t.isImportDeclaration(node) && node.source.value.startsWith('@/components/')) {
@@ -46,7 +46,10 @@ function checkSlotComponentInlineChildren(ast: t.File, v: OracleViolation[]): vo
   traverse(ast, {
     JSXElement(path) {
       const name = path.node.openingElement.name;
-      if (!t.isJSXIdentifier(name) || !componentNames.has(name.name)) return;
+      // Local @controls components now serialize inline children through the
+      // same CodeComponentHost path as connected nodes. Unresolved imports
+      // still fail: their render contract cannot be established from source.
+      if (!t.isJSXIdentifier(name) || !componentNames.has(name.name) || inlineCodeComponents.has(name.name)) return;
       for (const child of path.node.children) {
         if (!t.isJSXElement(child)) continue;            // {cn_x} refs / text are fine
         const cAttrs = jsxAttrs(child.openingElement);

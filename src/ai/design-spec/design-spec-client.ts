@@ -114,7 +114,7 @@ export async function runDesignSpecEdit(req: DesignSpecEditRequest): Promise<Des
     for (const f of files) {
       const path = resolveWritePath(f.specName, f.internalName, registry);
       const kind = isCodeComponentSource(f.code) ? 'code-component' as const : 'component' as const;
-      const vs = checkFile(f.code, { kind, path });
+      const vs = checkFile(f.code, { kind, path, readProjectFile: p => files.find(file => resolveWritePath(file.specName, file.internalName, registry) === p)?.code ?? projectFS.readFile(p) });
       if (vs.length > 0) {
         oracleBlocked.push(`${path}: ${vs.slice(0, 2).map((x) => x.code).join(', ')}`);
         continue;

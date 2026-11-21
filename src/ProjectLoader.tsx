@@ -74,7 +74,7 @@ function e2eSharedHooks(store: ReturnType<typeof getDefaultStore>) {
       ]);
       const kind = oracleFileKind(path, code);
       if (!kind) return [];
-      return checkFile(code, { kind, path }).map(v => ({ code: v.code, tier: v.tier, message: v.message, elementId: v.elementId }));
+      return checkFile(code, { kind, path, readProjectFile: p => projectFS.readFile(p) }).map(v => ({ code: v.code, tier: v.tier, message: v.message, elementId: v.elementId }));
     },
     activeFile: () => store.get(activeFilePathAtom),
   };

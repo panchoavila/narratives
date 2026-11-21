@@ -109,6 +109,12 @@ function checkScrollDialect(ast: t.File, v: OracleViolation[]): void {
       const name = path.node.id.name;
       const inner = unwrapSpring(call);
 
+      if (t.isIdentifier(call.callee, { name: 'useReducedMotionValue' }) && t.isIdentifier(call.arguments[0])) {
+        motionVars.add(name);
+        sourceUsed.add(call.arguments[0].name);
+        return;
+      }
+
       if (inner && t.isIdentifier(inner.callee, { name: 'useTransform' })) {
         declaredTransforms.push({ name, line });
         motionVars.add(name);

@@ -1,3 +1,4 @@
+import { collectCmsDetailRoutes } from '@/code/project/cms-detail-route';
 // oracle/gate.ts — the ONE gate every AI write path goes through.
 //
 // Extracted from `ai/freeform/freeform-client.ts` (2026-09-18): the gate is
@@ -79,6 +80,9 @@ export function gateTurnFiles(
   // The EFFECTIVE page surfaces for cross-file checks: batch versions win over
   // projectFS, so a batch updating a component AND its consumers resolves clean.
   const batchByPath = new Map(files.map((f) => [f.path, f.code]));
+  const cmsRoutes = collectCmsDetailRoutes(Object.fromEntries([
+    ...projectFS.listFiles('app/').map(p => [p, projectFS.readFile(p) ?? '']), ...files.map(f => [f.path, f.code]),
+  ]));
   const effectiveSurfaces = (): SurfaceFile[] => {
     const layoutClients = projectFS.listFiles().filter((p) => p.endsWith('LayoutClient.tsx'));
     return [...listPageFiles(), ...layoutClients].map((p) => ({
@@ -133,7 +137,7 @@ export function gateTurnFiles(
     // ever appeared in a stale band rule exempted the model's brand-new node
     // from every new-node rule, 2026-08-11).
     if (prevCode) for (const m of prevCode.matchAll(/(?<!\[)data-id="([^"]+)"/g)) existingDataIds.add(m[1]);
-    let vs = [...checkFile(f.code, { kind, path: f.path, existingDataIds, schemas: knownSchemas })];
+    let vs = [...checkFile(f.code, { kind, path: f.path, existingDataIds, schemas: knownSchemas, cmsRoutes, readProjectFile: p => batchByPath.get(p) ?? projectFS.readFile(p) })];
     // ── GRANDFATHERING ────────────────────────────────────────────────────
     // The oracle grows rules; legacy files carry violations they were built
     // with. Judging an EDIT by the whole file would brick AI editing on any
@@ -147,7 +151,7 @@ export function gateTurnFiles(
       const prevKind: FileKind = f.kind === 'component'
         ? (isCodeComponentSource(prevCode) ? 'code-component' : 'component')
         : isLayoutFile(f.path) ? 'template' : 'page';
-      const oldVs = checkFile(prevCode, { kind: prevKind, path: f.path, schemas: knownSchemas });
+      const oldVs = checkFile(prevCode, { kind: prevKind, path: f.path, schemas: knownSchemas, cmsRoutes, readProjectFile: p => batchByPath.get(p) ?? projectFS.readFile(p) });
       const oldKeyed = new Set(oldVs.filter((o) => o.elementId).map((o) => `${o.code}::${o.elementId}`));
       const oldCounts = new Map<string, number>();
       for (const o of oldVs) if (!o.elementId) oldCounts.set(o.code, (oldCounts.get(o.code) ?? 0) + 1);
@@ -288,8 +292,8 @@ export function commitTurnFiles(files: TurnFile[]): string[] {
     // fix in the mutator, never something to silently ship dark.
     if (code !== f.code) {
       try {
-        const driftVs = checkFile(code, { kind: k, path: f.path });
-        const beforeVs = checkFile(f.code, { kind: k, path: f.path });
+        const driftVs = checkFile(code, { kind: k, path: f.path, readProjectFile: p => files.find(file => file.path === p)?.code ?? projectFS.readFile(p) });
+        const beforeVs = checkFile(f.code, { kind: k, path: f.path, readProjectFile: p => files.find(file => file.path === p)?.code ?? projectFS.readFile(p) });
         const beforeKeys = new Set(beforeVs.map((x) => `${x.code}::${x.elementId ?? ''}`));
         const introduced = driftVs.filter((x) => !beforeKeys.has(`${x.code}::${x.elementId ?? ''}`));
         if (introduced.length > 0) {

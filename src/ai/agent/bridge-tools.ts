@@ -506,7 +506,7 @@ function violationsOf(path: string, code: string): OracleRow[] {
   const kind = oracleFileKind(path, code);
   if (!kind || isBuilderMaterializedFile(code)) return [];
   try {
-    return checkFile(code, { kind, path }).map((v) => ({ file: path, code: v.code, tier: v.tier, line: v.line, element: v.elementId ?? undefined, message: v.message.slice(0, 280) }));
+    return checkFile(code, { kind, path, readProjectFile: p => projectFS.readFile(p) }).map((v) => ({ file: path, code: v.code, tier: v.tier, line: v.line, element: v.elementId ?? undefined, message: v.message.slice(0, 280) }));
   } catch (err) {
     return [{ file: path, code: 'SYNTAX_ERROR', tier: 3, message: String(err).slice(0, 280) }];
   }
