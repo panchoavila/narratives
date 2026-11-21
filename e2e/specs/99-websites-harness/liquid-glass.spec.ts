@@ -60,7 +60,7 @@ test('adds, edits, persists and previews Liquid Glass through the real editor', 
 });
 
 test('composes real GPU lenses and preserves live HTML, dynamic content and cleanup', async ({ page }, info) => {
-  await page.goto('/research/2026-11-07-liquid-glass/runtime.html?liquidGL-engine=webgl2');
+  await page.goto('/e2e/labs/liquid-glass/runtime.html?liquidGL-engine=webgl2');
   const first = page.locator('#glass-a'), second = page.locator('#glass-b');
   await expect(first).toHaveAttribute('data-revyme-liquid-state', 'ready', { timeout: 30_000 });
   await expect(second).toHaveAttribute('data-revyme-liquid-state', 'ready');
@@ -109,7 +109,7 @@ test('keeps the authored native backdrop editable and enables it in live preview
 });
 
 test('keeps Motion transforms while tilting and dragging, and releases offscreen lenses', async ({ page }, info) => {
-  await page.goto('/research/2026-11-07-liquid-glass/runtime.html?liquidGL-engine=webgl2');
+  await page.goto('/e2e/labs/liquid-glass/runtime.html?liquidGL-engine=webgl2');
   const glass = page.locator('#glass-a');
   await expect(glass).toHaveAttribute('data-revyme-liquid-state', 'ready', { timeout: 30_000 });
   await glass.evaluate(el => {
@@ -149,7 +149,7 @@ test('retains native controls when GPU is unavailable and after real context los
     } as typeof getContext;
   });
   const fallback = await disabled.newPage();
-  await fallback.goto('http://localhost:4333/research/2026-11-07-liquid-glass/runtime.html');
+  await fallback.goto('http://localhost:4333/e2e/labs/liquid-glass/runtime.html');
   await expect(fallback.locator('#glass-a')).toHaveAttribute('data-revyme-liquid-state', 'fallback');
   await fallback.getByRole('textbox', { name: 'Name', exact: true }).fill('No GPU');
   await expect(fallback.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('No GPU');
@@ -158,7 +158,7 @@ test('retains native controls when GPU is unavailable and after real context los
 
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.goto('http://localhost:4333/research/2026-11-07-liquid-glass/runtime.html?liquidGL-engine=webgl2');
+  await page.goto('http://localhost:4333/e2e/labs/liquid-glass/runtime.html?liquidGL-engine=webgl2');
   await expect(page.locator('#glass-a')).toHaveAttribute('data-revyme-liquid-state', 'ready', { timeout: 30_000 });
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Context lost');
   await page.locator('canvas[data-revyme-liquid-canvas]').first().evaluate(canvas => {
@@ -180,7 +180,7 @@ test('responds to real playback audio, fluid input and reduced motion', async ({
       (window as unknown as { audioPeak: number }).audioPeak = Math.max(...data);
     };
   });
-  await page.goto('/research/2026-11-07-liquid-glass/runtime.html?liquidGL-engine=webgl2');
+  await page.goto('/e2e/labs/liquid-glass/runtime.html?liquidGL-engine=webgl2');
   const glass = page.locator('#glass-a');
   await expect(glass).toHaveAttribute('data-revyme-liquid-state', 'ready', { timeout: 30_000 });
   await glass.evaluate(el => el.setAttribute('data-liquid-glass', JSON.stringify({ version: 1, audioReactive: true, audioSourceId: 'test-tone', audioGain: 5, specular: false })));
@@ -213,7 +213,7 @@ test('renders through WebGPU and restores HTML after real device loss', async ({
       return device;
     };
   });
-  await page.goto('/research/2026-11-07-liquid-glass/runtime.html?liquidGL-engine=webgpu');
+  await page.goto('/e2e/labs/liquid-glass/runtime.html?liquidGL-engine=webgpu');
   const supported = await page.evaluate(async () => {
     const gpu = Reflect.get(navigator, 'gpu');
     return !!gpu && !!await gpu.requestAdapter();
@@ -230,7 +230,7 @@ test('renders through WebGPU and restores HTML after real device loss', async ({
 });
 
 test('snapshot navigation preserves the destination instead of omitting live glass', async ({ page }) => {
-  await page.goto('/research/2026-11-07-liquid-glass/runtime.html?liquidGL-engine=webgl2');
+  await page.goto('/e2e/labs/liquid-glass/runtime.html?liquidGL-engine=webgl2');
   await expect(page.locator('#glass-a')).toHaveAttribute('data-revyme-liquid-state', 'ready', { timeout: 30_000 });
   const result = await page.evaluate(async () => {
     const { runDisplacementNavigation } = await import(/* @vite-ignore */ '/packages/revyme-runtime-scene/src/displacement-navigation.ts');

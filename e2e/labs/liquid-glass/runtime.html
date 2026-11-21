@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Revyme Liquid Glass runtime verification</title>
+<style>
+  * { box-sizing: border-box; }
+  body { display:flow-root; margin:0; min-height:180vh; background:#123d46; color:#fff; font:16px system-ui; }
+  .background { position:absolute; inset:0 0 auto; height:100vh; overflow:hidden; background:repeating-linear-gradient(100deg, #e0bd72 0 28px, #123d46 28px 65px); }
+  .background h1 { margin:160px 3%; font-size:20vw; letter-spacing:-.08em; }
+  .moving { position:absolute; top:260px; width:130px; height:130px; background:#ff704d; border-radius:50%; }
+  .glass { position:absolute; width:420px; height:270px; padding:32px; border-radius:32px; background:#ffffff22; }
+  #glass-a { left:12%; top:140px; z-index:2; }
+  #glass-b { left:35%; top:310px; z-index:3; }
+  h2 { margin:0 0 18px; font-size:30px; }
+  input,button,a { font:inherit; padding:10px 14px; border-radius:8px; border:1px solid #ffffff66; background:#fff; color:#153841; }
+  input { width:100%; margin-bottom:16px; }
+  a { display:inline-block; text-decoration:none; }
+  #details { margin-top:110vh; padding:48px; }
+  @media(max-width:600px) { .glass{width:78%;height:250px;padding:24px} #glass-a{left:5%} #glass-b{left:18%;top:330px} }
+</style>
+<div class="background" data-id="backdrop"><h1 data-id="headline">Revyme</h1><div class="moving" data-id="moving"></div></div>
+<section class="glass" id="glass-a" data-id="glass-a" data-liquid-glass='{"version":1,"specular":false}'>
+  <h2 data-id="heading-a">Live glass</h2><input data-id="name" aria-label="Name" placeholder="Your name"><a data-id="link" href="#details">Open details</a>
+</section>
+<section class="glass" id="glass-b" data-id="glass-b" data-liquid-glass='{"version":1,"specular":false,"tint":"#78abe755","aberration":0.2}'>
+  <h2 data-id="heading-b">Another layer</h2><button data-id="counter">Count: 0</button>
+</section>
+<section id="details" data-id="details">Ordinary HTML remains interactive.</section>
+<audio data-id="test-tone" id="tone"></audio>
+<button id="play-tone" style="position:fixed;right:24px;top:24px;z-index:9">Play test tone</button>
+<script type="module">
+  import { attachLiquidGlassElements } from '/packages/revyme-runtime-scene/src/liquid-glass-elements.ts';
+  let count=0;
+  document.querySelector('button').addEventListener('click',event=>event.target.textContent=`Count: ${++count}`);
+  window.stopGlass = attachLiquidGlassElements(document);
+  window.glassEvents = [];
+  document.addEventListener('revyme:glass-state',event=>window.glassEvents.push(event.detail));
+  // Original generated tone: no third-party demo audio or assets.
+  document.querySelector('#play-tone').addEventListener('click', () => {
+    const rate=22050, length=rate*4, buffer=new ArrayBuffer(44+length*2), data=new DataView(buffer);
+    const text=(offset,value)=>[...value].forEach((char,i)=>data.setUint8(offset+i,char.charCodeAt(0)));
+    text(0,'RIFF'); data.setUint32(4,36+length*2,true); text(8,'WAVE'); text(12,'fmt ');
+    data.setUint32(16,16,true); data.setUint16(20,1,true); data.setUint16(22,1,true);
+    data.setUint32(24,rate,true); data.setUint32(28,rate*2,true); data.setUint16(32,2,true); data.setUint16(34,16,true);
+    text(36,'data'); data.setUint32(40,length*2,true);
+    for(let i=0;i<length;i++) data.setInt16(44+i*2, Math.sin(i/rate*Math.PI*2*180)*1200*(.5+.5*Math.sin(i/rate*Math.PI*4)),true);
+    const media=document.querySelector('#tone');
+    if(media.src.startsWith('blob:')) URL.revokeObjectURL(media.src);
+    media.src=URL.createObjectURL(new Blob([buffer],{type:'audio/wav'}));
+    media.play();
+  });
+</script>
+</html>

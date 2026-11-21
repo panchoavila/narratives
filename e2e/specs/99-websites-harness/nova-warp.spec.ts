@@ -107,7 +107,7 @@ test('portable runtime supports pause, mobile touch, resize and native navigatio
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
   const page = await context.newPage();
   try {
-    await page.goto('http://localhost:4333/research/2026-11-17-nova-warp/');
+    await page.goto('http://localhost:4333/e2e/labs/nova-warp/');
     const warp = page.locator('[data-revyme-nova-warp]');
     await expect(warp).toHaveAttribute('data-warp-state', 'running');
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
@@ -140,7 +140,7 @@ test('keeps text, links and the fallback background usable without WebGL', async
   const browser = await chromium.launch({ args: ['--disable-webgl'] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   try {
-    await page.goto('http://localhost:4333/research/2026-11-17-nova-warp/');
+    await page.goto('http://localhost:4333/e2e/labs/nova-warp/');
     await expect(page.locator('[data-revyme-nova-warp]')).toHaveAttribute('data-warp-state', 'fallback');
     await expect(page.getByRole('heading', { name: 'Back to the beautiful unknown.' })).toBeVisible();
     await page.screenshot({ path: info.outputPath('no-webgl.png') });

@@ -1,0 +1,31 @@
+* { box-sizing: border-box; }
+body { margin: 0; color: #222722; background: #f3f3ed; font-family: Arial, sans-serif; }
+header { padding: 22px 4%; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #cdd0c5; font: 10px monospace; letter-spacing: .08em; }
+.brand { font: 650 25px Arial,sans-serif; letter-spacing: -.07em; }.brand span { font-size: 11px; vertical-align: top; margin-left: 3px; }
+.intro { margin: 40px 4% 30px; }.intro p,.title p { font: 10px monospace; letter-spacing: .1em; }
+h1 { font-size: clamp(24px,4.2vw,52px); font-weight: 500; letter-spacing: -.055em; line-height: 1.03; margin: 14px 0; }
+.intro div { font-size: 13px; color: #606559; }
+.gallery { display: grid; grid-template-columns: repeat(3,1fr); padding: 0 4% 45px; gap: 16px; }
+.gallery article { min-width: 0; background: #e9ece3; border: 1px solid #d8ddcf; border-radius: 5px; overflow: hidden; }
+.example { height: 275px; position: relative; }
+.caption { display: flex; gap: 15px; padding: 17px; border-top: 1px solid #d8ddcf; font-size: 12px; }
+.caption small { font: 10px monospace; color: #73796b; }.caption p { margin: 5px 0 0; font-size: 10px; color: #616957; }
+.art-card { width: 100%; height: 100%; position: relative; overflow: hidden; border: 1px solid #0002; padding: 8%; border-radius: 7%; text-align: left; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 2px 10px #18210b15; }
+.art-card small { font: 600 10px monospace; }.art-card strong { z-index: 1; font-size: 18px; letter-spacing: -.05em; }
+.art { position: absolute; inset: 20% 10% 22%; }
+.art-0 { border: 10px solid currentColor; border-radius: 50%; }
+.art-1 { background: repeating-linear-gradient(115deg, currentColor 0 8px, transparent 8px 17px); }
+.art-2 { border: 1px solid currentColor; transform: rotate(45deg); box-shadow: 8px 8px 0 currentColor, -8px -8px 0 currentColor; }
+.art-3 { background: radial-gradient(ellipse at 50% 50%, currentColor 0 15%, transparent 17% 24%, currentColor 26% 30%, transparent 32% 44%, currentColor 46% 50%, transparent 52%); }
+.word-card { width: 100%; height: 100%; border: 0; background: transparent; font: 900 28px/1 Arial,sans-serif; text-align: left; letter-spacing: -.07em; padding: 0; cursor: pointer; }
+.gallery .note { background: #232d20; color: #eef5df; padding: 24px; display:flex; flex-direction:column; justify-content: space-between; }
+.note p,.note span { font: 10px/1.7 monospace; }.note h2 { font-size: 33px; font-weight: 500; letter-spacing: -.055em; }
+.workbench { height: calc(100svh - 76px); min-height: 700px; display:grid; grid-template-columns: minmax(0,1fr) 260px; }
+.viewport { position:relative; min-width:0; }.title { position:absolute;left:5%;top:20px;pointer-events:none;z-index:1; }.title h1{font-size:32px}
+aside { border-left: 1px solid #cdd0c5; overflow: auto; padding: 22px; font-size: 11px; }
+label { display: grid;grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 14px; }
+select,input[type=number] { grid-column:1/-1; width:100%; padding:7px; font:inherit; border:1px solid #c4cbba; background:transparent; border-radius:4px; color:inherit; }
+input[type=range] { grid-column:1/-1; width:100%;accent-color:#356b35;margin:0}
+.check {display:flex; align-items:center}.check input{accent-color:#356b35}
+a {color:inherit;display:block;margin-top:24px;}
+@media(max-width:650px){.gallery{grid-template-columns:1fr}.example{height:330px}.workbench{height:auto;display:block}.viewport{height:65vh}aside{border-left:0;border-top:1px solid #cdd0c5}}

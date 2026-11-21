@@ -300,7 +300,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 });
 
 test('supports depth, orbit gestures, local Motion, native controls and reduced motion', async ({ page }) => {
-  await page.goto('/research/2026-11-08-carousel-3d/');
+  await page.goto('/e2e/labs/carousel-3d/');
   await page.waitForFunction(() => Reflect.has(window, 'carouselLab'));
   await page.evaluate(() => Reflect.get(window, 'carouselLab').choose('globe'));
   const host = page.locator('[data-revyme-carousel-3d]');
