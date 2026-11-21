@@ -69,7 +69,9 @@ and upstream mergeability:
       copyright, the absence of warranty, the license, the NOTICE terms and the source.
 - [ ] Every network deployment links its users to the exact source it runs (AGPL §13).
       "About Narratives" links to `VITE_SOURCE_URL`, defaulting to this repository, at the commit
-      the build was made from. Deploy only commits that are pushed and public.
+      the build was made from. A downstream layer that adds private files sets
+      `VITE_SOURCE_COMMIT` to the public Narratives commit its platform code equals, and
+      deploys only when that equality holds. Deploy only platform code that is pushed and public.
 - [ ] Third-party code shipped in the runtime keeps its license file:
       `packages/revyme-runtime-scene/{THREE,HYPHEN,QR-CODE,RICH-CONTENT}-LICENSE*` and
       `src/vendor/qrcode.LICENSE`.

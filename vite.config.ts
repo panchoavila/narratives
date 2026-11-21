@@ -439,7 +439,11 @@ export default defineConfig(({ mode }) => {
     'process.env': {},
     // The commit this build is made from: "About Narratives" links users of a
     // running deployment to its exact Corresponding Source (AGPL-3.0 s.13).
-    __NARRATIVES_SOURCE_COMMIT__: JSON.stringify(gitCommit()),
+    // A downstream layer that adds private files on top of a public Narratives
+    // commit (sites, content) builds from its own commits, which the public
+    // repository does not have: it sets VITE_SOURCE_COMMIT to the Narratives
+    // commit its platform code equals.
+    __NARRATIVES_SOURCE_COMMIT__: JSON.stringify(env.VITE_SOURCE_COMMIT || gitCommit()),
     // The @revyme/runtime range the editor itself runs — what a browser-built
     // source export depends on (code/project/source-export.ts), so an exported
     // site gets the runtime its canvas and preview were verified against.

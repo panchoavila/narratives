@@ -66,6 +66,7 @@ intact.
 - **What changed.** [CHANGES.md](./CHANGES.md) states what was modified, and since when.
 - **Source for network users.** If you run Narratives as a service, its users must be offered the
   source of the version you run. The editor's "About Narratives" entry links to it. Set
-  `VITE_SOURCE_URL` when you deploy from your own repository.
+  `VITE_SOURCE_URL` when you deploy from your own repository, and `VITE_SOURCE_COMMIT` when you
+  build from a private layer on top of a public Narratives commit.
 
 Copyright © 2026 Nikita Kofman (Revyme); modifications © 2026 the Narratives contributors.
