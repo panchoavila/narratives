@@ -85,7 +85,7 @@ describe('buildSourceExport (standalone Next.js export)', () => {
     expect(out.files['next.config.mjs']).toBeUndefined();
     expect(out.files['tsconfig.json']).toBe('{}');
     expect(out.files['.gitignore']).toBe('x');
-    expect(out.files['README.md']).toMatch(/^# Revyme project/);
+    expect(out.files['README.md']).toMatch(/^# Narratives project/);
     expect(out.filename).toBe('revyme-site.zip');
   });
 

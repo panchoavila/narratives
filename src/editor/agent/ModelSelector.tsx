@@ -149,7 +149,7 @@ export function ModelSelector() {
         disabled={unavailable}
         triggerTestId="agent-model-select"
         title={
-          reachable === false ? 'Can’t reach the Revyme AI service'
+          reachable === false ? 'Can’t reach the AI service'
             : unavailable ? 'This AI service does not run Revyme credits'
             : 'The model the next turn runs on — billed to your workspace’s credits'
         }

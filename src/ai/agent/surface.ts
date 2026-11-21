@@ -212,7 +212,7 @@ export function describeSurface(
  *  chat body admits it is hosted somewhere specific. */
 export function surfaceCopy(kind: AgentSurface['kind']): { empty: string; placeholder: string } {
   if (kind === 'plugin') {
-    return { empty: 'Describe a plugin or a change to this one — the agent knows the Revyme plugin SDK.', placeholder: 'Describe the plugin or a change…' };
+    return { empty: 'Describe a plugin or a change to this one — the agent knows the plugin SDK.', placeholder: 'Describe the plugin or a change…' };
   }
   if (kind === 'icon-set') {
     return { empty: 'Ask for icons for this set — e.g. "add 6 people icons in the same style".', placeholder: 'Describe the icons to add or change…' };

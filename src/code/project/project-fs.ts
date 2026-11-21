@@ -1394,7 +1394,7 @@ export default function Page() {
     paddingLeft: '60px', paddingRight: '60px'
   }}>
     <p data-id="footer-copy" style={{position: 'relative', fontSize: '13px', color: '#555'}}>
-      Built with Revyme.
+      Built with Narratives.
     </p>
     <div data-id="footer-links" style={{position: 'relative', display: 'flex', gap: '24px'}}>
       <p data-id="link1" style={{position: 'relative', fontSize: '13px', color: '#888', cursor: 'pointer'}}>GitHub</p>

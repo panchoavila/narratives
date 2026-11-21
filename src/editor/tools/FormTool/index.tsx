@@ -76,7 +76,7 @@ function EmailEditor({ dest, onSave }: { dest: EmailDestination; onSave: (d: Ema
   return (
     <div className="flex flex-col gap-2 p-1">
       <ToolRow label="Recipient"><ToolInput value={dest.recipient ?? ''} onChange={(v) => onSave({ ...dest, recipient: v })} placeholder="you@email.com" /></ToolRow>
-      <ToolRow label="Name"><ToolInput value={dest.name ?? ''} onChange={(v) => onSave({ ...dest, name: v })} placeholder="Revyme" /></ToolRow>
+      <ToolRow label="Name"><ToolInput value={dest.name ?? ''} onChange={(v) => onSave({ ...dest, name: v })} placeholder="Narratives" /></ToolRow>
       <ToolRow label="Subject"><ToolInput value={dest.subject ?? ''} onChange={(v) => onSave({ ...dest, subject: v })} placeholder="New Submission" /></ToolRow>
       <ToolRow label="Body"><ToolTextArea value={dest.body ?? ''} onChange={(v) => onSave({ ...dest, body: v })} rows={3} placeholder="You've just received a new submission." /></ToolRow>
     </div>

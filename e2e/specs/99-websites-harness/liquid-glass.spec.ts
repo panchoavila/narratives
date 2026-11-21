@@ -17,7 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 }`).file('app/providers.tsx', `'use client';
 import { MotionConfig } from 'framer-motion';
 export function Providers({ children }: { children: React.ReactNode }) { return <MotionConfig reducedMotion="user">{children}</MotionConfig>; }
-`).file('app/icon.svg', readFileSync(path.resolve(__dirname, '../../../public/revymeicon.svg'), 'utf8')).build();
+`).file('app/icon.svg', readFileSync(path.resolve(__dirname, '../../../public/narratives-icon.svg'), 'utf8')).build();
 
 test('adds, edits, persists and previews Liquid Glass through the real editor', async ({ page, editor }, info) => {
   await editor.load(seed());

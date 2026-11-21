@@ -2,6 +2,7 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import fs from 'node:fs';
+import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sitesApiPlugin } from './src/server/sites-plugin';
@@ -370,6 +371,15 @@ function debugTracePlugin(): Plugin {
   };
 }
 
+/** HEAD of the checkout being built, or '' outside a git checkout. */
+function gitCommit(): string {
+  try {
+    return execSync('git rev-parse HEAD', { cwd: __dirname, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  } catch {
+    return '';
+  }
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const cloudMode = env.VITE_REVYME_CLOUD === 'true';
@@ -427,6 +437,9 @@ export default defineConfig(({ mode }) => {
   },
   define: {
     'process.env': {},
+    // The commit this build is made from: "About Narratives" links users of a
+    // running deployment to its exact Corresponding Source (AGPL-3.0 s.13).
+    __NARRATIVES_SOURCE_COMMIT__: JSON.stringify(gitCommit()),
     // The @revyme/runtime range the editor itself runs — what a browser-built
     // source export depends on (code/project/source-export.ts), so an exported
     // site gets the runtime its canvas and preview were verified against.

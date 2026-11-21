@@ -131,7 +131,7 @@ interface TutorialStep {
 const DEFAULT_STEPS: TutorialStep[] = [
   {
     id: 'welcome',
-    title: 'Welcome to Revyme',
+    title: 'Welcome to Narratives',
     description: 'Let us show you around the builder. You can skip this tutorial at any time.',
     image: '/tutorial_images/welcome.jpg',
   },

@@ -216,7 +216,7 @@ export class SitePublisher {
       }
       if (!project.id || !project.name) throw new PublishingError('Vercel did not return a project.', 502);
       if (deploymentPending(current.deployment) && current.project?.id !== project.id) throw new PublishingError('Wait for the current deployment before changing projects.', 409);
-      if (project.rootDirectory) throw new PublishingError('Choose a Vercel project without a Root Directory: Revyme uploads this site as the project root.');
+      if (project.rootDirectory) throw new PublishingError('Choose a Vercel project without a Root Directory: the publisher uploads this site as the project root.');
       state.project = { id: project.id, name: project.name, teamId: project.accountId?.startsWith('team_') ? project.accountId : input.teamId || undefined };
       const next = current.project?.id === project.id ? { ...current, ...state } : state;
       this.write(id, next);

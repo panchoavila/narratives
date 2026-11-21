@@ -27,7 +27,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     .file('cms/people.schema.json', JSON.stringify({ name: 'People', slug: 'people', fields: [
       { id: 'title', name: 'Title', type: 'text' }, { id: 'cover', name: 'Cover', type: 'image' },
     ] }))
-    .file('cms/people.json', JSON.stringify([{ _id: 'person', title: 'A different collection', cover: '/revymeicon.svg' }])).build();
+    .file('cms/people.json', JSON.stringify([{ _id: 'person', title: 'A different collection', cover: '/narratives-icon.svg' }])).build();
   await editor.load(seed);
   await editor.select(['carousel']);
   const row = (label: string) => page.getByText(label, { exact: true }).locator('xpath=ancestor::*[@data-tool-row][1]');
@@ -77,7 +77,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   await page.locator('[data-collection-slot-controls] select').selectOption('people');
   await expect(carousel.locator('[data-revyme-carousel-slot]')).toHaveCount(1);
   await expect(carousel).toContainText('A different collection');
-  await expect(carousel.locator('[role="img"]')).toHaveCSS('background-image', /revymeicon/);
+  await expect(carousel.locator('[role="img"]')).toHaveCSS('background-image', /narratives-icon/);
   await page.locator('[data-collection-slot-controls] select').selectOption('projects');
   await expect(carousel.locator('[data-revyme-carousel-slot]')).toHaveCount(3);
   await page.evaluate(async () => {

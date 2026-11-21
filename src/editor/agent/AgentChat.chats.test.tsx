@@ -167,7 +167,7 @@ describe('the AI service is down, then comes back', () => {
     vi.mocked(fetchAgentEngines).mockResolvedValueOnce(null);
     render(<AgentChat />);
     const box = screen.getByRole('textbox') as HTMLTextAreaElement;
-    await waitFor(() => expect(box.placeholder).toContain('reach the Revyme AI service'));
+    await waitFor(() => expect(box.placeholder).toContain('reach the AI service'));
     expect(box.disabled).toBe(true);
     // The service is back: the next ask (focus / the retry timer) unblocks the chat.
     act(() => { window.dispatchEvent(new Event('focus')); });

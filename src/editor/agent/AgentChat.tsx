@@ -916,7 +916,7 @@ export default function AgentChat() {
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); }
             }}
             placeholder={configured ? copy.placeholder
-              : reachable === false ? 'Can\u2019t reach the Revyme AI service — retrying…'
+              : reachable === false ? 'Can\u2019t reach the AI service — retrying…'
               : engines && engines.length === 0 ? 'No agent runs on this server'
               : 'This AI service does not run Revyme credits'}
             onScroll={(e) => { if (mirrorRef.current) mirrorRef.current.scrollTop = e.currentTarget.scrollTop; }}

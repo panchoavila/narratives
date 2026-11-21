@@ -800,7 +800,7 @@ export default function SettingsOverlay() {
                   {siteName || 'My Website'}
                 </div>
                 <div className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                  {siteDescription || 'Made with Revyme'}
+                  {siteDescription || 'Made with Narratives'}
                 </div>
               </div>
             </SettingsRow>

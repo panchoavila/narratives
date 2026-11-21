@@ -49,7 +49,7 @@ export const SAVE_CONFLICT_MESSAGE =
  *  for a model: what happened, that it is NOT done, and what to do. */
 export function describeSaveFailure(outcome: { error: string; conflict?: boolean }): string {
   if (outcome.conflict) {
-    return `NOT SAVED: ${outcome.error} Stop and tell the user — reload the Revyme editor tab, then redo this change.`;
+    return `NOT SAVED: ${outcome.error} Stop and tell the user — reload the editor tab, then redo this change.`;
   }
   return `The change was applied in the editor but saving it to the server FAILED (${outcome.error}). `
     + 'It is NOT persisted and will be lost when the editor tab reloads. Do not report this as done — tell the user saving is failing.';

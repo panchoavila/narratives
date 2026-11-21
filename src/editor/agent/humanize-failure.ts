@@ -28,7 +28,7 @@ export function humanizeFailure(content: string): string {
   // Oracle bounce — the gate refused the code. The most common failure by far,
   // and the most reassuring: nothing was written and the agent was told why.
   if (/"code"\s*:\s*"[A-Z0-9_]+"/.test(content) || /oracle .*gate|\bgate blocked\b/i.test(content)) {
-    return 'Revyme wouldn\u2019t accept that code — the agent was shown what was wrong and corrected it.';
+    return 'The editor wouldn\u2019t accept that code — the agent was shown what was wrong and corrected it.';
   }
   // The user was dragging/resizing while the agent wrote.
   if (c.includes('mid-interaction') || c.includes('drag/resize')) {

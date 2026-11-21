@@ -93,10 +93,10 @@ function StandaloneBody() {
   return (
     <div className="p-4 space-y-2">
       <p className="text-[11px] text-[var(--text-primary)]">
-        Live collaboration requires Revyme Cloud.
+        Live collaboration needs a collaboration server: Revyme Cloud or a self-hosted Narratives server.
       </p>
       <p className="text-[10px] text-[var(--text-tertiary)] leading-relaxed">
-        Sign in to your Revyme account to invite editors and viewers to this site.
+        Sign in to invite editors and viewers to this site.
       </p>
     </div>
   );

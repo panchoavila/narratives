@@ -21,7 +21,7 @@ import { trace } from '@/shared/debug-trace';
 function answeredByService(tool: string) {
   trace.action('agent-knowledge-tool:tab-refused', { tool });
   return {
-    content: [{ type: 'text' as const, text: JSON.stringify({ error: `Could not load it here — ${tool} is answered by the Revyme AI service, and this editor holds no manuals.` }) }],
+    content: [{ type: 'text' as const, text: JSON.stringify({ error: `Could not load it here — ${tool} is answered by the cloud AI service, and this editor holds no manuals.` }) }],
     isError: true,
   };
 }

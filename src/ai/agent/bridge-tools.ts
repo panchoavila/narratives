@@ -91,12 +91,12 @@ function isOtherAgentsRun(run: ActiveRun, caller: BridgeCaller | undefined): boo
 
 export function anotherAgentWorkingMessage(run: ActiveRun): string {
   const who = run.source === 'service'
-    ? "the Revyme editor's own AI agent"
+    ? "the Narratives editor's own AI agent"
     : run.client ? `another agent (${run.client})` : 'another agent';
   const what = run.request ? ` on "${run.request.slice(0, 120)}"` : '';
   const lease = RUN_LEASE_MS[run.source];
   const expiry = lease ? ` or its run expires after ${Math.round(lease / 1000)}s without activity` : '';
-  return `Refused: ${who} is working in this Revyme project right now${what}. `
+  return `Refused: ${who} is working in this project right now${what}. `
     + 'Two agents in one editor at the same time overwrite each other\'s work and runs, so only one may work at a time. '
     + `Wait until it calls finish_work${expiry}, then try again. Nothing was changed.`;
 }
@@ -165,7 +165,7 @@ const notify = (fn: (o: ExternalRunObserver) => void): void => {
 export const EXTERNAL_STOP_MS = 2 * 60_000;
 let externalStopUntil = 0;
 export const EXTERNAL_STOPPED_MESSAGE =
-  'The user pressed Stop in the Revyme editor — this work was ended and kept as it was. Do not continue it: tell the user it was stopped, and wait for their next request (call begin_work when they ask for something new).';
+  'The user pressed Stop in the Narratives editor — this work was ended and kept as it was. Do not continue it: tell the user it was stopped, and wait for their next request (call begin_work when they ask for something new).';
 
 export function stopExternalRun(): boolean {
   if (!active || active.source === 'service') return false;

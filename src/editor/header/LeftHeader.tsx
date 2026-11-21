@@ -37,6 +37,9 @@ import { useIsViewer } from '@/code/stores/viewer-mode-store';
 import { settingsOverlayOpenAtom, settingsSectionAtom, hasActiveSubscriptionAtom } from '@/code/stores/website-settings-store';
 import { CLOUD_ENABLED } from '@/shared/cloud-flag';
 import { leaveBuilderTo } from '@/backend/leave-builder';
+import { NarrativesMark } from '@/editor/brand/NarrativesMark';
+import AboutDialog from '@/editor/brand/AboutDialog';
+import { BRAND } from '@/editor/brand/brand';
 
 // ─── Back chevron — same glyph the settings overlay uses for its
 // "Back to canvas" affordance. Inline so we don't pull a third-
@@ -50,35 +53,6 @@ function BackChevronIcon({ className = 'w-4 h-4' }: { className?: string }) {
   );
 }
 
-// ─── Revyme Logo (inline SVG, switches with dark/light mode) ─────────────
-
-function RevymeLogo() {
-  // Fill tracks `--text-primary` via `currentColor` — a dark glyph in
-  // light mode, light glyph in dark mode. A pure-CSS invert that follows
-  // the theme automatically. (The previous version read the `dark` class
-  // off `documentElement` once at render time; that value never updated
-  // on a theme toggle, so the white logo stayed white and disappeared on
-  // the light header.)
-  //
-  // Sized to match the menu chip height (30px) — small enough to read as
-  // an app icon, big enough to be a real click target. The narrow vector
-  // makes it look "tall and thin" at any size; width 14 keeps the visual
-  // weight balanced with the project-name chip next to it.
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 779.79 1578.33"
-      width={14}
-      height={22}
-      style={{ color: 'var(--text-primary)' }}
-    >
-      <polygon fill="currentColor" points="0 0 0 464.88 779.79 922.26 779.79 461.13 0 0" />
-      <polygon fill="currentColor" points="779.79 1357.14 0 899.76 0 1357.14 408.64 1578.33 779.79 1357.14" />
-      <polygon fill="currentColor" points="402.21 700.79 402.21 1135.67 779.79 922.26 402.21 700.79" />
-    </svg>
-  );
-}
-
 // ─── Logo button — account-level actions + the entire File/Edit/Insert/View
 // menubar as right-opening submenus. Used to be a 2-item menu (Dashboard,
 // Account) plus a separate `MenuTabs` chip strip; the strip was folded into
@@ -88,6 +62,7 @@ function RevymeLogo() {
 
 export function LogoButton() {
   const [open, setOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [localSites, setLocalSites] = useState<LocalSiteSummary[]>([]);
   const ref = useRef<HTMLButtonElement>(null);
 
@@ -204,6 +179,14 @@ export function LogoButton() {
           setSettingsOpen(true);
         },
       }] : []),
+      {
+        id: 'logo-about',
+        label: `About ${BRAND.name}`,
+        onClick: () => {
+          trace.action('left-header:about');
+          setAboutOpen(true);
+        },
+      },
       { type: 'separator' },
       // The menubar — flattened into 4 submenu entries. Each `tab.items`
       // is a `DropdownMenuEntry[]` straight from menu-builders.tsx; no
@@ -251,7 +234,7 @@ export function LogoButton() {
         onClick={() => setOpen((v) => !v)}
         className="flex items-center justify-center w-8 h-8 cut-corners cursor-pointer border-none bg-transparent hover:bg-white/[0.10] transition-colors"
       >
-        <RevymeLogo />
+        <NarrativesMark />
       </button>
       <DropdownMenu
         isOpen={open}
@@ -263,6 +246,7 @@ export function LogoButton() {
         hoverStyle="accent"
         searchable
       />
+      <AboutDialog isOpen={aboutOpen} onClose={() => setAboutOpen(false)} />
     </>
   );
 }

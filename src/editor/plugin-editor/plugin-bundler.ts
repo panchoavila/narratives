@@ -282,9 +282,9 @@ ${importMap}
         <path d="M14 12 L26 20 L14 28 Z" fill="white"/>
       </svg>
     </div>
-    <p class="standalone-title">This is a Revyme plugin.</p>
+    <p class="standalone-title">This is a Narratives plugin (Revyme plugin format).</p>
     <p class="standalone-body">
-      Open it inside the Revyme builder to use it.
+      Open it inside the editor to use it.
       <a class="standalone-link" href="https://revyme.com/plugins" target="_blank" rel="noopener noreferrer">Learn more</a>
     </p>
   </div>
@@ -355,7 +355,7 @@ function escapeHtml(s: string): string {
  * a change to either forces the matching change.
  */
 export function buildStarterTemplate(pluginId: string, displayName: string): string {
-  return `// ${displayName} — Revyme plugin.
+  return `// ${displayName} — Narratives plugin (Revyme plugin format).
 // Imports resolve via an iframe import map: \`@revyme/plugin-sdk\` is
 // served as a blob URL of our SDK runtime; \`react\` + \`react-dom/client\`
 // route through esm.sh. Any other bare import (e.g. \`lodash\`) is
