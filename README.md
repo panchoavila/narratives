@@ -1,148 +1,71 @@
-# Revyme
+# Narratives
 
-**Design websites with pixel-perfect control. Ship real code you own.**
+**An opinionated Revyme for building immersive narratives.**
 
-[![Join the Revyme Discord](https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?logo=discord&logoColor=white&style=for-the-badge)](https://discord.gg/8f6UpuQHRN)
+Narratives is a fork of [Revyme](https://github.com/revyme-web/builder), the open-source
+visual website builder by Nikita Kofman. It keeps Revyme's foundation: you design on a canvas,
+and the document is real Next.js / React source that you own. On top of that it adds the tools
+long-form, cinematic and editorial work needs: 3D navigation and transitions on the canvas, a
+type-driven editorial layout engine, scene and glass effects, a richer CMS, and a self-hosted
+collaboration server.
 
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](./LICENSE)
-[![Website](https://img.shields.io/badge/revyme.com-visit-black)](https://revyme.com)
+> Narratives is not Revyme, and it is not affiliated with or endorsed by Revyme. "Revyme", its
+> logo and revyme.com / revyme.app are trademarks of their owner. They are named here only to
+> describe where this work comes from (see [NOTICE](./NOTICE)).
 
-Revyme is an open-source visual website builder. You design on a canvas - drag, resize, build components, animate - and you get a clean Next.js project you can read, edit, deploy anywhere, and keep forever.
+## What Narratives adds
 
-No proprietary file format. No export step that mangles your work. No lock-in.
+[FORK.md](./FORK.md) has the full divergence map. In short:
 
-> **Questions, ideas, or want to show what you built?**
-> [Join the Revyme Discord](https://discord.gg/8f6UpuQHRN) - it's the fastest way to get help.
+- **Canvas in 3D.** Live 3D viewport navigation, displacement, ripple, glitch and VHS
+  transitions, HTML-in-Canvas effects, and a 3D carousel.
+- **Editorial layout.** `EditorialFlow`, a long-text engine built on Pretext with columns, media
+  placement, hyphenation and space-derived type. It reads vertically or across, as a horizontal
+  magazine, and Page Flow turns a page into full-height panels.
+- **Scene runtime components.** Nova Warp, liquid and native glass, Advanced Heading and Advanced
+  Frame, rich CMS content, article widgets, image lightbox and effects, gallery trail, hover 3D,
+  draggable frame, cookie consent, and form and device trackers.
+- **CMS.** Reference filters and sorting, locale-aware collation, conditional visibility,
+  current-item filters on detail pages, a published-only projection on export, section anchors
+  on links, and a Slug picker for any link to a CMS route.
+- **Interactions.** Focus, blur and Escape as editable connections.
+- **Animation Timeline.** Smart guides and magnetic snapping.
+- **Self-hosting.** A collaborative editor server with invitations and roles, CMS-only sites
+  (content edited on the server, design kept local), Vercel publishing, and a self-contained
+  source export.
+- **Import.** A Framer-to-Narratives translator.
 
-![The Revyme editor](docs/readme/builder-preview.webp)
-
-## Who it's for
-
-- **Designers** who want real control - precise layout, motion and typography - without writing code
-- **Developers** who want to build UI visually and still own clean, readable source
-- **Agencies and teams** who need to hand off a project a client can actually keep
-- **Anyone leaving a hosted builder** and tired of paying rent on their own website
-
-If you've used Framer or Webflow and wished you could take the code with you, that's the gap
-this fills.
-
-## What you can build
-
-**Components and variants.** Turn any selection into a reusable component. Give it visual
-states - default, hover, open, whatever you need - and wire them together with clicks, hovers
-and scroll triggers. No state machines to hand-write.
-
-**Genuinely responsive layouts.** Design on desktop, then adjust tablet and mobile directly.
-Add custom breakpoints whenever you want. Overrides are real CSS, not approximations.
-
-**A real CMS.** Typed collections, filtered and sorted lists, pagination, and detail pages on
-dynamic routes. Bind any field to any element by pointing at it.
-
-**Motion that feels designed.** Spring physics, easing curves, scroll-linked transforms, text
-effects and per-character reveals - all tuned visually with live preview.
-
-![The Transition editor with its easing curve, beside the animation trigger menu](docs/readme/motion.webp)
-
-**Multiple languages.** Add a locale, translate inline, and every visitor gets the right
-content, URLs and SEO metadata. Right-to-left included.
-
-**Forms, plugins, and more.** A visual form builder with a self-hostable submit relay, plus a
-plugin SDK if you want to extend the editor itself.
-
-![Editing a CMS item - typed fields on the left, content and meta on the right](docs/readme/cms.webp)
-
-## The code is yours
-
-Every edit writes real source. Open the code panel at any moment and you'll find an ordinary
-Next.js project - `app/`, `components/`, `cms/` - that any React developer can pick up.
-
-Deploy it to Vercel, Netlify, your own server, anywhere. Hand it to a developer. Fork it and
-never open Revyme again. It's your code.
-
-![The code editor open over the canvas, showing the generated page source](docs/readme/code-export.webp)
-
-## Quickstart
+## Run it
 
 ```bash
 npm ci
-npm run dev
+npm run dev     # editor :3333 · canvas sandbox :5174 · preview sandbox :5175
 ```
 
-Then open **http://localhost:3333**.
-
-`npm run dev` starts three Vite servers - all are required:
-
-| Port | What it serves |
-|------|----------------|
-| 3333 | the editor |
-| 5174 | the canvas sandbox iframe (your page, rendered live) |
-| 5175 | the preview sandbox (the "play" preview) |
-
-Your work saves to `localStorage` automatically in local mode. No account, no backend, no
-network required.
-
-### Optional configuration
-
-Everything is optional - see [`.env.example`](./.env.example) for the annotated list.
-
-| Variable | Purpose |
-|----------|---------|
-| `VITE_GOOGLE_FONTS_KEY` | Google Fonts picker (falls back to a bundled list) |
-| `VITE_UNSPLASH_ACCESS_KEY` / `VITE_PIXABAY_KEY` | stock image/video search tabs (hidden without keys) |
-| `VITE_REVYME_CLOUD` | set to `true` only when running against the hosted cloud backend |
-| `VITE_CDN_HOST` / `VITE_PLATFORM_HOST` | point a self-hosted fork at your own asset CDN / platform |
-
-### Publishing local sites to Vercel
-
-Named local sites (`/builder/<site-id>`, stored under `sites/<site-id>`) can publish directly from **Publish** without enabling Revyme Cloud.
-
-1. Choose **Connect Vercel**, enter an existing project name/ID or explicitly create a new project, and connect with a Vercel access token. A local Vercel CLI login or server-side `VERCEL_TOKEN` can also supply credentials. Team projects can use their `team_…` ID. The Vercel project's Root Directory must be empty because each site is uploaded as a complete Next.js project.
-2. **Publish preview** saves the latest source, uploads a fixed snapshot and starts a Vercel build. The temporary `*.vercel.app` URL appears when the build is ready. The previous working preview remains available if a later build fails.
-3. **Deploy to production** rebuilds that ready preview with production settings; later editor changes are not included. Production requires its own explicit action.
-4. **Configure domains** adds production domains, reports ownership verification separately from DNS configuration, and displays Vercel's recommended DNS records. Preview URLs remain separate.
-
-Connection secrets and deployment state stay in ignored `.revyme-local/` files (owner-only permissions), outside site exports and upload payloads. The three development servers deny HTTP access to that directory. Publishing routes accept only local, same-origin requests. An MCP connection in an assistant is separate from the editor server's credentials.
-
-![The Add Language dialog - locale search, display name, slug and fallback](docs/readme/localization.webp)
-
-## How it works
-
-Three ideas, if you're curious what's under the canvas:
-
-**The JSX is the source of truth.** The editor parses your page's `.tsx` into a node map,
-renders it, and every edit rewrites that JSX. Undo, code export and consistency all fall out
-of one loop: parse → render → edit → regenerate.
-
-**Edits are imperative, commits are canonical.** During a drag the canvas is patched directly
-at 60fps; the source is rewritten once, when you let go. Fluid to use, exact in the file.
-
-**Your page runs in a sandbox.** Canvas content lives in a sandboxed iframe, so page code can
-never reach the editor. Geometry and style cross a `postMessage` bridge backed by synced
-caches.
-
-[CLAUDE.md](./CLAUDE.md) has the full architecture guide.
-
-## Contributing
+Open http://localhost:3333. The gates every change passes:
 
 ```bash
-npx tsc --noEmit          # typecheck
-npx vitest run            # unit tests
-VITE_REVYME_CLOUD= npx playwright test   # e2e against the dev servers
+npx tsc --noEmit
+npx vitest run          # Node 26: NODE_OPTIONS=--no-experimental-webstorage
+npm run build && npm run build:sandbox && npm run build:preview
+VITE_REVYME_CLOUD= npx playwright test
 ```
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the contributor guide. Issues and pull requests
-are welcome - bug reports with a reproduction are especially useful.
+For the self-hosted collaboration server, see `server/` and `npm run build:selfhosted`,
+`npm run server:build` and `npm run e2e:selfhosted`.
+
+[CLAUDE.md](./CLAUDE.md) is the architecture guide and [CONTRIBUTING.md](./CONTRIBUTING.md) the
+review checklist. Both are inherited from Revyme and still describe this codebase.
 
 ## License
 
-[AGPL-3.0](./LICENSE), with an additional notice-preservation term under AGPL section 7(b) -
-see [NOTICE](./NOTICE).
+[AGPL-3.0-only](./LICENSE), with the additional term under AGPL section 7(b) in [NOTICE](./NOTICE).
+That term requires the NOTICE file, the copyright notices and the author attributions to stay
+intact.
 
-In short: you're free to use, modify, and self-host Revyme. If you offer a modified version to
-others over a network (e.g. run it as a service), the AGPL requires you to publish the source
-of your modified version. The copyright notices and the NOTICE file must stay intact, and the
-Revyme name and logo are trademarks - forks need their own branding.
+- **What changed.** [CHANGES.md](./CHANGES.md) states what was modified, and since when.
+- **Source for network users.** If you run Narratives as a service, its users must be offered the
+  source of the version you run. The editor's "About Narratives" entry links to it. Set
+  `VITE_SOURCE_URL` when you deploy from your own repository.
 
-**Commercial licensing.** If your organization can't accept the AGPL's obligations
-(proprietary modifications, embedding Revyme in a closed-source product, or offering it as a
-service without source disclosure), a commercial license is available: **hello@revyme.com**.
+Copyright © 2026 Nikita Kofman (Revyme); modifications © 2026 the Narratives contributors.

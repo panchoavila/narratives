@@ -1,6 +1,13 @@
 {
   "name": "@revyme/runtime",
   "version": "0.0.32-scene.3",
+  "description": "Narratives scene runtime: the @revyme/runtime build that Narratives sites vendor, with the scene, editorial and media components.",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/panchoavila/narratives.git",
+    "directory": "packages/revyme-runtime-scene"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
