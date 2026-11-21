@@ -4,6 +4,7 @@
   "format": "revyme-v1",
   "managedFiles": [
     "_meta/page-camera.json",
+    "_meta/source-file-contract.json",
     "app/espacio/page.client.tsx",
     "app/espacio/page.tsx",
     "app/globals.css",
@@ -20,8 +21,12 @@
     "i18n/config.json",
     "messages/en.json",
     "messages/es.json",
-    "messages/fr.json"
+    "messages/fr.json",
+    "next-env.d.ts",
+    "next.config.mjs",
+    "package.json",
+    "tsconfig.json"
   ],
   "adobeKit": null,
-  "updatedAt": "2026-11-07T21:14:11.906Z"
+  "updatedAt": "2026-11-21T21:00:46.596Z"
 }

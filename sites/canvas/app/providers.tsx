@@ -69,13 +69,14 @@ function revymeNavClick(e: MouseEvent, nav: { push: (href: string) => void }) {
  *  the destination page has mounted it (polls up to 10s — SPA routers do no
  *  native hash scrolling). */
 function revymeScrollOnArrival() {
-  let id = null;
+  let id: string | null = null;
   try { id = window.sessionStorage.getItem(SMOOTH_KEY); } catch {}
   if (!id) return () => {};
   try { window.sessionStorage.removeItem(SMOOTH_KEY); } catch {}
+  const targetId = id;
   let n = 0;
   const t = window.setInterval(() => {
-    const el = document.getElementById(id);
+    const el = document.getElementById(targetId);
     if (el) { window.clearInterval(t); el.scrollIntoView({ behavior: 'smooth' }); }
     else if (++n > 100) window.clearInterval(t);
   }, 100);
