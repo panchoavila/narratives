@@ -47,6 +47,7 @@ import * as React from 'react';
 import { jsx, jsxs } from 'react/jsx-runtime';
 import { createRoot } from 'react-dom/client';
 import { captureThumbnail } from './capture-thumbnail';
+import { isMessageFrom } from '@/shared/message-source';
 import { ThemeProvider as NextThemeProvider, useTheme } from 'next-themes';
 import { transform } from '@babel/standalone';
 // Bundle motion (framer-motion v12+) so user code can `import { motion } from
@@ -921,6 +922,10 @@ function rerender(): void {
 }
 
 window.addEventListener('message', (e) => {
+  // Only the editor that embeds this preview may drive it. A page that opened
+  // the preview in a popup, or framed it, could otherwise hand it any code to
+  // compile and run on this origin.
+  if (window.parent === window || !isMessageFrom(e, window.parent)) return;
   const msg = e.data;
   if (!msg || typeof msg !== 'object') return;
 
@@ -1040,8 +1045,8 @@ window.addEventListener('message', (e) => {
   } else if (msg.type === 'preview:capture-thumbnail') {
     // Parent (PreviewOverlay) asks us to snapshot the rendered page for the
     // dashboard thumbnail. captureThumbnail() defers + posts `preview:thumbnail`
-    // back; fire-and-forget so the message handler stays sync.
-    void captureThumbnail();
+    // back to the editor's origin; fire-and-forget so the handler stays sync.
+    void captureThumbnail(e.origin);
   }
 });
 

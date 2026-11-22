@@ -17,6 +17,7 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
 import { sitesStaticAssetsPlugin } from './src/server/sites-plugin';
+import { editorCorsOrigins } from './src/shared/dev-server-guards';
 
 const src = path.resolve(__dirname, 'src');
 
@@ -35,6 +36,9 @@ function runtimeBridgeImportmapPlugin(): Plugin {
   };
 }
 
+const allowedHosts = (process.env.VITE_ALLOWED_HOSTS ?? 'revyme.com,.revyme.com').split(',');
+const editorCors = { origin: editorCorsOrigins(allowedHosts) };
+
 export default defineConfig({
   root: path.resolve(__dirname, 'src/preview-sandbox'),
   // Per-config cache. Without this, all three Vite servers (parent on 3333,
@@ -48,7 +52,9 @@ export default defineConfig({
   server: {
     port: 5175,
     strictPort: true,
-    cors: true,
+    // The editor's own hosts only (was `true`: any website could read every
+    // response, source modules included).
+    cors: editorCors,
     watch: {
       ignored: ['**/sites/**'],
     },
@@ -73,7 +79,8 @@ export default defineConfig({
     // Env-driven so self-hosters can serve `vite preview` under their own
     // domain: VITE_ALLOWED_HOSTS="example.com,.example.com". Localhost/IPs
     // are always allowed by Vite regardless.
-    allowedHosts: (process.env.VITE_ALLOWED_HOSTS ?? 'revyme.com,.revyme.com').split(','),
+    allowedHosts,
+    cors: editorCors,
   },
   resolve: {
     alias: { '@': src },
