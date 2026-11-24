@@ -71,6 +71,9 @@ fs.mkdirSync(root, { recursive: true });
 // line, so edits to ADJACENT siblings overlap in the 3-way merge (see the brief).
 writeSite('demo', 'Demo', ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((id, i) => box(id, 40 + i * 190, COLORS[i])));
 writeSite('other', 'Other', [box('z', 80, '#aa66ff')]);
+// Branch isolation (branch-isolation.spec.ts): a site of its own, so editing
+// on a branch and on main there never disturbs the other specs' sites.
+writeSite('branchy', 'Branchy', ['p', 'q', 'r', 's', 't'].map((id, i) => box(id, 40 + i * 190, COLORS[i])));
 // A site with an image in `public/`: the canvas iframe is credentialless, so
 // the sandbox origin must serve it without a session (see the brief, 15-11-2026).
 const DOT_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');

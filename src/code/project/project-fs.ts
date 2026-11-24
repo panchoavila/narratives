@@ -186,6 +186,10 @@ export interface ProjectFSWriteEvent {
    *  collab broadcast hook must check this and skip re-emitting remote
    *  writes to avoid an infinite loop. */
   origin: 'local' | 'remote';
+  /** The branch whose map changed: `MAIN_BRANCH_ID` for main and for shared
+   *  editor state (`_meta/`), else the branch id. Live collaboration shares
+   *  main only, so it sends main's writes and never a branch's. */
+  branch: string;
 }
 
 export interface BranchFileIO {
@@ -404,6 +408,11 @@ export class InMemoryProjectFS implements ProjectFS {
     return isSharedAcrossBranches(path) ? this.files : this.activeFiles();
   }
 
+  /** The branch whose map holds `path` right now (see ProjectFSWriteEvent.branch). */
+  private branchFor(path: string): string {
+    return isSharedAcrossBranches(path) ? MAIN_BRANCH_ID : this.activeBranchId;
+  }
+
   readFile(path: string): string | null {
     return this.mapFor(path).get(path) ?? null;
   }
@@ -411,6 +420,11 @@ export class InMemoryProjectFS implements ProjectFS {
   writeFile(path: string, content: string): void {
     const origin = this.nextOrigin;
     this.nextOrigin = 'local';
+    this.writeInto(this.mapFor(path), this.branchFor(path), path, content, origin);
+  }
+
+  /** The one write path: guards, map update, branch dirtiness, typed event, pulse. */
+  private writeInto(map: Map<string, string>, branch: string, path: string, content: string, origin: 'local' | 'remote'): void {
     // SEED-OVERWRITE GUARD. A user's Home page was replaced by the default
     // starter page (`HOME_PAGE`) inside an otherwise intact project on
     // 2026-09-06, and autosave persisted it. Whatever the path (a stale
@@ -420,7 +434,7 @@ export class InMemoryProjectFS implements ProjectFS {
     // projects are unaffected (their files arrive via loadSnapshot / on a
     // path that does not exist yet).
     if (isSeedPageBody(content)) {
-      const existing = this.mapFor(path).get(path);
+      const existing = map.get(path);
       if (typeof existing === 'string' && existing !== content && !isSeedPageBody(existing)) {
         trace.error('project-fs:refused-seed-overwrite', `${path}: refused to replace ${existing.length} bytes of real content with a seed page body`);
         return;
@@ -438,27 +452,32 @@ export class InMemoryProjectFS implements ProjectFS {
     // empty file is fine (CodeEditor's "New File"), so this only fires when
     // real content would be destroyed.
     if (content.trim() === '') {
-      const existing = this.mapFor(path).get(path);
+      const existing = map.get(path);
       if (typeof existing === 'string' && existing.trim() !== '') {
         trace.error('project-fs:refused-truncation', `${path}: refused to replace ${existing.length} bytes with an empty file`);
         return;
       }
     }
-    this.mapFor(path).set(path, content);
-    // Editor state never dirties a branch: moving the camera is not an edit.
-    if (!isSharedAcrossBranches(path)) this.touchActiveBranch();
-    trace.action('project-fs:write', { path, size: content.length, origin });
-    this.emit({ kind: 'write', path, content, origin });
+    map.set(path, content);
+    // Only a write into the active branch's own map dirties it: editor state
+    // (moving the camera) and a collaborator's write to main are not edits of it.
+    if (branch !== MAIN_BRANCH_ID) this.touchActiveBranch();
+    trace.action('project-fs:write', { path, size: content.length, origin, branch });
+    this.emit({ kind: 'write', path, content, origin, branch });
     this.notify();
   }
 
   deleteFile(path: string): void {
     const origin = this.nextOrigin;
     this.nextOrigin = 'local';
-    this.mapFor(path).delete(path);
-    if (!isSharedAcrossBranches(path)) this.touchActiveBranch();
-    trace.action('project-fs:delete', { path, origin });
-    this.emit({ kind: 'delete', path, origin });
+    this.deleteFrom(this.mapFor(path), this.branchFor(path), path, origin);
+  }
+
+  private deleteFrom(map: Map<string, string>, branch: string, path: string, origin: 'local' | 'remote'): void {
+    map.delete(path);
+    if (branch !== MAIN_BRANCH_ID) this.touchActiveBranch();
+    trace.action('project-fs:delete', { path, origin, branch });
+    this.emit({ kind: 'delete', path, origin, branch });
     this.notify();
   }
 
@@ -469,10 +488,39 @@ export class InMemoryProjectFS implements ProjectFS {
     this.nextOrigin = 'local';
     this.mapFor(newPath).set(newPath, content);
     this.mapFor(oldPath).delete(oldPath);
-    if (!isSharedAcrossBranches(oldPath) || !isSharedAcrossBranches(newPath)) this.touchActiveBranch();
-    this.emit({ kind: 'move', oldPath, newPath, origin });
+    const shared = isSharedAcrossBranches(oldPath) && isSharedAcrossBranches(newPath);
+    const branch = shared ? MAIN_BRANCH_ID : this.activeBranchId;
+    if (branch !== MAIN_BRANCH_ID) this.touchActiveBranch();
+    this.emit({ kind: 'move', oldPath, newPath, origin, branch });
     this.notify();
-    trace.action('project-fs:move', { from: oldPath, to: newPath, origin });
+    trace.action('project-fs:move', { from: oldPath, to: newPath, origin, branch });
+  }
+
+  // ─── Main, whichever branch is active ─────────────────────────────────
+  // Live collaboration shares MAIN only: a tab working on a branch keeps
+  // receiving the room's main edits (into main, not into the branch it is
+  // showing) and keeps its own branch edits out of the room. These read and
+  // write main directly; everything else routes through the active branch.
+
+  /** Main's copy of `path`, whichever branch is active. */
+  readMainFile(path: string): string | null {
+    return this.files.get(path) ?? null;
+  }
+
+  /** All of main's files (website and editor state), whichever branch is active. */
+  getMainSnapshot(): Map<string, string> {
+    return new Map(this.files);
+  }
+
+  /** A collaborator's write to main. Same guards as `writeFile`; the active
+   *  branch, if any, is untouched. */
+  applyRemoteMainWrite(path: string, content: string): void {
+    this.writeInto(this.files, MAIN_BRANCH_ID, path, content, 'remote');
+  }
+
+  /** A collaborator's delete on main; the active branch, if any, is untouched. */
+  applyRemoteMainDelete(path: string): void {
+    this.deleteFrom(this.files, MAIN_BRANCH_ID, path, 'remote');
   }
 
   /** Subscribe to per-write events (typed payload). Use this for
@@ -890,7 +938,7 @@ export class InMemoryProjectFS implements ProjectFS {
     b.status = 'dirty';
     b.lastEditedAt = Date.now();
     trace.action('project-fs:delete-branch', { branchId, path });
-    this.emit({ kind: 'delete', path, origin: 'local' });
+    this.emit({ kind: 'delete', path, origin: 'local', branch: branchId });
   }
 
   /**
@@ -917,7 +965,7 @@ export class InMemoryProjectFS implements ProjectFS {
     b.status = 'dirty';
     b.lastEditedAt = Date.now();
     trace.action('project-fs:write-branch', { branchId, path, size: content.length });
-    this.emit({ kind: 'write', path, content, origin: 'local' });
+    this.emit({ kind: 'write', path, content, origin: 'local', branch: branchId });
   }
 
   /**

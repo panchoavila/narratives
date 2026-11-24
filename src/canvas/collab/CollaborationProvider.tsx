@@ -27,7 +27,7 @@ import {
 import { io, type Socket } from 'socket.io-client';
 import { COLLAB_ENABLED } from '@/shared/cloud-flag';
 import { getProjectId } from '@/backend/project-id';
-import { projectFS, projectVersionAtom } from '@/code/project/project-fs';
+import { projectFS, projectVersionAtom, MAIN_BRANCH_ID, isSharedAcrossBranches } from '@/code/project/project-fs';
 import {
   syncQueueCode,
   isMutationQueueProcessing,
@@ -249,12 +249,19 @@ function CloudProvider({ children }: { children: ReactNode }) {
       });
       renderAfterGesture = unsub;
     };
+    // The room shares MAIN only (branch-isolation.spec.ts). On a branch this
+    // tab keeps receiving main's writes into main — the map it will show on
+    // returning — while the canvas, the mutation queue and undo stay on the
+    // branch, so none of them may be fed main's content.
+    const showsMain = (path: string) =>
+      projectFS.getActiveBranchId() === MAIN_BRANCH_ID || isSharedAcrossBranches(path);
     const applyRemoteContent = (path: string, content: string) => {
-      projectFS.applyRemoteWrite(path, content);
+      projectFS.applyRemoteMainWrite(path, content);
       // Bump the version atom so jotai-derived state (codeAtom, etc.)
       // re-reads from projectFS. Mirrors what `modifyProjectFile` does for
       // local writes.
       bumpVersion((v) => v + 1);
+      if (!showsMain(path)) return;
       // Update the mutation-queue's cached `currentCode` if this write hit
       // the ACTIVE page. Otherwise the next local mutation would apply
       // against the pre-sync source and overwrite the remote change on
@@ -278,11 +285,12 @@ function CloudProvider({ children }: { children: ReactNode }) {
         socket.emit('file-sync', { websiteId, path, content, ...(baseSeq !== undefined ? { baseSeq } : {}) }, ack);
         trace.action('collab:broadcast-write', { path, size: content.length, baseSeq });
       },
-      read: (path) => projectFS.readFile(path),
+      read: (path) => projectFS.readMainFile(path),
       apply: applyRemoteContent,
       applyDelete: (path) => {
-        projectFS.applyRemoteDelete(path);
+        projectFS.applyRemoteMainDelete(path);
         bumpVersion((v) => v + 1);
+        if (!showsMain(path)) return;
         const activeFile = getDefaultStore().get(activeFilePathAtom);
         if (path === activeFile) {
           syncQueueCode('');
@@ -329,7 +337,7 @@ function CloudProvider({ children }: { children: ReactNode }) {
           }
           // Our copy of every file = the room's current version of it (a
           // server without `fileSeqs` predates ordered sync → legacy sends).
-          sync.join(projectFS.getSnapshot(), res.fileSeqs ?? null);
+          sync.join(projectFS.getMainSnapshot(), res.fileSeqs ?? null);
           // In sync with the room only if nobody saved since this tab's copy
           // (save-revision.ts) — otherwise this tab missed writes.
           noteRoomJoined(res.revision);
@@ -461,6 +469,13 @@ function CloudProvider({ children }: { children: ReactNode }) {
     // the loop terminates.
     const unsubscribeFs = projectFS.subscribeWrites((e) => {
       if (e.origin === 'remote') return;
+      // A branch's writes and deletes stay in this tab: the room is main's.
+      // The branch reaches main only when it is applied, and the apply's
+      // writes to main are sent like any other edit.
+      if (e.branch !== MAIN_BRANCH_ID) {
+        trace.action('collab:branch-write-kept-local', { kind: e.kind, path: e.path, branch: e.branch });
+        return;
+      }
       // File moves stay unsynced — only a rename produces one, which the
       // canvas doesn't expose during live editing.
       if (e.kind === 'write' && e.path !== undefined) {
@@ -475,7 +490,7 @@ function CloudProvider({ children }: { children: ReactNode }) {
         // Import / rollback replaces the project locally (never broadcast):
         // re-base so it isn't later merged into collaborators' writes as
         // if it were unsent edits.
-        sync.rebaseAll(projectFS.getSnapshot());
+        sync.rebaseAll(projectFS.getMainSnapshot());
       }
     });
 
