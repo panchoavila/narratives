@@ -29,8 +29,8 @@ import { test, expect, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  ADMIN, SITES, logLines, waitForLog, signIn, closePerson, openSite, deleteBox, canvasIds, idsIn,
-  type Person,
+  ADMIN, SITES, logLines, waitForLog, signIn, closePerson, openSite, deleteBoxUntilGone, canvasIds, idsIn,
+  createBranch, switchTo, type Person,
 } from './helpers';
 
 const SITE = 'branchy';
@@ -43,23 +43,6 @@ const onDisk = () => idsIn(fs.readFileSync(PAGE_FILE, 'utf8'));
 
 async function shot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: path.join(ARTIFACTS, `${name}.png`) });
-}
-
-async function createBranch(page: Page, name: string): Promise<void> {
-  await page.locator('[data-tutorial="branches-button"]').click();
-  await page.getByTitle('New branch').click();
-  await page.getByPlaceholder('Branch name').fill(name);
-  await page.keyboard.press('Enter');
-  await expect(page.getByPlaceholder('Branch name')).toHaveCount(0);
-  await expect(page.getByText(name, { exact: true }).first()).toBeVisible();
-  // The switch rebuilds the canvas, and again 250 ms later (switch-workspace.ts):
-  // a click before that lands on a canvas about to be replaced.
-  await page.waitForTimeout(1_000);
-}
-
-async function switchTo(page: Page, branch: string): Promise<void> {
-  await page.getByText(branch, { exact: true }).first().click();
-  await page.waitForTimeout(1_000);
 }
 
 /** Website writes (not `_meta/` editor state) this person sent to the room since `since`. */
@@ -101,7 +84,7 @@ test('a branch edit never reaches main, and a main edit never lands on the branc
     // ── B1: an edit on the branch stays on the branch ──
     await createBranch(brancher.page, 'redesign');
     since = logLines().length;
-    await deleteBox(brancher.page, 'q');
+    await deleteBoxUntilGone(brancher.page, 'q');
     const onBranch = ['root', 'p', 'r', 's', 't'];
     await expect.poll(() => canvasIds(brancher.page)).toEqual(onBranch);
     await brancher.page.waitForTimeout(2_000); // a leaked write would have been relayed by now
@@ -119,7 +102,7 @@ test('a branch edit never reaches main, and a main edit never lands on the branc
 
     // ── B2: an edit on main stays off the branch ──
     since = logLines().length;
-    await deleteBox(collaborator.page, 's');
+    await deleteBoxUntilGone(collaborator.page, 's');
     const mainAfter = ['root', 'p', 'q', 'r', 't'];
     await expect.poll(() => canvasIds(collaborator.page)).toEqual(mainAfter);
     await waitForLog(since, (l) => l.category === 'rt:file-sync' && l.data.siteId === SITE && l.data.userId === collaborator.userId);
@@ -138,7 +121,7 @@ test('a branch edit never reaches main, and a main edit never lands on the branc
     // ── B4: back on main, the brancher sees main, and main edits flow again ──
     await switchTo(brancher.page, 'main');
     await expect.poll(() => canvasIds(brancher.page), { message: 'B4: main shows the collaborator edit' }).toEqual(mainAfter);
-    await deleteBox(brancher.page, 't', { x: 0.7, y: 0.7 });
+    await deleteBoxUntilGone(brancher.page, 't', { x: 0.7, y: 0.7 });
     const finalMain = ['root', 'p', 'q', 'r'];
     await expect.poll(() => canvasIds(collaborator.page)).toEqual(finalMain);
     await expect.poll(() => onDisk(), { timeout: 30_000 }).toEqual(finalMain);

@@ -30,9 +30,12 @@ collaboration server.
   on links, and a Slug picker for any link to a CMS route.
 - **Interactions.** Focus, blur and Escape as editable connections.
 - **Animation Timeline.** Smart guides and magnetic snapping.
-- **Self-hosting.** A collaborative editor server with invitations and roles, CMS-only sites
-  (content edited on the server, design kept local), Vercel publishing, and a self-contained
-  source export.
+- **Self-hosting.** A collaborative editor server with invitations and roles (including a
+  content-only role), Vercel publishing, and a self-contained source export.
+- **Branches and agents.** Branches are stored by the server and reviewed per node and per CMS
+  item before the owner applies them. Agents — the CLI (`site:pull`, `branch:push`, `site:dev`)
+  and the `narratives-mcp` server for Claude Code and other MCP clients — write work branches
+  only; the owner reviews and applies them, as with Framer's external agents.
 - **Import.** A Framer-to-Narratives translator.
 
 ## Run it
@@ -53,6 +56,26 @@ VITE_REVYME_CLOUD= npx playwright test
 
 For the self-hosted collaboration server, see `server/` and `npm run build:selfhosted`,
 `npm run server:build` and `npm run e2e:selfhosted`.
+
+### Agents and branches
+
+On a self-hosted server, `main` is the truth the owner edits and publishes. Agents and local
+work reach it only as branches the owner reviews and applies in the editor:
+
+```bash
+npm run agent:token <site>      # owner, once per machine: a token that writes branches only
+npm run site:pull <site>        # server main → sites/<site>, your working copy
+npm run site:dev <site>         # every local change → your work branch on the server
+npm run branch:push <site> --title "What changed"   # or push once
+npm run branch:done <site>      # done: the owner can apply it
+```
+
+For Claude Code or any MCP client, run the MCP server from the repository root
+(`CMS_URL` and the agent token come from the environment or `.env.local`):
+
+```json
+{ "mcpServers": { "narratives": { "command": "node", "args": ["server/narratives-mcp.mjs"] } } }
+```
 
 [CLAUDE.md](./CLAUDE.md) is the architecture guide and [CONTRIBUTING.md](./CONTRIBUTING.md) the
 review checklist. Both are inherited from Revyme and still describe this codebase.

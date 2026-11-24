@@ -118,7 +118,7 @@ function CloudBody() {
 
   // Form state
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState<'editor' | 'viewer'>('editor');
+  const [inviteRole, setInviteRole] = useState<'editor' | 'content' | 'viewer'>('editor');
   const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
   const [inviting, setInviting] = useState(false);
 
@@ -233,7 +233,7 @@ function CloudBody() {
   );
 
   const handleUpdateRole = useCallback(
-    async (userId: string, role: 'editor' | 'viewer') => {
+    async (userId: string, role: 'editor' | 'content' | 'viewer') => {
       setUpdatingRole(userId);
       setError('');
       const result = await updateCollaborator(websiteId, userId, { role });
@@ -314,6 +314,21 @@ function CloudBody() {
                     }`}
                   >
                     Editor
+                  </button>
+                  <button
+                    type="button"
+                    title="Edits CMS items and media only — design stays with the editors."
+                    onClick={() => {
+                      setInviteRole('content');
+                      setIsRoleDropdownOpen(false);
+                    }}
+                    className={`w-full px-2.5 py-1.5 text-[11px] text-left hover:bg-[var(--bg-hover)] transition-colors ${
+                      inviteRole === 'content'
+                        ? 'text-[var(--accent-text)] bg-[var(--bg-hover)]'
+                        : 'text-[var(--text-primary)]'
+                    }`}
+                  >
+                    Content
                   </button>
                   <button
                     type="button"
@@ -637,7 +652,7 @@ function CollaboratorDropdown({
   position: { top: number; left: number };
   openRoleSubmenu: boolean;
   setOpenRoleSubmenu: (open: boolean) => void;
-  onChangeRole: (role: 'editor' | 'viewer') => void;
+  onChangeRole: (role: 'editor' | 'content' | 'viewer') => void;
   onRemove: () => void;
 }) {
   if (!row) return null;
@@ -671,6 +686,15 @@ function CollaboratorDropdown({
                 }`}
               >
                 Editor
+              </button>
+              <button
+                onClick={() => onChangeRole('content')}
+                title="Edits CMS items and media only — design stays with the editors."
+                className={`w-full px-3 py-2 text-xs text-left cut-corners transition-colors text-[var(--text-primary)] ${
+                  row.role === 'content' ? 'bg-[var(--bg-hover)]' : 'hover:bg-white/10'
+                }`}
+              >
+                Content
               </button>
               <button
                 onClick={() => onChangeRole('viewer')}

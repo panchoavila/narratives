@@ -115,7 +115,8 @@ export interface RevymeUser {
   isAdmin?: boolean;
 }
 
-type WebsiteRole = 'owner' | 'editor' | 'viewer';
+/** `content`: CMS items and media only (self-hosted member role). */
+type WebsiteRole = 'owner' | 'editor' | 'content' | 'viewer';
 
 export interface ProjectBackend {
   /** Get the currently authenticated user. Returns null if not authenticated. */

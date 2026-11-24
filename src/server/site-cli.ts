@@ -28,6 +28,7 @@ import {
   validateFullCmsSite,
 } from '../shared/cms-site-contract';
 import { checkFile, type FileKind } from '../code/oracle/check-file';
+import { cmdAgentToken, cmdBranchDone, cmdBranchPush, cmdDev, cmdPull } from './branch-cli';
 import { isCodeComponentSource } from '../code/oracle/checks/shared';
 
 interface CliFlags {
@@ -35,6 +36,8 @@ interface CliFlags {
   url?: string;
   token?: string;
   cookie?: string;
+  branch?: string;
+  title?: string;
   strictOracle: boolean;
 }
 
@@ -51,6 +54,8 @@ function parseArgs(argv: string[]): CliFlags {
   let url: string | undefined;
   let token: string | undefined;
   let cookie: string | undefined;
+  let branch: string | undefined;
+  let title: string | undefined;
   let strictOracle = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -60,13 +65,17 @@ function parseArgs(argv: string[]): CliFlags {
       token = argv[++i];
     } else if (a === '--cookie' && argv[i + 1]) {
       cookie = argv[++i];
+    } else if (a === '--branch' && argv[i + 1]) {
+      branch = argv[++i];
+    } else if (a === '--title' && argv[i + 1]) {
+      title = argv[++i];
     } else if (a === '--strict-oracle') {
       strictOracle = true;
     } else if (!a.startsWith('--')) {
       positional.push(a);
     }
   }
-  return { positional, url, token, cookie, strictOracle };
+  return { positional, url, token, cookie, branch, title, strictOracle };
 }
 
 function walkDesignPublicAssets(siteDir: string): Record<string, Buffer> {
@@ -224,64 +233,6 @@ async function cmdCheck(repoRoot: string, flags: CliFlags): Promise<void> {
   if (failed) process.exitCode = 1;
 }
 
-async function cmdPushDesign(repoRoot: string, flags: CliFlags): Promise<void> {
-  const siteId = flags.positional[1];
-  if (!siteId) throw new Error('Usage: npm run design:push <site-id> [--url <origin>] [--token <token>]');
-
-  // Always verify local contract BEFORE pushing anything to the server.
-  const check = checkOneSite(repoRoot, siteId, flags.strictOracle);
-  if (!check.ok) {
-    throw new Error(`Refusing to push "${siteId}" — local contract check failed:\n  ${check.errors.join('\n  ')}`);
-  }
-
-  const { origin, headers } = resolveRemoteAuth(repoRoot, flags);
-  const sitesRoot = path.join(repoRoot, 'sites');
-  const siteDir = path.join(sitesRoot, siteId);
-  const meta = readSiteMeta(siteDir, siteId);
-  const allManaged = walkManagedFiles(siteDir);
-
-  const designFiles: Record<string, string> = {};
-  const starterCmsFiles: Record<string, string> = {};
-  for (const [relPath, content] of Object.entries(allManaged)) {
-    if (isDesignManagedPath(relPath)) designFiles[relPath] = content;
-    else if (isCmsDataPath(relPath)) starterCmsFiles[relPath] = content;
-  }
-
-  const rawAssets = walkDesignPublicAssets(siteDir);
-  const designAssets: Record<string, string> = {};
-  for (const [relPath, buf] of Object.entries(rawAssets)) {
-    designAssets[relPath] = buf.toString('base64');
-  }
-
-  const res = await fetch(`${origin}/api/sites/${encodeURIComponent(siteId)}/design`, {
-    method: 'POST',
-    headers: {
-      ...headers,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      name: meta.name,
-      format: meta.format,
-      cmsOnly: meta.cmsOnly ?? true,
-      settings: meta.settings,
-      designFiles,
-      starterCmsFiles,
-      designAssets,
-    }),
-  });
-
-  const payload = (await res.json().catch(() => null)) as DesignPushResponse | null;
-  if (!res.ok || !payload) {
-    const msg = typeof payload?.error === 'string' ? payload.error : payload?.error?.message || `HTTP ${res.status}`;
-    throw new Error(`design:push failed (${res.status}): ${msg}`);
-  }
-  console.log(
-    `✓ Pushed design for "${siteId}" → ${origin} (revision ${payload.revision ?? 0}, ${payload.designFileCount ?? 0} design files${
-      payload.reconciledCollections?.length ? `, reconciled: ${payload.reconciledCollections.join(', ')}` : ''
-    }). Remote CMS content preserved.`,
-  );
-}
-
 async function cmdPullContent(repoRoot: string, flags: CliFlags): Promise<void> {
   const siteId = flags.positional[1];
   if (!siteId) throw new Error('Usage: npm run content:pull <site-id> [--url <origin>] [--token <token>]');
@@ -374,14 +325,31 @@ export async function main(argv = process.argv.slice(2), repoRoot = process.cwd(
       await cmdCheck(repoRoot, flags);
       return;
     case 'push-design':
-      await cmdPushDesign(repoRoot, flags);
-      return;
+      // Retired: design reached the server's main with no review. Local work
+      // now goes to a branch the owner reviews and applies
+      // (briefs/22-11-2026-branch-review-workflow.md, D5).
+      throw new Error(`design:push is retired. Push local work as a branch instead: npm run branch:push ${flags.positional[1] ?? '<site-id>'} (or keep it in sync with npm run site:dev).`);
     case 'pull-content':
       await cmdPullContent(repoRoot, flags);
       return;
+    case 'pull':
+      await cmdPull(repoRoot, flags);
+      return;
+    case 'branch-push':
+      await cmdBranchPush(repoRoot, flags);
+      return;
+    case 'branch-done':
+      await cmdBranchDone(repoRoot, flags);
+      return;
+    case 'dev':
+      await cmdDev(repoRoot, flags);
+      return;
+    case 'agent-token':
+      await cmdAgentToken(repoRoot, flags);
+      return;
     default:
       throw new Error(
-        'Usage: site-sync <new|check|push-design|pull-content> [siteId] [--url <origin>] [--token <token>] [--strict-oracle]',
+        'Usage: site-sync <new|check|pull|branch-push|branch-done|dev|agent-token|pull-content> [siteId] [--url <origin>] [--token <token>] [--title <text>] [--strict-oracle]',
       );
   }
 }

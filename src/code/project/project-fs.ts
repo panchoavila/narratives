@@ -192,6 +192,24 @@ export interface ProjectFSWriteEvent {
   branch: string;
 }
 
+/** A branch's maps or metadata changed (`changed`), or the branch is gone
+ *  (`removed`). Never fired for main. See `subscribeBranchChanges`. */
+export interface BranchChangeEvent {
+  kind: 'changed' | 'removed';
+  id: string;
+}
+
+/** A branch as the server stores it (backend/branch-sync.ts). */
+export interface BranchRecordData {
+  files: Map<string, string>;
+  base: Map<string, string>;
+  status: BranchStatus;
+  parentId: string | null;
+  order: number;
+  createdAt: number;
+  lastEditedAt: number | null;
+}
+
 export interface BranchFileIO {
   readFile(path: string): string | null;
   writeFile(path: string, content: string): void;
@@ -387,6 +405,7 @@ export class InMemoryProjectFS implements ProjectFS {
    *  callers that want to skip the broadcast loop. Auto-resets after
    *  the write fires. */
   private nextOrigin: 'local' | 'remote' = 'local';
+  private branchListeners: Set<(e: BranchChangeEvent) => void> = new Set();
 
   constructor(initialFiles: Map<string, string>) {
     this.files = new Map(initialFiles);
@@ -461,7 +480,10 @@ export class InMemoryProjectFS implements ProjectFS {
     map.set(path, content);
     // Only a write into the active branch's own map dirties it: editor state
     // (moving the camera) and a collaborator's write to main are not edits of it.
-    if (branch !== MAIN_BRANCH_ID) this.touchActiveBranch();
+    if (branch !== MAIN_BRANCH_ID) {
+      this.touchActiveBranch();
+      this.branchChanged(branch);
+    }
     trace.action('project-fs:write', { path, size: content.length, origin, branch });
     this.emit({ kind: 'write', path, content, origin, branch });
     this.notify();
@@ -475,7 +497,10 @@ export class InMemoryProjectFS implements ProjectFS {
 
   private deleteFrom(map: Map<string, string>, branch: string, path: string, origin: 'local' | 'remote'): void {
     map.delete(path);
-    if (branch !== MAIN_BRANCH_ID) this.touchActiveBranch();
+    if (branch !== MAIN_BRANCH_ID) {
+      this.touchActiveBranch();
+      this.branchChanged(branch);
+    }
     trace.action('project-fs:delete', { path, origin, branch });
     this.emit({ kind: 'delete', path, origin, branch });
     this.notify();
@@ -490,7 +515,10 @@ export class InMemoryProjectFS implements ProjectFS {
     this.mapFor(oldPath).delete(oldPath);
     const shared = isSharedAcrossBranches(oldPath) && isSharedAcrossBranches(newPath);
     const branch = shared ? MAIN_BRANCH_ID : this.activeBranchId;
-    if (branch !== MAIN_BRANCH_ID) this.touchActiveBranch();
+    if (branch !== MAIN_BRANCH_ID) {
+      this.touchActiveBranch();
+      this.branchChanged(branch);
+    }
     this.emit({ kind: 'move', oldPath, newPath, origin, branch });
     this.notify();
     trace.action('project-fs:move', { from: oldPath, to: newPath, origin, branch });
@@ -521,6 +549,31 @@ export class InMemoryProjectFS implements ProjectFS {
   /** A collaborator's delete on main; the active branch, if any, is untouched. */
   applyRemoteMainDelete(path: string): void {
     this.deleteFrom(this.files, MAIN_BRANCH_ID, path, 'remote');
+  }
+
+  /** Branch change feed (see BranchChangeEvent). Server branch sync saves
+   *  each branch from it; `syncBranchRecord` (the server's own state arriving)
+   *  does not fire it. */
+  subscribeBranchChanges(cb: (e: BranchChangeEvent) => void): () => void {
+    this.branchListeners.add(cb);
+    return () => this.branchListeners.delete(cb);
+  }
+
+  private emitBranch(e: BranchChangeEvent): void {
+    if (e.id === MAIN_BRANCH_ID) return;
+    for (const cb of this.branchListeners) {
+      try { cb(e); } catch (err) {
+        trace.error('project-fs:branch-listener-throw', { error: String(err) });
+      }
+    }
+  }
+
+  private branchChanged(id: string): void {
+    this.emitBranch({ kind: 'changed', id });
+  }
+
+  private branchRemoved(id: string): void {
+    this.emitBranch({ kind: 'removed', id });
   }
 
   /** Subscribe to per-write events (typed payload). Use this for
@@ -601,7 +654,10 @@ export class InMemoryProjectFS implements ProjectFS {
       this.files = new Map(files);
     } else {
       const b = this.branches.get(this.activeBranchId);
-      if (b) b.files = withoutShared(files); else this.files = new Map(files);
+      if (b) {
+        b.files = withoutShared(files);
+        this.branchChanged(this.activeBranchId);
+      } else this.files = new Map(files);
     }
     // One-time NATIVE migration: upgrade the old seed reset (box-sizing only +
     // html/body margins) to the universal margin/padding reset the editor
@@ -861,6 +917,43 @@ export class InMemoryProjectFS implements ProjectFS {
     return b ? new Map(b.files) : null;
   }
 
+  /** A branch's metadata as the server stores it. Null for main or unknown. */
+  readBranchMeta(branchId: string): Omit<BranchRecordData, 'files' | 'base'> | null {
+    const b = this.branches.get(branchId);
+    if (!b) return null;
+    return { status: b.status, parentId: b.parentId, order: b.order, createdAt: b.createdAt, lastEditedAt: b.lastEditedAt };
+  }
+
+  /**
+   * Make a branch equal to the server's record (backend/branch-sync.ts), or
+   * drop it (null). Fires no branch change: this is the server's state
+   * arriving, not an edit to save. The active branch is never dropped here —
+   * the caller switches away first. The caller refreshes the canvas when the
+   * active branch changed.
+   */
+  syncBranchRecord(id: string, rec: BranchRecordData | null): string | null {
+    if (id === MAIN_BRANCH_ID || !BRANCH_ID_RE.test(id)) return `Invalid branch id "${id}".`;
+    if (rec === null) {
+      if (!this.branches.has(id)) return null;
+      if (id === this.activeBranchId) return `Branch "${id}" is active — switch away before removing it.`;
+      this.branches.delete(id);
+      this.branchConflicts.delete(id);
+    } else {
+      this.branches.set(id, {
+        files: withoutShared(rec.files),
+        baseSnapshot: withoutShared(rec.base),
+        status: rec.status,
+        createdAt: rec.createdAt,
+        parentId: rec.parentId,
+        order: rec.order,
+        lastEditedAt: rec.lastEditedAt,
+      });
+    }
+    trace.action('project-fs:branch-synced', { id, removed: rec === null });
+    this.notify();
+    return null;
+  }
+
   /** Direct read of a branch's merge base. Null for main (base is itself) or unknown. */
   readBranchBase(branchId: string): Map<string, string> | null {
     const b = this.branches.get(branchId);
@@ -902,6 +995,7 @@ export class InMemoryProjectFS implements ProjectFS {
     }
     this.refreshBranchStatus(branchId);
     trace.action('project-fs:load-branch-snapshot', { branch: branchId, fileCount: files.size });
+    this.branchChanged(branchId);
     this.notify();
     try {
       getDefaultStore().set(projectVersionAtom, (v: number) => v + 1);
@@ -939,6 +1033,7 @@ export class InMemoryProjectFS implements ProjectFS {
     b.lastEditedAt = Date.now();
     trace.action('project-fs:delete-branch', { branchId, path });
     this.emit({ kind: 'delete', path, origin: 'local', branch: branchId });
+    this.branchChanged(branchId);
   }
 
   /**
@@ -966,6 +1061,7 @@ export class InMemoryProjectFS implements ProjectFS {
     b.lastEditedAt = Date.now();
     trace.action('project-fs:write-branch', { branchId, path, size: content.length });
     this.emit({ kind: 'write', path, content, origin: 'local', branch: branchId });
+    this.branchChanged(branchId);
   }
 
   /**
@@ -994,6 +1090,7 @@ export class InMemoryProjectFS implements ProjectFS {
       ...(opts.label ? { label: opts.label } : {}),
     });
     trace.action('project-fs:branch-created', { id: clean, files: seed.size });
+    this.branchChanged(clean);
     this.notify();
     return null;
   }
@@ -1029,6 +1126,7 @@ export class InMemoryProjectFS implements ProjectFS {
     }
     this.branches.delete(id);
     trace.action('project-fs:branch-deleted', { id });
+    this.branchRemoved(id);
     this.notify();
     return null;
   }
@@ -1059,6 +1157,8 @@ export class InMemoryProjectFS implements ProjectFS {
     }
     if (this.activeBranchId === id) this.activeBranchId = clean;
     trace.action('project-fs:branch-renamed', { from: id, to: clean });
+    this.branchRemoved(id);
+    this.branchChanged(clean);
     this.notify();
     return null;
   }
@@ -1108,6 +1208,7 @@ export class InMemoryProjectFS implements ProjectFS {
       source.order = position.mode === 'before' ? sibling.order - 0.5 : sibling.order + 0.5;
     }
     trace.action('project-fs:branch-moved', { source: sourceId, parent: source.parentId, mode: position.mode });
+    this.branchChanged(sourceId);
     this.notify();
     return null;
   }
@@ -1125,6 +1226,7 @@ export class InMemoryProjectFS implements ProjectFS {
     if (!b) return `Unknown branch "${id}".`;
     b.status = status;
     trace.action('project-fs:branch-status', { id, status });
+    this.branchChanged(id);
     this.notify();
     return null;
   }
@@ -1141,6 +1243,7 @@ export class InMemoryProjectFS implements ProjectFS {
     b.baseSnapshot = withoutShared(newBase);
     b.status = mapsEqual(b.files, b.baseSnapshot) ? 'clean' : 'dirty';
     trace.action('project-fs:branch-rebased', { id, status: b.status });
+    this.branchChanged(id);
     this.notify();
     return null;
   }

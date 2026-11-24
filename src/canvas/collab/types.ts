@@ -25,10 +25,14 @@ export interface RemoteCursor {
   x: number;
   y: number;
   page?: string;
+  /** The branch the sender is on (absent = main). */
+  branch?: string;
 }
 
 export interface RemoteSelection {
   userId: string;
   nodeIds: string[];
   page?: string;
+  /** The branch the sender is on (absent = main). */
+  branch?: string;
 }

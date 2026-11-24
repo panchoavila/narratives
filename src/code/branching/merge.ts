@@ -539,6 +539,120 @@ function tryParseJson(text: string): Record<string, unknown> | null {
   }
 }
 
+/** A CMS collection's items (`cms/<slug>.json`): an array of objects, each
+ *  with a unique string `_id`. Null for anything else. */
+function tryParseItems(text: string): Record<string, unknown>[] | null {
+  try {
+    const v = JSON.parse(text) as unknown;
+    if (!Array.isArray(v)) return null;
+    const ids = new Set<string>();
+    for (const item of v) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+      const id = (item as { _id?: unknown })._id;
+      if (typeof id !== 'string' || ids.has(id)) return null;
+      ids.add(id);
+    }
+    return v as Record<string, unknown>[];
+  } catch {
+    return null;
+  }
+}
+
+function itemLabel(item: Record<string, unknown> | undefined, id: string): string {
+  const slug = item?._slug;
+  return typeof slug === 'string' && slug ? slug : id;
+}
+
+/**
+ * CMS items merge per item, keyed by `_id`: an item changed on one side only
+ * takes that side (an edit, an add or a delete); an item changed on both
+ * sides differently is a conflict the owner resolves (keep main's or take the
+ * branch's). Main's order is kept; items the branch added follow the item
+ * they follow on the branch. Two items ending with the same `_slug` is a
+ * conflict too — a detail page can only resolve one.
+ */
+function mergeItemsInner(
+  details: string,
+  b: Record<string, unknown>[],
+  o: Record<string, unknown>[],
+  t: Record<string, unknown>[],
+  decide: Decide,
+): { status: 'clean' | 'conflict'; merged: string | null; conflicts: ConflictBody[] } {
+  const byId = (items: Record<string, unknown>[]) => new Map(items.map((it) => [it._id as string, it]));
+  const bi = byId(b);
+  const oi = byId(o);
+  const ti = byId(t);
+  const conflicts: ConflictBody[] = [];
+  let index = 0;
+  const kept = new Map<string, Record<string, unknown>>();
+  const pretty = (v: unknown) => (v === undefined ? '(deleted)' : JSON.stringify(v, null, 2));
+
+  for (const id of new Set([...bi.keys(), ...oi.keys(), ...ti.keys()])) {
+    const sb = JSON.stringify(bi.get(id));
+    const so = JSON.stringify(oi.get(id));
+    const st = JSON.stringify(ti.get(id));
+    const take = (which: 'ours' | 'theirs') => {
+      const item = which === 'ours' ? oi.get(id) : ti.get(id);
+      if (item) kept.set(id, item);
+    };
+    if (so === st || st === sb) { take('ours'); continue; }
+    if (so === sb) { take('theirs'); continue; }
+    const body: ConflictBody = {
+      kind: 'json-key',
+      details: `${details}: item "${itemLabel(oi.get(id) ?? ti.get(id) ?? bi.get(id), id)}" changed on main and on the branch — keep one version.`,
+      dataIds: [id],
+      baseHunk: [pretty(bi.get(id))],
+      oursHunk: [pretty(oi.get(id))],
+      theirsHunk: [pretty(ti.get(id))],
+    };
+    const choice = decide(body, index);
+    index++;
+    if (choice === null) conflicts.push(body);
+    else take(choice);
+  }
+
+  // Order: main's, then each branch-added item after its branch predecessor.
+  const order = o.map((it) => it._id as string).filter((id) => kept.has(id));
+  t.forEach((it, i) => {
+    const id = it._id as string;
+    if (!kept.has(id) || order.includes(id)) return;
+    const prev = i > 0 ? (t[i - 1]._id as string) : null;
+    const at = prev ? order.indexOf(prev) : -1;
+    if (at >= 0) order.splice(at + 1, 0, id);
+    else if (prev === null) order.unshift(id);
+    else order.push(id);
+  });
+
+  // One slug, one item.
+  const bySlug = new Map<string, string[]>();
+  for (const id of order) {
+    const slug = kept.get(id)?._slug;
+    if (typeof slug === 'string' && slug) bySlug.set(slug, [...(bySlug.get(slug) ?? []), id]);
+  }
+  for (const [slug, ids] of bySlug) {
+    if (ids.length < 2) continue;
+    const mainId = ids.find((id) => oi.has(id) && !ti.has(id)) ?? ids.find((id) => oi.has(id)) ?? ids[0];
+    const branchIds = ids.filter((id) => id !== mainId);
+    const body: ConflictBody = {
+      kind: 'json-key',
+      details: `${details}: two items use the slug "${slug}" — keep main's item or the branch's.`,
+      dataIds: ids,
+      baseHunk: [],
+      oursHunk: [pretty(kept.get(mainId))],
+      theirsHunk: branchIds.map((id) => pretty(kept.get(id))),
+    };
+    const choice = decide(body, index);
+    index++;
+    if (choice === null) conflicts.push(body);
+    else if (choice === 'ours') for (const id of branchIds) kept.delete(id);
+    else kept.delete(mainId);
+  }
+
+  if (conflicts.length > 0) return { status: 'conflict', merged: null, conflicts };
+  const merged = order.filter((id) => kept.has(id)).map((id) => kept.get(id)!);
+  return { status: 'clean', merged: `${JSON.stringify(merged, null, 2)}\n`, conflicts: [] };
+}
+
 function mergeJsonInner(
   details: string,
   base: string,
@@ -546,6 +660,10 @@ function mergeJsonInner(
   theirs: string,
   decide: Decide,
 ): { status: 'clean' | 'conflict'; merged: string | null; conflicts: ConflictBody[] } {
+  const bItems = tryParseItems(base);
+  const oItems = bItems ? tryParseItems(ours) : null;
+  const tItems = oItems ? tryParseItems(theirs) : null;
+  if (bItems && oItems && tItems) return mergeItemsInner(details, bItems, oItems, tItems, decide);
   const b = tryParseJson(base);
   const o = tryParseJson(ours);
   const t = tryParseJson(theirs);

@@ -7,6 +7,7 @@ import { backend } from './index';
 import { getProjectId } from './project-id';
 import { saveErrorAtom, saveStatusAtom } from './save-store';
 import { SaveConflictError, type ProjectData } from './types';
+import { isServerBranchSyncActive } from './branch-sync-flag';
 import { adoptForOverwrite, getBaseRevision, isRevisionInSync, isRoomConnected, setLoadedRevision } from './save-revision';
 import { projectFS } from '../code/project/project-fs';
 import { trace } from '@/shared/debug-trace';
@@ -109,7 +110,12 @@ function getStore() {
  * had the envelope but nothing called it).
  */
 export function buildProjectData(): ProjectData {
-  return projectFS.toEnvelope();
+  const envelope = projectFS.toEnvelope();
+  // Branches kept as server records (branch-sync.ts) are saved on their own,
+  // each on its own revision; the envelope then carries main only, so a save
+  // of main can never erase or rewind a branch.
+  if (isServerBranchSyncActive()) return { format: 'revyme-v1', files: envelope.files };
+  return envelope;
 }
 
 /** A 409 for an IN-SYNC tab is usually a race, not a stale copy: a room

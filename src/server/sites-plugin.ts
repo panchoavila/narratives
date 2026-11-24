@@ -26,6 +26,13 @@ import {
   type CmsContractIssue,
 } from '../shared/cms-site-contract';
 import { RTL_TEXT_CSS } from '../shared/rtl-text';
+import {
+  deleteBranchRecord,
+  listBranchSummaries,
+  migrateEnvelopeBranches,
+  readBranchMaterialized,
+  writeBranchRecord,
+} from './branch-records';
 import { ADDITIONAL_SOURCE_DIRECTORIES, PROJECT_CONFIG_FILES, SOURCE_FILE_CONTRACT_PATH, SOURCE_FILE_CONTRACT, isAdditionalProjectSourcePath, understandsAdditionalSourceFiles } from '../shared/project-source-files';
 
 const MANAGED_TOP_DIRS = new Set([
@@ -312,7 +319,6 @@ export function listAllSites(sitesRoot: string): SiteSummary[] {
     summaries.push({
       id: siteId,
       name: meta.name,
-      ...(meta.cmsOnly ? { cmsOnly: true } : {}),
       pageCount,
       collectionCount,
       updatedAt: meta.updatedAt || stat.mtime.toISOString(),
@@ -506,10 +512,37 @@ export function readRuntimeRange(repoRoot: string): string {
   return '^0.0.32';
 }
 
+/** A local site linked to a server project (branch-cli.ts): its files are a
+ *  working copy that reaches the server only as a branch. */
+export interface LinkedRemote {
+  url: string;
+  siteId: string;
+  branch: string | null;
+}
+
+/** The link recorded by `site:pull` / `branch:push`, or null. */
+export function readLinkedRemote(sitesRoot: string, siteId: string): LinkedRemote | null {
+  try {
+    const remote = JSON.parse(fs.readFileSync(path.join(sitesRoot, siteId, '_revyme', 'remote.json'), 'utf8')) as { url?: unknown; siteId?: unknown };
+    if (typeof remote.url !== 'string' || typeof remote.siteId !== 'string') return null;
+    let branch: string | null = null;
+    try {
+      const state = JSON.parse(fs.readFileSync(path.join(path.dirname(sitesRoot), 'node_modules', '.cache', 'narratives-sites', siteId, 'state.json'), 'utf8')) as { branch?: unknown };
+      branch = typeof state.branch === 'string' ? state.branch : null;
+    } catch {
+      // Linked but never pushed from here.
+    }
+    return { url: remote.url, siteId: remote.siteId, branch };
+  } catch {
+    return null;
+  }
+}
+
 export interface SiteProjectPayload {
   id: string;
   name: string;
   cmsOnly: boolean;
+  linked?: LinkedRemote;
   project: {
     format: SiteMetaFile['format'];
     files: Record<string, string>;
@@ -525,19 +558,31 @@ export function readSiteProject(sitesRoot: string, siteId: string): SiteProjectP
   if (!SITE_ID_RE.test(siteId)) return null;
   const siteDir = path.join(sitesRoot, siteId);
   if (!fs.existsSync(siteDir) || !fs.statSync(siteDir).isDirectory()) return null;
-  const meta = readSiteMeta(siteDir, siteId);
+  let meta = readSiteMeta(siteDir, siteId);
   const files = walkManagedFiles(siteDir);
+  // Branches are records of their own (branch-records.ts), served by
+  // /api/sites/:id/branches. Branches an older editor left inside the
+  // metadata become records once, here, and leave the metadata.
+  if (meta.branches || meta.activeBranchId || meta.mainBranchId) {
+    if (meta.branches) migrateEnvelopeBranches(siteDir, meta.branches, files, isManagedProjectPath);
+    const { branches: _branches, activeBranchId: _active, mainBranchId: _main, ...rest } = meta;
+    meta = rest;
+    writeSiteMeta(siteDir, meta);
+  }
   files[SOURCE_FILE_CONTRACT_PATH] = SOURCE_FILE_CONTRACT;
   return {
     id: siteId,
     name: meta.name,
-    cmsOnly: meta.cmsOnly === true,
+    // Retired as a site-wide lock: content-only is a member role now
+    // (briefs/22-11-2026-branch-review-workflow.md, D7). Kept for old clients.
+    cmsOnly: false,
+    ...(() => {
+      const linked = readLinkedRemote(sitesRoot, siteId);
+      return linked ? { linked } : {};
+    })(),
     project: {
       format: meta.format || 'revyme-v1',
       files,
-      ...(meta.branches ? { branches: meta.branches } : {}),
-      ...(meta.activeBranchId ? { activeBranchId: meta.activeBranchId } : {}),
-      ...(meta.mainBranchId ? { mainBranchId: meta.mainBranchId } : {}),
       ...(meta.settings ? { settings: meta.settings } : {}),
     },
   };
@@ -557,6 +602,9 @@ export function writeSiteProject(sitesRoot: string, siteId: string, data: any, r
 
   const prevMeta = readSiteMeta(siteDir, siteId);
   const existingDiskFiles = walkManagedFiles(siteDir);
+  // Branches an older editor left in the metadata become records before this
+  // save rewrites the metadata without them.
+  if (prevMeta.branches) migrateEnvelopeBranches(siteDir, prevMeta.branches, existingDiskFiles, isManagedProjectPath);
   const previousSet = new Set<string>([
     ...(prevMeta.managedFiles ?? []),
     ...Object.keys(existingDiskFiles),
@@ -600,15 +648,12 @@ export function writeSiteProject(sitesRoot: string, siteId: string, data: any, r
     nextManaged.push(generatedDts);
   }
   materializeSiteWorkspaceFonts(sitesRoot, siteDir, incomingFiles);
-  const cmsOnly = typeof data?.cmsOnly === 'boolean' ? data.cmsOnly : prevMeta.cmsOnly;
   writeSiteMeta(siteDir, {
     id: siteId,
     name: prevMeta.name,
     format: data?.format || prevMeta.format || 'revyme-v1',
-    ...(typeof cmsOnly === 'boolean' ? { cmsOnly } : {}),
-    branches: data?.branches,
-    activeBranchId: data?.activeBranchId,
-    mainBranchId: data?.mainBranchId,
+    // No `branches` / `activeBranchId`: branches are records of their own
+    // (branch-records.ts), and which branch a tab shows is that tab's.
     settings: data?.settings,
     managedFiles: nextManaged.sort(),
     adobeKit: prevMeta.adobeKit ?? null,
@@ -618,7 +663,7 @@ export function writeSiteProject(sitesRoot: string, siteId: string, data: any, r
 }
 
 /**
- * Self-hosted save path for `cmsOnly` sites: validates and persists ONLY
+ * Self-hosted save path for `content` members: validates and persists ONLY
  * `cms/<slug>.json` data files against the on-disk `cms/<slug>.schema.json`
  * contracts. Design, views (`app/`, `components/`), and schemas are never
  * modified or deleted.
@@ -672,7 +717,7 @@ export function writeSiteCmsContent(
 }
 
 /**
- * Scaffold a complete, oracle-clean "100% CMS-first" site (`cmsOnly: true`):
+ * Scaffold a complete, oracle-clean CMS-first site:
  *   - `cms/site.schema.json` + `cms/site.json` singleton for all site-wide copy
  *   - `cms/entries.schema.json` + `cms/entries.json` starter collection
  *   - `cms/cms-types.d.ts` generated from the schemas
@@ -1080,12 +1125,48 @@ export default function Page() {
     id: siteId,
     name: siteName,
     format: 'revyme-v1',
-    cmsOnly: true,
     managedFiles,
     updatedAt: stamp,
   });
 
   return { siteDir, managedFiles };
+}
+
+async function handleLocalBranchRequest(req: IncomingMessage, res: ServerResponse, siteDir: string, branchId: string | undefined): Promise<void> {
+  const method = req.method ?? 'GET';
+  if (branchId === undefined) {
+    if (method !== 'GET') { sendJson(res, 405, { error: 'Method not allowed' }); return; }
+    sendJson(res, 200, { branches: listBranchSummaries(siteDir) });
+    return;
+  }
+  if (method === 'GET') {
+    const branch = readBranchMaterialized(siteDir, branchId);
+    if (!branch) { sendJson(res, 404, { error: `Branch "${branchId}" not found` }); return; }
+    sendJson(res, 200, { ...branch.record, base: branch.base, files: branch.files });
+    return;
+  }
+  if (method === 'PUT') {
+    const body = await readJsonBody(req);
+    const result = writeBranchRecord(siteDir, branchId, {
+      baseRevision: typeof body?.baseRevision === 'number' ? body.baseRevision : null,
+      base: body?.base,
+      files: body?.files,
+      meta: body?.meta,
+    }, { isAllowedPath: isManagedProjectPath });
+    if (result.kind === 'invalid') { sendJson(res, 400, { error: result.message }); return; }
+    if (result.kind === 'conflict') {
+      sendJson(res, 409, { error: `Branch "${branchId}" changed since your copy (revision ${result.revision}).`, revision: result.revision });
+      return;
+    }
+    sendJson(res, 200, { ok: true, revision: result.record.revision, created: result.created });
+    return;
+  }
+  if (method === 'DELETE') {
+    if (!deleteBranchRecord(siteDir, branchId)) { sendJson(res, 404, { error: `Branch "${branchId}" not found` }); return; }
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+  sendJson(res, 405, { error: 'Method not allowed' });
 }
 
 export function createSitesApiMiddleware(repoRoot: string) {
@@ -1138,7 +1219,7 @@ export function createSitesApiMiddleware(repoRoot: string) {
           return;
         }
         scaffoldCmsFirstSite(sitesRoot, rawId, rawName, runtimeRange);
-        sendJson(res, 201, { id: rawId, name: rawName, cmsOnly: true });
+        sendJson(res, 201, { id: rawId, name: rawName, cmsOnly: false });
         return;
       }
 
@@ -1165,6 +1246,17 @@ export function createSitesApiMiddleware(repoRoot: string) {
         const data = await readJsonBody(req);
         const fileCount = writeSiteProject(sitesRoot, siteId, data, runtimeRange);
         sendJson(res, 200, { ok: true, fileCount });
+        return;
+      }
+
+      // /api/sites/:id/branches[/:branch] — the same API as the self-hosted
+      // server (server/api.ts), without accounts or a live room.
+      if (segments[3] === 'branches' && segments.length <= 5) {
+        if (!fs.existsSync(siteDir)) {
+          sendJson(res, 404, { error: 'Site not found' });
+          return;
+        }
+        await handleLocalBranchRequest(req, res, siteDir, segments[4]);
         return;
       }
 

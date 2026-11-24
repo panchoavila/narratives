@@ -21,7 +21,7 @@ export interface ServerConfig {
    *  magic links and to refuse cross-origin writes and socket handshakes. */
   publicOrigin: string;
   adminEmail: string;
-  /** Optional Bearer token (`ADMIN_API_TOKEN`) for CLI `design:push` / `content:pull`, authenticating as the admin. */
+  /** Optional Bearer token (`ADMIN_API_TOKEN`): the owner's credential for the CLI (`content:pull`, `agent:token`), authenticating as the admin. Agents use per-site agent tokens instead. */
   adminApiToken: string | null;
   /** How invitation mails name the admin ("Ana te invitó…"); falls back to the email. */
   adminName: string | null;
@@ -34,6 +34,9 @@ export interface ServerConfig {
   roomGraceMs: number;
   /** Live edits are written to disk this long after the last one (crash safety). */
   roomFlushMs: number;
+  /** Sign-in links per email and per IP in a 15-minute window. */
+  signInRatePerEmail: number;
+  signInRatePerIp: number;
 }
 
 function int(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
@@ -88,6 +91,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     cookieSecure: publicUrl.protocol === 'https:',
     roomGraceMs: int(env, 'ROOM_GRACE_MS', 30_000),
     roomFlushMs: int(env, 'ROOM_FLUSH_MS', 5_000),
+    signInRatePerEmail: int(env, 'SIGNIN_RATE_PER_EMAIL', 5),
+    signInRatePerIp: int(env, 'SIGNIN_RATE_PER_IP', 20),
   };
   trace.action('config:loaded', {
     rootDir: config.rootDir,

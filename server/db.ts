@@ -9,7 +9,9 @@ import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { trace } from './trace';
 
-export type MemberRole = 'editor' | 'viewer';
+/** `content`: edits CMS items and media only (the per-member successor of the
+ *  site-wide `cmsOnly` lock; briefs/22-11-2026-branch-review-workflow.md, D7). */
+export type MemberRole = 'editor' | 'viewer' | 'content';
 export type SiteRole = 'owner' | MemberRole;
 
 export interface UserRow {
@@ -26,6 +28,15 @@ export interface SiteRow {
   revision: number;
   owner_color: string;
   created_at: string;
+}
+
+export interface AgentTokenRow {
+  id: string;
+  site_id: string;
+  label: string;
+  token_hash: string;
+  created_at: string;
+  revoked_at: string | null;
 }
 
 export interface MemberRow {
@@ -76,10 +87,18 @@ CREATE TABLE IF NOT EXISTS sites (
 CREATE TABLE IF NOT EXISTS members (
   site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  role TEXT NOT NULL CHECK (role IN ('editor', 'viewer')),
+  role TEXT NOT NULL CHECK (role IN ('editor', 'viewer', 'content')),
   color TEXT NOT NULL,
   invited_at TEXT NOT NULL,
   PRIMARY KEY (site_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS agent_tokens (
+  id TEXT PRIMARY KEY,
+  site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  revoked_at TEXT
 );
 `;
 
@@ -92,11 +111,34 @@ export class Db {
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
     this.db = new DatabaseSync(file);
     this.db.exec(SCHEMA);
+    this.migrateMemberRoles();
     trace.action('db:open', { file });
   }
 
   close(): void {
     this.db.close();
+  }
+
+  /** Databases created before the `content` role have a CHECK that refuses
+   *  it. SQLite cannot alter a CHECK, so the table is rebuilt, rows kept. */
+  private migrateMemberRoles(): void {
+    const row = this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'members'").get() as { sql?: string } | undefined;
+    if (!row?.sql || row.sql.includes("'content'")) return;
+    this.db.exec(`
+BEGIN;
+CREATE TABLE members_v2 (
+  site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('editor', 'viewer', 'content')),
+  color TEXT NOT NULL,
+  invited_at TEXT NOT NULL,
+  PRIMARY KEY (site_id, user_id)
+);
+INSERT INTO members_v2 (site_id, user_id, role, color, invited_at) SELECT site_id, user_id, role, color, invited_at FROM members;
+DROP TABLE members;
+ALTER TABLE members_v2 RENAME TO members;
+COMMIT;`);
+    trace.action('db:migrated-member-roles', {});
   }
 
   // ─── Users ────────────────────────────────────────────────────────────
@@ -259,6 +301,30 @@ export class Db {
 
   removeMember(siteId: string, userId: string): boolean {
     const result = this.db.prepare('DELETE FROM members WHERE site_id = ? AND user_id = ?').run(siteId, userId);
+    return Number(result.changes) === 1;
+  }
+
+  // ─── Agent tokens ─────────────────────────────────────────────────────
+  // A token an agent (CLI, MCP) authenticates with: one site, branches only
+  // (server/api.ts agentRequest). Only its hash is stored.
+
+  createAgentToken(siteId: string, label: string, tokenHash: string): AgentTokenRow {
+    const row: AgentTokenRow = { id: crypto.randomUUID(), site_id: siteId, label, token_hash: tokenHash, created_at: now(), revoked_at: null };
+    this.db.prepare('INSERT INTO agent_tokens (id, site_id, label, token_hash, created_at, revoked_at) VALUES (?, ?, ?, ?, ?, NULL)')
+      .run(row.id, row.site_id, row.label, row.token_hash, row.created_at);
+    return row;
+  }
+
+  getAgentTokenByHash(tokenHash: string): AgentTokenRow | null {
+    return (this.db.prepare('SELECT * FROM agent_tokens WHERE token_hash = ? AND revoked_at IS NULL').get(tokenHash) as AgentTokenRow | undefined) ?? null;
+  }
+
+  listAgentTokens(siteId: string): AgentTokenRow[] {
+    return this.db.prepare('SELECT * FROM agent_tokens WHERE site_id = ? ORDER BY created_at').all(siteId) as unknown as AgentTokenRow[];
+  }
+
+  revokeAgentToken(siteId: string, id: string): boolean {
+    const result = this.db.prepare('UPDATE agent_tokens SET revoked_at = ? WHERE site_id = ? AND id = ? AND revoked_at IS NULL').run(now(), siteId, id);
     return Number(result.changes) === 1;
   }
 }

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { linkedRemoteAtom } from '@/code/stores/linked-remote-store';
 import { useAtom, useAtomValue } from 'jotai';
 import { Toaster } from 'sonner';
 import Canvas from './canvas/Canvas';
@@ -192,6 +193,7 @@ export default function App() {
       <ViewOnlyBanner />
       <AgentEditingBanner />
       <CmsOnlyBanner />
+      <LinkedRemoteBanner />
       {/* Network watcher — flips the editor into the offline read-only
           state when the connection drops, and the matching toast. */}
       <OfflineWatcher />
@@ -472,6 +474,37 @@ function AgentEditingBanner() {
   );
 }
 
+/** Local mode, a site linked to a server project (branch-cli.ts): this is a
+ *  working copy, and it reaches the server only as a branch the owner applies. */
+function LinkedRemoteBanner() {
+  const linked = useAtomValue(linkedRemoteAtom);
+  if (!linked) return null;
+  let host = linked.url;
+  try { host = new URL(linked.url).host; } catch { /* keep the raw value */ }
+  return (
+    <div
+      data-testid="linked-remote-banner"
+      style={{
+        position: 'fixed',
+        bottom: 68,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 9998,
+        padding: '6px 12px',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-light)',
+        borderRadius: 999,
+        color: 'var(--text-secondary)',
+        fontSize: 11,
+        whiteSpace: 'nowrap',
+        pointerEvents: 'none',
+      }}
+    >
+      Working copy of “{linked.siteId}” on {host} — changes reach it as {linked.branch ? `branch ${linked.branch}` : 'a branch'} (npm run site:dev); the owner applies them there.
+    </div>
+  );
+}
+
 /** Pill shown on self-hosted `cmsOnly` sites: canvas/JSX/schemas are read-only
  *  while CMS item collections, media uploads, and publishing remain live. */
 function CmsOnlyBanner() {
@@ -503,7 +536,7 @@ function CmsOnlyBanner() {
       }}
     >
       <span style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--accent)' }} />
-      Modo contenido — edita colecciones en CMS; el diseño se gestiona en local.
+      Content editing — you can edit CMS items and media; the site's editors change its design.
     </div>
   );
 }

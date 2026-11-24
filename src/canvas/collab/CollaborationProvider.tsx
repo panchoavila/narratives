@@ -38,6 +38,8 @@ import { forceCanvasRender } from '@/canvas/node-ops';
 import { dragStateOps } from '@/canvas/drag/drag-state-store';
 import { FileSyncEngine } from './file-sync-engine';
 import { rebaseLocalEdits } from './collab-merge';
+import { toast } from 'sonner';
+import { onRemoteBranchDeleted, onRemoteBranchLease, onRemoteBranchUpdated, reconcileBranchRevisions } from '@/backend/branch-sync';
 import {
   LOCK_HEARTBEAT_MS,
   setRemoteLock,
@@ -156,8 +158,13 @@ function CloudProvider({ children }: { children: ReactNode }) {
     if (pendingFlushRef.current !== null) return;
     pendingFlushRef.current = requestAnimationFrame(() => {
       pendingFlushRef.current = null;
-      setCursors(new Map(cursorsRef.current));
-      setSelections(new Map(selectionsRef.current));
+      // Presence follows the branch: someone on another branch points at
+      // nodes this tab may not have, so their cursor and selection are hidden.
+      const mine = projectFS.getActiveBranchId();
+      const here = <T extends { branch?: string }>(m: Map<string, T>) =>
+        new Map([...m].filter(([, v]) => (v.branch ?? MAIN_BRANCH_ID) === mine));
+      setCursors(here(cursorsRef.current));
+      setSelections(here(selectionsRef.current));
     });
   }, []);
 
@@ -299,6 +306,9 @@ function CloudProvider({ children }: { children: ReactNode }) {
       },
       merge: rebaseLocalEdits,
       isBusy: isMutationQueueProcessing,
+      onInvalid: (path, message) => {
+        toast.error(`${path} was not saved: ${message}`);
+      },
       debounceMs: SYNC_DEBOUNCE_MS,
     });
 
@@ -316,6 +326,7 @@ function CloudProvider({ children }: { children: ReactNode }) {
           leader?: string | null;
           revision?: number | null;
           fileSeqs?: Record<string, number>;
+          branchRevisions?: Record<string, number>;
           error?: string;
           /** Self-hosted: this copy predates the room — reload it. */
           reload?: boolean;
@@ -338,6 +349,8 @@ function CloudProvider({ children }: { children: ReactNode }) {
           // Our copy of every file = the room's current version of it (a
           // server without `fileSeqs` predates ordered sync → legacy sends).
           sync.join(projectFS.getMainSnapshot(), res.fileSeqs ?? null);
+          // Branches changed or deleted while this tab was away.
+          reconcileBranchRevisions(res.branchRevisions);
           // In sync with the room only if nobody saved since this tab's copy
           // (save-revision.ts) — otherwise this tab missed writes.
           noteRoomJoined(res.revision);
@@ -392,17 +405,40 @@ function CloudProvider({ children }: { children: ReactNode }) {
 
     // Gesture lock: a collaborator started / ended dragging, resizing or
     // rotating these nodes (collab-locks.ts). Empty ids = released.
-    socket.on('interacting', ({ userId, socketId, nodeIds, page }: { userId: string; socketId: string; nodeIds: string[]; page?: string }) => {
+    socket.on('interacting', ({ userId, socketId, nodeIds, page, branch }: { userId: string; socketId: string; nodeIds: string[]; page?: string; branch?: string }) => {
       const u = remoteUsersRef.current.find((x) => x.socketId === socketId)
         ?? remoteUsersRef.current.find((x) => x.id === userId);
+      // A gesture on another branch locks nothing here.
+      const sameBranch = (branch ?? MAIN_BRANCH_ID) === projectFS.getActiveBranchId();
       setRemoteLock({
         socketId,
         userId,
         name: u?.name ?? 'A collaborator',
         color: u?.color ?? '#8b5cf6',
-        nodeIds: Array.isArray(nodeIds) ? nodeIds : [],
+        nodeIds: sameBranch && Array.isArray(nodeIds) ? nodeIds : [],
         page,
       });
+    });
+
+    // Branches are server records (backend/branch-sync.ts): the room announces
+    // every change, so this tab shows other people's and agents' branches live.
+    socket.on('branch-updated', ({ branch, revision }: { branch: string; revision: number }) => {
+      void onRemoteBranchUpdated(branch, revision);
+    });
+    socket.on('branch-deleted', ({ branch }: { branch: string }) => {
+      onRemoteBranchDeleted(branch);
+    });
+    socket.on('branch-lease', ({ branch, lease }: { branch: string; lease: { holder: string; until: number } | null }) => {
+      onRemoteBranchLease(branch, lease);
+    });
+
+    // Re-filter presence when this tab changes branch.
+    let shownBranch = projectFS.getActiveBranchId();
+    const unsubscribeBranchView = projectFS.subscribe(() => {
+      const now = projectFS.getActiveBranchId();
+      if (now === shownBranch) return;
+      shownBranch = now;
+      scheduleFlush();
     });
 
     socket.on('cursor', (payload: RemoteCursor) => {
@@ -504,7 +540,7 @@ function CloudProvider({ children }: { children: ReactNode }) {
     const sendInteracting = (nodeIds: string[]) => {
       if (!socket.connected) return;
       const page = getDefaultStore().get(activeFilePathAtom) ?? undefined;
-      socket.emit('interacting', { websiteId, nodeIds, page });
+      socket.emit('interacting', { websiteId, nodeIds, page, branch: projectFS.getActiveBranchId() });
     };
     const unsubscribeInteraction = subscribeLocalInteraction(() => {
       const ids = getLocalInteraction();
@@ -527,6 +563,7 @@ function CloudProvider({ children }: { children: ReactNode }) {
     return () => {
       sync.leave();
       unsubscribeFs();
+      unsubscribeBranchView();
       unsubscribeInteraction();
       if (lockHeartbeat) clearInterval(lockHeartbeat);
       if (lockRelease) clearTimeout(lockRelease);
@@ -555,7 +592,7 @@ function CloudProvider({ children }: { children: ReactNode }) {
         // fade out.
         return;
       }
-      socket.emit('cursor', { websiteId, ...pos });
+      socket.emit('cursor', { websiteId, ...pos, branch: projectFS.getActiveBranchId() });
     },
     [isConnected, websiteId],
   );
@@ -564,7 +601,7 @@ function CloudProvider({ children }: { children: ReactNode }) {
     (nodeIds: string[], page?: string) => {
       const socket = socketRef.current;
       if (!socket || !socket.connected || !isConnected) return;
-      socket.emit('selection', { websiteId, nodeIds, page });
+      socket.emit('selection', { websiteId, nodeIds, page, branch: projectFS.getActiveBranchId() });
     },
     [isConnected, websiteId],
   );

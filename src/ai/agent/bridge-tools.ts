@@ -208,6 +208,11 @@ export function agentToolManifest(): { tools: ToolManifestEntry[] } {
   return { tools: buildToolManifest() };
 }
 
+/** Who is running the active agent run, if any: `mcp` for an external agent. */
+export function activeRunSource(): RunSource | null {
+  return active?.source ?? null;
+}
+
 /** Open a run: lock the branch, arm a checkpoint. Idempotent per runId.
  *  `source` / `request` / `client` describe an external agent's run (see
  *  RunSource); the chat's service omits them. */

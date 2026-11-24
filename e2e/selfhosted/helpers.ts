@@ -97,10 +97,52 @@ export async function deleteBox(page: Page, id: string, at = { x: 0.3, y: 0.3 })
   await page.keyboard.press('Delete');
 }
 
+/** Delete a box and wait until it is gone from this canvas, retrying the
+ *  click when it landed on a canvas being rebuilt (after a branch switch the
+ *  canvas renders twice, 250 ms apart). Only retries while the box is still
+ *  there, so it never deletes anything else. */
+export async function deleteBoxUntilGone(page: Page, id: string, at = { x: 0.3, y: 0.3 }): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await deleteBox(page, id, at);
+    const gone = await expect.poll(async () => (await canvasIds(page)).includes(id), { timeout: 10_000 }).toBe(false)
+      .then(() => true, () => false);
+    if (gone) return;
+    await page.waitForTimeout(500);
+  }
+  throw new Error(`box ${id} is still on the canvas after 3 deletes`);
+}
+
 export const idsIn = (source: string) => [...source.matchAll(/data-id="(\w+)"/g)].map((m) => m[1]);
 
 /** The data-ids on a person's canvas, in document order, deduplicated. */
 export async function canvasIds(page: Page): Promise<string[]> {
   const ids = await sandbox(page).locator('[data-id]').evaluateAll((els) => els.map((e) => e.getAttribute('data-id') ?? ''));
   return ids.filter((id, i) => ids.indexOf(id) === i);
+}
+
+// ─── Branches panel ─────────────────────────────────────────────────────
+
+export async function openBranchesPanel(page: Page): Promise<void> {
+  const add = page.getByTitle('New branch');
+  if (await add.isVisible().catch(() => false)) return;
+  await page.locator('[data-tutorial="branches-button"]').click();
+  await expect(add).toBeVisible();
+}
+
+export async function createBranch(page: Page, name: string): Promise<void> {
+  await openBranchesPanel(page);
+  await page.getByTitle('New branch').click();
+  await page.getByPlaceholder('Branch name').fill(name);
+  await page.keyboard.press('Enter');
+  await expect(page.getByPlaceholder('Branch name')).toHaveCount(0);
+  await expect(page.getByText(name, { exact: true }).first()).toBeVisible();
+  // The switch rebuilds the canvas, and again 250 ms later (switch-workspace.ts):
+  // a click before that lands on a canvas about to be replaced.
+  await page.waitForTimeout(1_000);
+}
+
+export async function switchTo(page: Page, branch: string): Promise<void> {
+  await openBranchesPanel(page);
+  await page.getByText(branch, { exact: true }).first().click();
+  await page.waitForTimeout(1_000);
 }

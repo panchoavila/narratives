@@ -54,8 +54,16 @@ export interface UiLocation {
   breadcrumb?: string[];
 }
 
+/** Work outside the project files that one history step also undoes and
+ *  redoes — e.g. a branch apply restoring the branch it applied. */
+export interface HistoryEffect {
+  undo(): void;
+  redo(): void;
+}
+
 interface HistoryEntry {
   diffs: FileDiff[];
+  effects?: HistoryEffect[];
   /** Selected node ids BEFORE the operation (captured at its start). Undo
    *  restores this — so undoing a paste reselects whatever was selected
    *  before the paste. */
@@ -407,6 +415,20 @@ export function sealPendingHistory(): void {
  * the PRE-op state (the page they were on). The redo-side target is the live
  * active file at push time, which exists in the post-op state.
  */
+/** How many steps can be undone (to tell whether an operation pushed one). */
+export function historyDepth(): number {
+  return undoStack.length;
+}
+
+/** Attach `effect` to the step pushed since `sinceDepth`. False when the
+ *  operation pushed no step (nothing changed in the project files). */
+export function attachHistoryEffect(sinceDepth: number, effect: HistoryEffect): boolean {
+  if (undoStack.length <= sinceDepth) return false;
+  const entry = undoStack[undoStack.length - 1];
+  entry.effects = [...(entry.effects ?? []), effect];
+  return true;
+}
+
 export function pushHistoryFileOp(activeFileBefore: string): void {
   const sizeBefore = undoStack.length;
   pushHistoryImmediate('');
@@ -588,7 +610,10 @@ export function undo(): boolean {
   const forwardDiffs = applyDiffsReverse(entry.diffs);
   // Store forward diffs for redo — carry the SAME selection pair + page so
   // redo reselects `selAfter` on the right page and a later undo `selBefore`.
-  redoStack.push({ diffs: forwardDiffs, selBefore: entry.selBefore, selAfter: entry.selAfter, activeFile: entry.activeFile, activeFileBefore: entry.activeFileBefore, uiLocation: entry.uiLocation, uiLocationAfter: entry.uiLocationAfter });
+  for (const effect of entry.effects ?? []) {
+    try { effect.undo(); } catch (err) { trace.error('history:effect-undo-threw', { error: String(err) }); }
+  }
+  redoStack.push({ diffs: forwardDiffs, effects: entry.effects, selBefore: entry.selBefore, selAfter: entry.selAfter, activeFile: entry.activeFile, activeFileBefore: entry.activeFileBefore, uiLocation: entry.uiLocation, uiLocationAfter: entry.uiLocationAfter });
   lastSnapshot = projectFS.getSnapshot();
 
   trace.action('history:undo', { undoSize: undoStack.length, redoSize: redoStack.length, diffCount: entry.diffs.length, paths: entry.diffs.map(d => d.path), activeFile: entry.activeFile, activeFileBefore: entry.activeFileBefore, hasBumpVersion: !!_bumpVersion });
@@ -623,7 +648,10 @@ export function redo(): boolean {
   // Apply diffs forward (restore new content)
   const reverseDiffs = applyDiffsForward(entry.diffs);
   // Store reverse diffs for undo — carry the selection pair + page forward.
-  undoStack.push({ diffs: reverseDiffs, selBefore: entry.selBefore, selAfter: entry.selAfter, activeFile: entry.activeFile, activeFileBefore: entry.activeFileBefore, uiLocation: entry.uiLocation, uiLocationAfter: entry.uiLocationAfter });
+  for (const effect of entry.effects ?? []) {
+    try { effect.redo(); } catch (err) { trace.error('history:effect-redo-threw', { error: String(err) }); }
+  }
+  undoStack.push({ diffs: reverseDiffs, effects: entry.effects, selBefore: entry.selBefore, selAfter: entry.selAfter, activeFile: entry.activeFile, activeFileBefore: entry.activeFileBefore, uiLocation: entry.uiLocation, uiLocationAfter: entry.uiLocationAfter });
   lastSnapshot = projectFS.getSnapshot();
 
   trace.action('history:redo', { undoSize: undoStack.length, redoSize: redoStack.length, diffCount: entry.diffs.length, activeFile: entry.activeFile });

@@ -16,6 +16,15 @@ import crypto from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ServerConfig } from './config';
 import type { Db, UserRow } from './db';
+
+/** An authenticated agent (CLI, MCP): one site, branches only. */
+export interface AgentPrincipal {
+  /** `agent:<tokenId>` — the createdBy / lease holder on its branches. */
+  id: string;
+  tokenId: string;
+  siteId: string;
+  label: string;
+}
 import type { Mailer } from './mail';
 import type { Access } from './access';
 import {
@@ -43,8 +52,6 @@ export const SESSION_COOKIE = 'sh_session';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOGIN_TOKEN_TTL_MS = 15 * 60 * 1000;
 const RATE_WINDOW_MS = 15 * 60 * 1000;
-const RATE_PER_EMAIL = 5;
-const RATE_PER_IP = 20;
 
 export class Auth {
   private readonly attempts = new Map<string, number[]>();
@@ -63,6 +70,18 @@ export class Auth {
     const token = parseCookies(header)[SESSION_COOKIE];
     if (!token) return null;
     return this.db.getSessionUser(sha256(token));
+  }
+
+  /** The agent a request's Bearer token belongs to (db agent_tokens), or
+   *  null. Agents are not users: server/api.ts routes them to the agent API,
+   *  which reads the site and writes branches and nothing else. */
+  agentFor(req: IncomingMessage): AgentPrincipal | null {
+    const authHeader = req.headers.authorization;
+    if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) return null;
+    const provided = authHeader.slice('Bearer '.length).trim();
+    if (!provided) return null;
+    const row = this.db.getAgentTokenByHash(sha256(provided));
+    return row ? { id: `agent:${row.id}`, tokenId: row.id, siteId: row.site_id, label: row.label } : null;
   }
 
   userFor(req: IncomingMessage): UserRow | null {
@@ -187,7 +206,7 @@ export class Auth {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) throw new HttpError(400, 'A ese correo le falta algo. Revisa que se vea así: nombre@correo.com');
 
     const ip = this.clientIp(req);
-    if (this.rateLimited(`ip:${ip}`, RATE_PER_IP) || this.rateLimited(`email:${email}`, RATE_PER_EMAIL)) {
+    if (this.rateLimited(`ip:${ip}`, this.config.signInRatePerIp) || this.rateLimited(`email:${email}`, this.config.signInRatePerEmail)) {
       trace.action('auth:rate-limited', { email, ip });
       throw new HttpError(429, 'Pediste varios enlaces seguidos. Espera unos minutos y vuelve a intentarlo.');
     }
@@ -237,10 +256,11 @@ export class Auth {
   }
 
   /** Invitation mail; failures are reported, never fatal to the invite. */
-  async sendInvite(email: string, siteName: string, invitedBy: string, role: 'editor' | 'viewer'): Promise<void> {
+  async sendInvite(email: string, siteName: string, invitedBy: string, role: 'editor' | 'viewer' | 'content'): Promise<void> {
     const link = `${this.config.publicOrigin}/auth`;
-    // Viewers get a read-only editor, so the mail must not promise editing.
-    const verb = role === 'viewer' ? 'ver' : 'editar';
+    // Viewers get a read-only editor and content members edit content only,
+    // so the mail promises exactly that.
+    const verb = role === 'viewer' ? 'ver' : role === 'content' ? 'editar el contenido de' : 'editar';
     try {
       await this.mailer.send({
         to: email,

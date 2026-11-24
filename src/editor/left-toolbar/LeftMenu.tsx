@@ -3,6 +3,8 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { AI_AVAILABLE } from '@/shared/cloud-flag';
+import { linkedRemoteAtom } from '@/code/stores/linked-remote-store';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { togglePanelAtom, leftPanelAtom, codeEditorOpenAtom, DEFAULT_LEFT_PANEL, type LeftPanelId } from '@/code/stores/left-panel-store';
@@ -139,6 +141,9 @@ export default function LeftMenu() {
   const isCmsOnly = useIsCmsOnly();
   const canEditCms = useCanEditCms();
   const designSurfaceLocked = isViewerRole || isCmsOnly;
+  // A linked working copy reaches the server as one branch (site:dev); local
+  // branches would never get there (briefs/22-11-2026-branch-review-workflow.md, D5).
+  const linkedRemote = useAtomValue(linkedRemoteAtom);
   const agentRunning = useAtomValue(agentStatusAtom) === 'running';
   const isClosedSource = useIsClosedSource();
   // The VIBE icon opens the docked AI chat. It hides entirely while the chat
@@ -232,7 +237,7 @@ export default function LeftMenu() {
             height) on those transitions. `initial={false}` skips the
             animation on first app load. */}
         <AnimatePresence initial={false}>
-          {!detached && !inOverlay && (
+          {AI_AVAILABLE && !detached && !inOverlay && (
             <motion.div
               key="vibe-menu-item"
               initial={{ opacity: 0, scale: 0.6, x: -8, height: 0, marginBottom: -8 }}
@@ -340,7 +345,7 @@ export default function LeftMenu() {
         {/* Branches keys on the ROLE: while an agent run holds the branch the
             panel is where you see which one is in use (switching is refused
             with the reason until the run finishes). */}
-        <MenuButton panelId="branches" isActive={activePanel === 'branches'} onToggle={togglePanel} title="Branches" tooltip={tooltipHandlers} disabled={designSurfaceLocked} dataTutorial="branches-button">
+        <MenuButton panelId="branches" isActive={activePanel === 'branches'} onToggle={togglePanel} title="Branches" tooltip={tooltipHandlers} disabled={designSurfaceLocked || linkedRemote !== null} dataTutorial="branches-button">
           <BranchIcon size={18} />
         </MenuButton>
 

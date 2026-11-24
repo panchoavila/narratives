@@ -19,7 +19,7 @@ import { toBranchId } from '@/code/stores/branch-store';
 import { applyBranch } from '@/code/branching/apply';
 import { describeFileChanges } from '@/code/branching/describe-changes';
 import { getBranchDrift } from '@/code/branching/update-branch';
-import { agentRunFollowBranch } from '@/ai/agent/bridge-tools';
+import { activeRunSource, agentRunFollowBranch } from '@/ai/agent/bridge-tools';
 import { trace } from '@/shared/debug-trace';
 
 const store = getDefaultStore();
@@ -143,6 +143,11 @@ export const applyBranchTool: AgentTool = {
   inputSchema: { name: z.string().optional().describe('branch id; default: the active branch') },
   category: 'semantic',
   async execute(args, ctx) {
+    // An external agent (MCP) never applies: the owner reviews and applies
+    // its branch (briefs/22-11-2026-branch-review-workflow.md, D4).
+    if (activeRunSource() === 'mcp') {
+      return fail('Applying a branch is the owner\'s decision: they review it and apply it from the Branches panel. Tell the user the branch is ready.');
+    }
     const id = args.name ? toBranchId(String(args.name)) : projectFS.getActiveBranchId();
     if (id === MAIN_BRANCH_ID) return fail('main cannot be applied onto itself — pass a branch.');
     if (!projectFS.readBranchFiles(id)) return fail(`Unknown branch "${id}".`);

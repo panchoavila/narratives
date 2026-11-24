@@ -74,6 +74,8 @@ writeSite('other', 'Other', [box('z', 80, '#aa66ff')]);
 // Branch isolation (branch-isolation.spec.ts): a site of its own, so editing
 // on a branch and on main there never disturbs the other specs' sites.
 writeSite('branchy', 'Branchy', ['p', 'q', 'r', 's', 't'].map((id, i) => box(id, 40 + i * 190, COLORS[i])));
+// Branch records (branch-records.spec.ts): branches stored on the server.
+writeSite('records', 'Records', ['h', 'i', 'j', 'k', 'l'].map((id, i) => box(id, 40 + i * 190, COLORS[i])));
 // A site with an image in `public/`: the canvas iframe is credentialless, so
 // the sandbox origin must serve it without a session (see the brief, 15-11-2026).
 const DOT_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
@@ -99,6 +101,9 @@ const child = spawn(process.execPath, [path.join(repo, 'dist-server', 'index.mjs
     ADMIN_API_TOKEN: 'e2e-admin-sync-token-0123456789abcdef',
     MAIL_TRANSPORT: 'file',
     ROOM_GRACE_MS: '3000',
+    // Every spec signs people in again; the production limits would refuse them.
+    SIGNIN_RATE_PER_EMAIL: '1000',
+    SIGNIN_RATE_PER_IP: '1000',
   },
   stdio: ['ignore', log, log],
 });

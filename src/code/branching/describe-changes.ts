@@ -88,6 +88,9 @@ function diffProps(before: CanvasNode, after: CanvasNode): PropChange[] {
  *  for add/remove-file). Deterministic order: removals, additions, moves,
  *  changes, each by title. */
 export function describeFileChanges(beforeCode: string | null, afterCode: string | null): FileChangeDescription {
+  // CMS items (`cms/<slug>.json`): one row per item, with the fields it changed.
+  const items = describeItemChanges(beforeCode, afterCode);
+  if (items) return items;
   const before = safeParse(beforeCode);
   const after = safeParse(afterCode);
   if (!before || !after) return { changes: [], unparsed: true };
@@ -119,4 +122,59 @@ export function describeFileChanges(beforeCode: string | null, afterCode: string
   moved.sort(byTitle);
   changed.sort(byTitle);
   return { changes: [...removed, ...added, ...moved, ...changed], unparsed: false };
+}
+
+// ─── CMS items ─────────────────────────────────────────────────────────────
+
+type Item = Record<string, unknown>;
+
+function parseItems(text: string | null): Item[] | null {
+  if (text == null) return [];
+  try {
+    const v = JSON.parse(text) as unknown;
+    if (!Array.isArray(v)) return null;
+    if (!v.every((x) => x && typeof x === 'object' && typeof (x as Item)._id === 'string')) return null;
+    return v as Item[];
+  } catch {
+    return null;
+  }
+}
+
+function itemTitle(item: Item): string {
+  for (const k of ['title', 'name', '_slug', '_id']) {
+    const v = item[k];
+    if (typeof v === 'string' && v) return v;
+  }
+  return 'Item';
+}
+
+const show = (v: unknown) => (v === undefined || v === null ? '' : trunc(typeof v === 'string' ? v : JSON.stringify(v)));
+const BOOKKEEPING = new Set(['_createdAt', '_updatedAt']);
+
+/** Item rows for a CMS collection file; null when either side is not one. */
+function describeItemChanges(beforeCode: string | null, afterCode: string | null): FileChangeDescription | null {
+  if (beforeCode == null && afterCode == null) return null;
+  const before = parseItems(beforeCode);
+  const after = parseItems(afterCode);
+  if (!before || !after || (before.length === 0 && after.length === 0 && (beforeCode == null || afterCode == null))) return null;
+  const b = new Map(before.map((it) => [it._id as string, it]));
+  const a = new Map(after.map((it) => [it._id as string, it]));
+  const changes: NodeChange[] = [];
+  for (const [id, item] of b) {
+    if (!a.has(id)) changes.push({ id, title: itemTitle(item), kind: 'removed', props: [], moreProps: 0 });
+  }
+  for (const [id, item] of a) {
+    const prev = b.get(id);
+    if (!prev) {
+      changes.push({ id, title: itemTitle(item), kind: 'added', props: [], moreProps: 0 });
+      continue;
+    }
+    const props: PropChange[] = [];
+    for (const k of new Set([...Object.keys(prev), ...Object.keys(item)])) {
+      if (BOOKKEEPING.has(k)) continue;
+      if (JSON.stringify(prev[k]) !== JSON.stringify(item[k])) props.push({ label: labelOf(k.replace(/^_/, '')), before: show(prev[k]), after: show(item[k]) });
+    }
+    if (props.length > 0) changes.push({ id, title: itemTitle(item), kind: 'changed', props: props.slice(0, 3), moreProps: Math.max(0, props.length - 3) });
+  }
+  return { changes, unparsed: false };
 }

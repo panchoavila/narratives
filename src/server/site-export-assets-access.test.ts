@@ -5,7 +5,7 @@ import {Api} from '../../server/api';
 let root:string,server:http.Server,origin:string;
 beforeEach(async()=>{
  root=fs.mkdtempSync(path.join(os.tmpdir(),'revyme-export-acl-'));fs.mkdirSync(path.join(root,'sites','one','public'),{recursive:true});fs.writeFileSync(path.join(root,'sites','one','public','picture.bin'),Buffer.from([1,2,3]));
- const deps={config:{rootDir:root},auth:{userFor:(req:http.IncomingMessage)=>req.headers.cookie==='member=viewer'?{id:'viewer'}:req.headers.cookie==='member=other'?{id:'other'}:null},access:{roleFor:(user:{id:string},id:string)=>user.id==='viewer'&&id==='one'?'viewer':null},db:{},realtime:{},locks:{}};
+ const deps={config:{rootDir:root},auth:{agentFor:()=>null,userFor:(req:http.IncomingMessage)=>req.headers.cookie==='member=viewer'?{id:'viewer'}:req.headers.cookie==='member=other'?{id:'other'}:null},access:{roleFor:(user:{id:string},id:string)=>user.id==='viewer'&&id==='one'?'viewer':null},db:{},realtime:{},locks:{}};
  const api=new Api(deps as unknown as ConstructorParameters<typeof Api>[0]);server=http.createServer((req,res)=>void api.handle(req,res));await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));origin=`http://127.0.0.1:${(server.address() as {port:number}).port}`;
 });
 afterEach(async()=>{await new Promise<void>(resolve=>server.close(()=>resolve()));fs.rmSync(root,{recursive:true,force:true});});

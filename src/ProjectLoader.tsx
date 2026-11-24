@@ -5,6 +5,9 @@
 import { NarrativesMark } from '@/editor/brand/NarrativesMark';
 import { useState, useEffect } from 'react';
 import { CLOUD_ENABLED, COLLAB_ENABLED } from '@/shared/cloud-flag';
+import { isEphemeralId } from '@/backend/sites-backend';
+import { startServerBranchSync } from '@/backend/branch-sync';
+import { linkedRemoteAtom } from '@/code/stores/linked-remote-store';
 import { useSetAtom, getDefaultStore } from 'jotai';
 import App from './App';
 import SitesDashboard from './editor/SitesDashboard';
@@ -295,6 +298,11 @@ export default function ProjectLoader() {
       trace.action('project-loader:load', { id, found: !!data, role, dbName, closedSource, cmsOnly });
       setViewerMode(role === 'viewer');
       setCmsOnlyMode(cmsOnly);
+      // Local working copy of a server project (branch-cli.ts): say so.
+      const linkedRemote = 'getLinkedRemote' in backend && typeof backend.getLinkedRemote === 'function'
+        ? await backend.getLinkedRemote(id).catch(() => null)
+        : null;
+      getDefaultStore().set(linkedRemoteAtom, linkedRemote);
       if (cmsOnly && role !== 'viewer') {
         setLeftPanel('cms');
       }
@@ -332,18 +340,26 @@ export default function ProjectLoader() {
       if (fileCount > 0) {
         projectFS.loadSnapshot(new Map(Object.entries(data!.files)));
         trace.action('project-loader:snapshot-loaded', { fileCount });
-        // Restore branches when the envelope carries them (v2) and land on
-        // the branch the editor was last sitting on. A files-only envelope
-        // behaves exactly as before. Never a throw: a corrupt branch record
-        // must not brick the project — main is already loaded above.
-        try {
-          const raw = data as { branches?: unknown; activeBranchId?: unknown; files?: unknown } | null | undefined;
-          if (raw && typeof raw === 'object' && raw.branches) {
-            projectFS.hydrateBranches(raw.branches, raw.activeBranchId, raw.files);
-            trace.action('project-loader:branches-loaded', { branches: projectFS.listBranches().length - 1, active: projectFS.getActiveBranchId() });
+        if (!CLOUD_ENABLED && !isEphemeralId(id)) {
+          // Sites backend (local plugin or self-hosted server): branches are
+          // records of their own on the server (backend/branch-sync.ts). The
+          // tab opens on main; which branch it shows is this tab's alone.
+          await startServerBranchSync(id);
+          trace.action('project-loader:server-branches', { branches: projectFS.listBranches().length - 1 });
+        } else {
+          // Restore branches when the envelope carries them (v2) and land on
+          // the branch the editor was last sitting on. A files-only envelope
+          // behaves exactly as before. Never a throw: a corrupt branch record
+          // must not brick the project — main is already loaded above.
+          try {
+            const raw = data as { branches?: unknown; activeBranchId?: unknown; files?: unknown } | null | undefined;
+            if (raw && typeof raw === 'object' && raw.branches) {
+              projectFS.hydrateBranches(raw.branches, raw.activeBranchId, raw.files);
+              trace.action('project-loader:branches-loaded', { branches: projectFS.listBranches().length - 1, active: projectFS.getActiveBranchId() });
+            }
+          } catch (err) {
+            trace.error('project-loader:branches-hydrate-failed', { error: String(err) });
           }
-        } catch (err) {
-          trace.error('project-loader:branches-hydrate-failed', { error: String(err) });
         }
       } else {
         projectFS.loadSnapshot(createEmptyProject());

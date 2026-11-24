@@ -53,9 +53,20 @@ export function formatBounce(violations: OracleViolation[]): Array<{ code: strin
  * when there is no active page (e.g. MCP submit while a component is open) —
  * then an unknown page path is a violation instead of a silent remap.
  */
+/** Context overrides for judging files that are not yet in ProjectFS —
+ *  a branch apply judges the merged result against MAIN, where a page the
+ *  branch added does not exist yet and the schemas are the merged ones. */
+export interface GateContext {
+  /** CMS schemas to check `item.<field>` reads against (default: ProjectFS's). */
+  schemas?: Map<string, CollectionSchema>;
+  /** Whether a path exists for the phantom-page check (default: in ProjectFS). */
+  isExistingPath?: (path: string) => boolean;
+}
+
 export function gateTurnFiles(
   rawFiles: TurnFile[],
   activePagePath: string | null,
+  ctx: GateContext = {},
 ): { files: TurnFile[]; violations: OracleViolation[] } {
   const files = rawFiles.map((f) => {
     if (f.kind === 'page' && f.path !== activePagePath && projectFS.readFile(f.path) == null) {
@@ -85,7 +96,11 @@ export function gateTurnFiles(
   ]));
   const effectiveSurfaces = (): SurfaceFile[] => {
     const layoutClients = projectFS.listFiles().filter((p) => p.endsWith('LayoutClient.tsx'));
-    return [...listPageFiles(), ...layoutClients].map((p) => ({
+    const listed = [...listPageFiles(), ...layoutClients];
+    // Pages and layouts the batch adds (a branch apply) count as surfaces too.
+    const added = files.map((f) => f.path)
+      .filter((p) => !listed.includes(p) && (p.endsWith('page.client.tsx') || p.endsWith('LayoutClient.tsx')));
+    return [...listed, ...added].map((p) => ({
       path: p,
       code: batchByPath.get(p) ?? projectFS.readFile(p) ?? '',
     }));
@@ -96,9 +111,13 @@ export function gateTurnFiles(
   // Known CMS collection schemas (cms/*.schema.json) — verifies every item.<field>
   // read on a collection list or @cmsPage detail lookup exists in the schema.
   const knownSchemas = new Map<string, CollectionSchema>();
-  for (const slug of listCollections()) {
-    const schema = getCollectionSchema(slug);
-    if (schema) knownSchemas.set(slug, schema);
+  if (ctx.schemas) {
+    for (const [slug, schema] of ctx.schemas) knownSchemas.set(slug, schema);
+  } else {
+    for (const slug of listCollections()) {
+      const schema = getCollectionSchema(slug);
+      if (schema) knownSchemas.set(slug, schema);
+    }
   }
 
   const violations: OracleViolation[] = files.flatMap((f) => {
@@ -109,7 +128,7 @@ export function gateTurnFiles(
     const pathVs = checkSubmitPath(f.path, f.kind);
     if (pathVs.length > 0) return tag(pathVs);
 
-    if (f.kind === 'page' && projectFS.readFile(f.path) == null) {
+    if (f.kind === 'page' && !(ctx.isExistingPath ? ctx.isExistingPath(f.path) : projectFS.readFile(f.path) != null)) {
       return [{
         code: 'PHANTOM_PAGE_PATH', tier: 3,
         message: `[${f.path}] no page exists at this path. Pages are never created here — use the EXACT path of an existing page (read the project context to see them).`,

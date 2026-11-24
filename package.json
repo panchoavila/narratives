@@ -23,7 +23,11 @@
     "e2e:selfhosted": "playwright test --config playwright.selfhosted.config.ts",
     "site:new": "node server/site-sync.mjs new",
     "site:check": "node server/site-sync.mjs check",
-    "design:push": "node server/site-sync.mjs push-design",
+    "site:pull": "node server/site-sync.mjs pull",
+    "branch:push": "node server/site-sync.mjs branch-push",
+    "branch:done": "node server/site-sync.mjs branch-done",
+    "site:dev": "node server/site-sync.mjs dev",
+    "agent:token": "node server/site-sync.mjs agent-token",
     "content:pull": "node server/site-sync.mjs pull-content"
   },
   "keywords": [

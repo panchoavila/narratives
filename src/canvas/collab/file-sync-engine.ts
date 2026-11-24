@@ -28,7 +28,13 @@
 
 import { trace } from '@/shared/debug-trace';
 
-export interface FileSyncAck { ok: boolean; seq?: number }
+export interface FileSyncAck {
+  ok: boolean;
+  seq?: number;
+  /** The server refuses this content itself (invalid CMS items): resending
+   *  it cannot succeed, so it is not resent until the file changes again. */
+  invalid?: string;
+}
 
 export interface FileSyncDeps {
   /** Emit a write. `baseSeq` is omitted for a legacy server; `ack` may then
@@ -46,12 +52,16 @@ export interface FileSyncDeps {
    *  mutation queue between computing and writing a flush): a remote write
    *  applied then would be overwritten by that flush, so it waits. */
   isBusy(): boolean;
+  /** The server refused this content as invalid (see FileSyncAck.invalid). */
+  onInvalid?(path: string, message: string): void;
   debounceMs?: number;
 }
 
 interface PathState {
   seq: number;
   base: string | null;
+  /** Content the server refused as invalid: not resent while unchanged. */
+  rejected?: string;
   inflight: boolean;
   timer: ReturnType<typeof setTimeout> | null;
 }
@@ -213,7 +223,7 @@ export class FileSyncEngine {
   private flush(path: string, st: PathState): void {
     if (!this.joined || this.states.get(path) !== st || st.inflight) return;
     const content = this.deps.read(path);
-    if (content === null || content === st.base) return;
+    if (content === null || content === st.base || content === st.rejected) return;
     if (!this.ordered) {
       this.deps.send(path, content, undefined, () => {});
       st.base = content;
@@ -224,6 +234,12 @@ export class FileSyncEngine {
       // Left / re-joined meanwhile: this ack belongs to a dead numbering.
       if (this.states.get(path) !== st) return;
       st.inflight = false;
+      if (res.invalid) {
+        st.rejected = content;
+        trace.action('collab:sync-invalid', { path, message: res.invalid });
+        this.deps.onInvalid?.(path, res.invalid);
+        return;
+      }
       if (res.ok && typeof res.seq === 'number') {
         st.seq = res.seq;
         st.base = content;

@@ -31,14 +31,16 @@ import type { Db, SiteRole, UserRow } from './db';
 import type { Access } from './access';
 import type { Auth } from './auth';
 import type { SiteLocks } from './site-locks';
-import { isManagedProjectPath, walkManagedFiles } from '../src/server/sites-plugin';
+import { isManagedProjectPath } from '../src/server/sites-plugin';
+import { listBranchSummaries } from '../src/server/branch-records';
 import {
-  cmsSlugFromDataPath,
   isCmsDataPath,
   parseSchemasFromFiles,
-  validateCollectionItemsAgainstSchema,
+  validateAllCmsDataFiles,
 } from '../src/shared/cms-site-contract';
 import { trace } from './trace';
+
+const BRANCH_RE = /^[a-z0-9-]{1,48}$/;
 
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_LIVE_FILES = 5_000;
@@ -223,8 +225,9 @@ export class Realtime {
         trace.action('rt:file-delete-refused', { userId: user.id, role: ctx.member.role, path: rawPath });
         return;
       }
-      if (this.deps.access.isCmsOnly(ctx.room.siteId)) {
-        trace.action('rt:file-delete-refused', { userId: user.id, role: ctx.member.role, path: rawPath, reason: 'cms-only' });
+      if (this.deps.access.isContentOnly(ctx.member.role)) {
+        // A content member edits items; files are the editors' to delete.
+        trace.action('rt:file-delete-refused', { userId: user.id, role: ctx.member.role, path: rawPath, reason: 'content-role' });
         return;
       }
       const previous = ctx.room.live.get(rawPath as string);
@@ -236,7 +239,7 @@ export class Realtime {
       trace.action('rt:file-delete', { siteId: ctx.room.siteId, userId: user.id, path: rawPath, seq });
     }));
 
-    socket.on('interacting', this.guard('interacting', (payload: { websiteId?: unknown; nodeIds?: unknown; page?: unknown }) => {
+    socket.on('interacting', this.guard('interacting', (payload: { websiteId?: unknown; nodeIds?: unknown; page?: unknown; branch?: unknown }) => {
       const ctx = this.joined(socket, payload?.websiteId);
       if (!ctx || !this.deps.access.canWrite(ctx.member.role)) return;
       socket.to(this.key(ctx.room.siteId)).emit('interacting', {
@@ -244,10 +247,12 @@ export class Realtime {
         socketId: socket.id,
         nodeIds: Array.isArray(payload.nodeIds) ? payload.nodeIds.filter((id) => typeof id === 'string') : [],
         ...(typeof payload.page === 'string' ? { page: payload.page } : {}),
+        // Presence follows the sender's branch (CollaborationProvider filters on it).
+        ...(typeof payload.branch === 'string' && BRANCH_RE.test(payload.branch) ? { branch: payload.branch } : {}),
       });
     }));
 
-    socket.on('cursor', this.guard('cursor', (payload: { websiteId?: unknown; x?: unknown; y?: unknown; page?: unknown }) => {
+    socket.on('cursor', this.guard('cursor', (payload: { websiteId?: unknown; x?: unknown; y?: unknown; page?: unknown; branch?: unknown }) => {
       const ctx = this.joined(socket, payload?.websiteId);
       if (!ctx || typeof payload.x !== 'number' || typeof payload.y !== 'number') return;
       if (!Number.isFinite(payload.x) || !Number.isFinite(payload.y)) return;
@@ -256,16 +261,20 @@ export class Realtime {
         x: payload.x,
         y: payload.y,
         ...(typeof payload.page === 'string' ? { page: payload.page } : {}),
+        // Presence follows the sender's branch (CollaborationProvider filters on it).
+        ...(typeof payload.branch === 'string' && BRANCH_RE.test(payload.branch) ? { branch: payload.branch } : {}),
       });
     }));
 
-    socket.on('selection', this.guard('selection', (payload: { websiteId?: unknown; nodeIds?: unknown; page?: unknown }) => {
+    socket.on('selection', this.guard('selection', (payload: { websiteId?: unknown; nodeIds?: unknown; page?: unknown; branch?: unknown }) => {
       const ctx = this.joined(socket, payload?.websiteId);
       if (!ctx) return;
       socket.to(this.key(ctx.room.siteId)).emit('selection', {
         userId: user.id,
         nodeIds: Array.isArray(payload.nodeIds) ? payload.nodeIds.filter((id) => typeof id === 'string') : [],
         ...(typeof payload.page === 'string' ? { page: payload.page } : {}),
+        // Presence follows the sender's branch (CollaborationProvider filters on it).
+        ...(typeof payload.branch === 'string' && BRANCH_RE.test(payload.branch) ? { branch: payload.branch } : {}),
       });
     }));
 
@@ -321,6 +330,11 @@ export class Realtime {
       leader: room.leader,
       revision,
       fileSeqs: Object.fromEntries([...room.live].map(([p, f]) => [p, f.seq])),
+      // Every branch and its revision: a copy that missed `branch-updated` /
+      // `branch-deleted` while disconnected reconciles from this.
+      branchRevisions: Object.fromEntries(
+        listBranchSummaries(path.join(this.deps.access.sitesRoot, siteId)).map((b) => [b.id, b.revision]),
+      ),
       // The replay below brings this copy to the room's content, which every
       // save since the room opened was taken from: the copy may adopt `revision`.
       adoptRevision: baseRevision !== null && baseRevision !== revision,
@@ -329,6 +343,26 @@ export class Realtime {
     this.io.to(this.key(siteId)).emit('save-leader', { leader: room.leader });
     trace.action('rt:joined', { socketId: socket.id, userId: user.id, siteId, role, members: room.members.size, leader: room.leader, baseRevision, revision });
     this.replay(socket, room);
+  }
+
+  /** Why `content` cannot be stored as `rel` (invalid JSON or items that
+   *  break their schema), or null. The schema is the room's live one, else
+   *  the one on disk; data for a collection with no schema yet is accepted
+   *  (its schema write may still be on its way). */
+  private cmsDataProblem(room: Room, rel: string, content: string): string | null {
+    const slug = rel.slice('cms/'.length, -'.json'.length);
+    const schemaRel = `cms/${slug}.schema.json`;
+    const live = room.live.get(schemaRel);
+    let schemaText: string | null = live ? live.content : null;
+    if (!live) {
+      const abs = path.join(this.deps.access.sitesRoot, room.siteId, schemaRel);
+      schemaText = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8') : null;
+    }
+    if (schemaText === null) return null;
+    const { schemas, issues: schemaIssues } = parseSchemasFromFiles({ [schemaRel]: schemaText });
+    if (schemaIssues.length > 0) return null; // a broken schema is the schema writer's problem
+    const issues = validateAllCmsDataFiles({ [rel]: content }, schemas);
+    return issues.length > 0 ? issues.slice(0, 3).map((i) => i.message).join(' · ') : null;
   }
 
   private openRoom(siteId: string, revision: number): Room {
@@ -369,12 +403,12 @@ export class Realtime {
       trace.action('rt:file-sync-dropped', { userId: user.id, role: member.role, path: rawPath });
       return;
     }
-    if (this.deps.access.isCmsOnly(room.siteId) && (!rel || !isCmsDataPath(rel))) {
-      // On a `cmsOnly` site, only CMS item data (`cms/<slug>.json`) may be
-      // edited on the server; camera pans (`_meta/page-camera.json`) and any
-      // attempted design/schema writes are acked and dropped.
+    if (this.deps.access.isContentOnly(member.role) && (!rel || !isCmsDataPath(rel))) {
+      // A `content` member edits CMS item data (`cms/<slug>.json`) only; camera
+      // pans (`_meta/page-camera.json`) and any design/schema write are acked
+      // and dropped, so their copy stops resending.
       reply({ ok: true, seq: current });
-      trace.action('rt:file-sync-dropped', { userId: user.id, role: member.role, path: rawPath, reason: 'cms-only' });
+      trace.action('rt:file-sync-dropped', { userId: user.id, role: member.role, path: rawPath, reason: 'content-role' });
       return;
     }
     const content = payload.content;
@@ -393,6 +427,16 @@ export class Realtime {
       trace.error('rt:file-sync-refused', { userId: user.id, path: rawPath, reason: !rel ? 'path' : typeof content !== 'string' ? 'content' : 'size', bytes });
       socket.disconnect(true);
       return;
+    }
+    if (isCmsDataPath(rel)) {
+      // CMS items are validated against their schema before the room or the
+      // disk takes them; the writer is told why, and stops resending them.
+      const problem = this.cmsDataProblem(room, rel, content);
+      if (problem) {
+        reply({ ok: false, seq: current, invalid: problem });
+        trace.action('rt:file-sync-invalid-cms', { siteId: room.siteId, userId: user.id, path: rel, problem });
+        return;
+      }
     }
     if (typeof payload.baseSeq !== 'number' || payload.baseSeq !== current) {
       reply({ ok: false, seq: current });
@@ -474,34 +518,12 @@ export class Realtime {
     return this.deps.locks.run(room.siteId, () => {
       if (this.rooms.get(room.siteId) !== room || !this.deps.access.siteExists(room.siteId)) return 0;
       const siteDir = path.join(this.deps.access.sitesRoot, room.siteId);
-      const cmsOnly = this.deps.access.isCmsOnly(room.siteId);
-      const schemas = cmsOnly ? parseSchemasFromFiles(walkManagedFiles(siteDir)).schemas : null;
       let changed = 0;
+      // CMS items were validated when they entered the room (fileSync).
       for (const [rawPath, file] of room.live) {
         const rel = safeRelPath(rawPath);
         if (!rel || !isManagedProjectPath(rel)) continue;
-        if (cmsOnly && (!isCmsDataPath(rel) || file.content === null)) continue;
         if (file.content === this.readDisk(room.siteId, rel)) continue;
-        if (cmsOnly && schemas && file.content !== null) {
-          const slug = cmsSlugFromDataPath(rel);
-          const schema = slug ? schemas.get(slug) : undefined;
-          if (!schema) {
-            trace.error('rt:persist-validation-failed', { siteId: room.siteId, path: rel, reason: 'missing-schema' });
-            continue;
-          }
-          let parsed: unknown;
-          try {
-            parsed = JSON.parse(file.content);
-          } catch {
-            trace.error('rt:persist-validation-failed', { siteId: room.siteId, path: rel, reason: 'invalid-json' });
-            continue;
-          }
-          const issues = validateCollectionItemsAgainstSchema(slug!, schema, parsed);
-          if (issues.length > 0) {
-            trace.error('rt:persist-validation-failed', { siteId: room.siteId, path: rel, issues: issues.map((i) => i.code) });
-            continue;
-          }
-        }
         const abs = path.join(siteDir, rel);
         try {
           if (file.content === null) {
@@ -536,45 +558,23 @@ export class Realtime {
     return this.persist(room, 'explicit-flush');
   }
 
-  /**
-   * Broadcast a local `design:push` into an active room so connected editors
-   * receive the updated views, components, and schemas live without losing
-   * their CMS edits or hitting a revision conflict.
-   */
-  applyDesignPush(
-    siteId: string,
-    updatedFiles: Record<string, string>,
-    deletedPaths: string[],
-    revision: number,
-    adminUserId: string,
-  ): void {
-    const room = this.rooms.get(siteId);
-    if (!room) return;
-    if (room.members.size === 0) {
-      this.dropRoom(room, 'design-push');
-      return;
-    }
-    for (const [relPath, content] of Object.entries(updatedFiles)) {
-      const prev = room.live.get(relPath);
-      const seq = (prev?.seq ?? 0) + 1;
-      room.liveBytes += content.length - (prev?.content?.length ?? 0);
-      room.live.set(relPath, { seq, content, lastUserId: adminUserId });
-      this.io.to(this.key(siteId)).emit('file-sync', { userId: adminUserId, path: relPath, content, seq });
-    }
-    for (const delPath of deletedPaths) {
-      const prev = room.live.get(delPath);
-      const seq = (prev?.seq ?? 0) + 1;
-      room.liveBytes -= prev?.content?.length ?? 0;
-      room.live.set(delPath, { seq, content: null, lastUserId: adminUserId });
-      this.io.to(this.key(siteId)).emit('file-delete', { userId: adminUserId, path: delPath, seq });
-    }
-    this.notifySaved(siteId, revision, true);
-    trace.action('rt:design-pushed', {
-      siteId,
-      updated: Object.keys(updatedFiles).length,
-      deleted: deletedPaths.length,
-      revision,
-    });
+
+  /** A branch record was created or changed (server/api.ts branches). */
+  branchUpdated(siteId: string, branch: string, revision: number, byUserId: string): void {
+    this.io.to(this.key(siteId)).emit('branch-updated', { branch, revision, by: byUserId });
+    trace.action('rt:branch-updated', { siteId, branch, revision, by: byUserId });
+  }
+
+  /** An agent took, renewed or released its lease on a branch. */
+  branchLease(siteId: string, branch: string, lease: { holder: string; until: number } | null): void {
+    this.io.to(this.key(siteId)).emit('branch-lease', { branch, lease });
+    trace.action('rt:branch-lease', { siteId, branch, holder: lease?.holder ?? null });
+  }
+
+  /** A branch record was deleted. */
+  branchDeleted(siteId: string, branch: string, byUserId: string): void {
+    this.io.to(this.key(siteId)).emit('branch-deleted', { branch, by: byUserId });
+    trace.action('rt:branch-deleted', { siteId, branch, by: byUserId });
   }
 
   /** Broadcast a successful save to the site's room. */

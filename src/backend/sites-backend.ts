@@ -21,7 +21,9 @@ interface SitePayload {
   cmsOnly?: boolean;
   project?: ProjectData;
   revision?: number;
-  role?: 'owner' | 'editor' | 'viewer';
+  role?: 'owner' | 'editor' | 'content' | 'viewer';
+  /** Local mode: the server project this site is a working copy of. */
+  linked?: { url: string; siteId: string; branch: string | null };
 }
 
 /** How long one site fetch answers every boot getter that asks for it
@@ -36,7 +38,7 @@ export interface LocalSiteSummary {
   updatedAt: string;
 }
 
-function isEphemeralId(id: string): boolean {
+export function isEphemeralId(id: string): boolean {
   return !id || id === 'local' || id === 'noauth';
 }
 
@@ -241,7 +243,7 @@ export class SitesBackend implements ProjectBackend {
     return this.fallback.fetchMediaBytes(remoteUrl);
   }
 
-  async getWebsiteRole(id: string): Promise<'owner' | 'editor' | 'viewer'> {
+  async getWebsiteRole(id: string): Promise<'owner' | 'editor' | 'content' | 'viewer'> {
     if (!SELF_HOSTED || isEphemeralId(id)) return 'owner';
     // Unknown role = read-only: the server refuses writes anyway, and a
     // tab that could not load the site must not look editable.
@@ -253,10 +255,19 @@ export class SitesBackend implements ProjectBackend {
     return false;
   }
 
+  /** Content-only editing: the member's `content` role (a site-wide `cmsOnly`
+   *  flag is retired — briefs/22-11-2026-branch-review-workflow.md, D7). */
   async getWebsiteCmsOnly(id: string): Promise<boolean> {
     if (!SELF_HOSTED || isEphemeralId(id)) return false;
     const payload = await this.fetchSite(id);
-    return payload?.cmsOnly === true;
+    return payload?.role === 'content';
+  }
+
+  /** Local mode: the server project a linked site is a working copy of (branch-cli.ts). */
+  async getLinkedRemote(id: string): Promise<{ url: string; siteId: string; branch: string | null } | null> {
+    if (SELF_HOSTED || isEphemeralId(id)) return null;
+    const payload = await this.fetchSite(id);
+    return payload?.linked ?? null;
   }
 
   async getWebsiteWorkspaceId(id: string): Promise<string | null> {

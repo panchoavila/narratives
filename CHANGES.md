@@ -31,3 +31,11 @@ upstream commit merged is `aa04170` ("fix: translated text mcp fix", 2026-10-30)
   - its own name and mark, and an "About Narratives" notice with a source link;
   - generic defaults in place of one deployment's values.
   - The upstream workflows in `.github/` were removed on 2026-10-31.
+- 2026-11-24: Branches with review, for people and agents:
+  - live collaboration shares main only, so a branch's edits never leak into main;
+  - branches are server records with their own revision, synced live;
+  - applying a branch merges CMS items per item, keeps published content, judges the result
+    against main and can be undone with the branch restored;
+  - agents (CLI and an MCP server) write work branches only, with per-site tokens and leases;
+  - content-only editing is a member role; the site-wide CMS-only lock and `design:push` are
+    retired.

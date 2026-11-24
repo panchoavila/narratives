@@ -88,7 +88,9 @@ The diff `upstream/main...main` touches about 570 files, by area:
 | `src/code/oracle/` | Rules can read other project files, plus new checks: page flow, CMS dialect, scroll and surface. |
 | `src/canvas/`, `src/canvas-sandbox/` | Live 3D viewport navigation, code-component host fixes, inline CMS lists in slots, and current-item filter resolution. |
 | `src/editor/` | Animation Timeline (smart guides, snapping), Page Flow tool, scroll snap control, CMS visibility tool, Link tool Slug picker, Smooth Scroll popup, Adobe Fonts inspector, the local Sites Dashboard and the Narratives identity (`src/editor/brand/`). |
-| `src/server/`, `server/` | The local multi-site API (`sites/<id>/` on disk), Vercel publishing, the self-contained source export, the self-hosted collaboration server (auth, invitations, roles, revisions) and CMS-only sync (`design:push`, `content:pull`). |
+| `src/server/`, `server/` | The local multi-site API (`sites/<id>/` on disk), Vercel publishing, the self-contained source export, the self-hosted collaboration server (auth, invitations, roles including `content`, revisions), branch records (`branch-records.ts`), the agent API with per-site tokens and work-branch leases, the branch CLI (`branch-cli.ts`: `site:pull`, `branch:push`, `site:dev`, `branch:done`, `agent:token`, plus `content:pull`) and the MCP server (`narratives-mcp.ts`). |
+| `src/code/branching/`, `src/backend/branch-sync.ts` | Branches as server records synced live; per-item CMS merge, the CMS contract and the gate judged against main on apply (`apply-cms.ts`); undo of an apply restores the branch; conflict choices in the review. |
+| `src/canvas/collab/` | Live collaboration shares main only; presence follows the branch; invalid CMS items are refused with a reason. |
 | `src/code/import/framer/` | The Framer-to-Narratives translator. |
 | `e2e/` | Harness specs for the new capabilities (`99-websites-harness/`) and the self-hosted suite (`selfhosted/`). |
 | `.github/` | Upstream's workflows were removed (2026-10-31). Narratives CI is pending. |

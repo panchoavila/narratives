@@ -387,7 +387,7 @@ export interface Collaborator {
   email: string;
   name: string | null;
   avatar: string | null;
-  role: 'owner' | 'editor' | 'viewer';
+  role: 'owner' | 'editor' | 'content' | 'viewer';
   color: string;
   source: 'owner' | 'workspace' | 'collaborator' | 'pending';
   collaborator_id?: string;
@@ -453,7 +453,7 @@ function asSeatLimit(details: unknown): SeatLimitDetails | undefined {
 export async function inviteCollaborator(
   websiteId: string,
   email: string,
-  role: 'editor' | 'viewer' = 'editor',
+  role: 'editor' | 'content' | 'viewer' = 'editor',
 ): Promise<CollabActionResult> {
   const res = await fetch(url(`/api/websites/${encodeURIComponent(websiteId)}/collaborators`), {
     method: 'POST',
@@ -479,7 +479,7 @@ export async function inviteCollaborator(
 export async function updateCollaborator(
   websiteId: string,
   userId: string,
-  patch: { role?: 'editor' | 'viewer'; color?: string },
+  patch: { role?: 'editor' | 'content' | 'viewer'; color?: string },
 ): Promise<CollabActionResult> {
   const res = await fetch(url(`/api/websites/${encodeURIComponent(websiteId)}/collaborators`), {
     method: 'PATCH',

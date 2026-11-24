@@ -46,10 +46,11 @@ export class Access {
     return this.db.getSite(siteId) ?? this.db.ensureSite(siteId, this.admin().id);
   }
 
-  /** True when `_revyme/project-meta.json` marks the site `cmsOnly: true`. */
-  isCmsOnly(siteId: string): boolean {
-    if (!this.siteExists(siteId)) return false;
-    return readSiteMeta(path.join(this.sitesRoot, siteId), siteId).cmsOnly === true;
+  /** Content-only is a member's role now (`content`), not a site-wide lock:
+   *  a site's `cmsOnly` flag is ignored (briefs/22-11-2026-branch-review-
+   *  workflow.md, D7). True for a member who may edit CMS items and media only. */
+  isContentOnly(role: SiteRole | null): boolean {
+    return role === 'content';
   }
 
   /** Register every site folder on disk. Run at boot. */
@@ -73,8 +74,9 @@ export class Access {
     return this.db.getMember(siteId, user.id)?.role ?? null;
   }
 
+  /** May write at all (the `content` role writes CMS items and media only). */
   canWrite(role: SiteRole | null): boolean {
-    return role === 'owner' || role === 'editor';
+    return role === 'owner' || role === 'editor' || role === 'content';
   }
 
   /** Site ids this user may see; `null` = all (admin). */

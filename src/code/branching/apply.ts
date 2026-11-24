@@ -28,6 +28,9 @@ import { syncQueueCode, flushNow, switchQueueFile } from '@/code/mutation/mutati
 import { isBranchLocked, isAgentWriteOpen } from '@/code/stores/agent-run-lock-store';
 import { bumpProjectVersion } from '@/code/project/modify-file';
 import { clearBridgeReadCaches } from '@/canvas/canvas-bridge';
+import { applyCmsContract } from './apply-cms';
+import { attachHistoryEffect, historyDepth, pushHistoryImmediate } from '@/code/mutation/history';
+import type { CollectionSchema } from '@/shared/types';
 import { trace } from '@/shared/debug-trace';
 
 export type ApplyStatus = 'applied' | 'conflicts' | 'refused';
@@ -68,6 +71,21 @@ function recordChangelog(entry: ChangelogEntry): ChangelogEntry {
   changelog.push(entry);
   trace.action('branching-apply:changelog', { ...entry });
   return entry;
+}
+
+/** The CMS schemas a merged map declares (`cms/<slug>.schema.json`). */
+function mergedSchemas(files: Map<string, string>): Map<string, CollectionSchema> {
+  const out = new Map<string, CollectionSchema>();
+  for (const [path, content] of files) {
+    const m = path.match(/^cms\/([a-z0-9][a-z0-9-_]*)\.schema\.json$/);
+    if (!m) continue;
+    try {
+      out.set(m[1], JSON.parse(content) as CollectionSchema);
+    } catch {
+      // A broken schema is refused by applyCmsContract before the gate runs.
+    }
+  }
+  return out;
 }
 
 /** File kind for the gate (TurnFile carries page|component; the gate derives template/code-component internally). */
@@ -263,8 +281,41 @@ export function applyBranch(
     const kind = kindFor(path, code);
     if (kind) turnFiles.push({ path, code, kind }); else plain.push([path, code]);
   }
-  const gated = gateTurnFiles(turnFiles, null);
+  // CMS contract on the merged result (apply-cms.ts): no published content
+  // lost, views read existing fields, items backfilled and valid.
+  const cms = applyCmsContract(ours, merged);
+  if (cms.refusal) {
+    trace.action('branching-apply:refused-cms', { branch: branchId, reason: cms.refusal });
+    return {
+      status: 'refused',
+      files: [],
+      conflicts: [],
+      reason: `${cms.refusal} Nothing was written.`,
+      changelog: recordChangelog({ at: Date.now(), branch: branchId, kind, files: [], conflictsResolved: 0, status: 'refused' }),
+    };
+  }
+  for (const [path, content] of cms.updates) {
+    merged.set(path, content);
+    if (ours.get(path) !== content && !turnFiles.some((f) => f.path === path) && !plain.some(([p]) => p === path)) {
+      plain.push([path, content]);
+    } else {
+      const i = plain.findIndex(([p]) => p === path);
+      if (i >= 0) plain[i] = [path, content];
+    }
+  }
+
+  // Judge the merged result against MAIN (briefs/22-11-2026-branch-review-
+  // workflow.md, fact 6): previous code, grandfathered violations and existing
+  // data-ids come from main — a branch's own violations are not grandfathered —
+  // while pages the branch adds exist and schemas are the merged ones.
+  const fromBranch = projectFS.getActiveBranchId();
+  if (fromBranch !== MAIN_BRANCH_ID) projectFS.switchBranch(MAIN_BRANCH_ID);
+  const gated = gateTurnFiles(turnFiles, null, {
+    schemas: mergedSchemas(merged),
+    isExistingPath: (p) => merged.has(p),
+  });
   if (gated.violations.length > 0) {
+    if (fromBranch !== MAIN_BRANCH_ID) projectFS.switchBranch(fromBranch);
     const codes = [...new Set(gated.violations.map((v) => v.code))].join(', ');
     return {
       status: 'refused',
@@ -291,10 +342,11 @@ export function applyBranch(
       changelog: recordChangelog({ at: Date.now(), branch: branchId, kind, files: [], conflictsResolved: 0, status: 'refused' }),
     };
   }
-  const written = commitTurnFiles(gated.files);
-  for (const [path, code] of plain) { projectFS.writeFile(path, code); written.push(path); }
-  const expected = new Set(gated.files.map((f) => f.path));
-  const missing = [...expected].filter((p) => !written.includes(p));
+  // Plain files (CMS items, CSS, dictionaries) and deletions land BEFORE the
+  // gated commit, so the one history step that commit pushes covers the whole
+  // apply — undo reverts the CMS items too.
+  const historyBefore = historyDepth();
+  for (const [path, code] of plain) projectFS.writeFile(path, code);
   // Deletions (in main, absent from merged): files the merge dropped.
   const deleted: string[] = [];
   for (const p of ours.keys()) {
@@ -303,6 +355,12 @@ export function applyBranch(
       deleted.push(p);
     }
   }
+  const written = commitTurnFiles(gated.files);
+  for (const [path] of plain) written.push(path);
+  // A branch with no gated file (CMS items only) still gets its own step.
+  if (historyDepth() === historyBefore) pushHistoryImmediate('');
+  const expected = new Set(gated.files.map((f) => f.path));
+  const missing = [...expected].filter((p) => !written.includes(p));
   if (missing.length > 0) {
     // Partial write: restore pre-apply main (active IS main here) + refuse.
     projectFS.loadSnapshot(preApplyMain);
@@ -328,6 +386,10 @@ export function applyBranch(
   // empties honestly (nothing left to merge) and the base moves with it.
   // Human-chosen resolutions are IN main — the branch does not keep a
   // parallel vision. Further branch edits diff fresh from here.
+  const preBranch = {
+    files: projectFS.readBranchFiles(branchId) ?? new Map<string, string>(),
+    base: projectFS.readBranchBase(branchId) ?? new Map<string, string>(),
+  };
   const postMain = projectFS.readBranchFiles(MAIN_BRANCH_ID) ?? new Map<string, string>();
   for (const [path, content] of postMain) {
     if (merged.has(path)) projectFS.writeBranchFile(branchId, path, content);
@@ -339,6 +401,22 @@ export function applyBranch(
   if (rebaseErr) {
     trace.error('branching-apply:rebase-failed', { branch: branchId, error: rebaseErr });
   }
+
+  // Undoing the apply restores the branch as it was, so its work can be
+  // reviewed and applied again; redoing it settles the branch again.
+  const postBranch = {
+    files: projectFS.readBranchFiles(branchId) ?? new Map<string, string>(),
+    base: projectFS.readBranchBase(branchId) ?? new Map<string, string>(),
+  };
+  const restore = (state: { files: Map<string, string>; base: Map<string, string> }, why: string) => {
+    if (projectFS.loadBranchSnapshot(branchId, state.files)) return; // branch gone since
+    projectFS.rebaseBranch(branchId, state.base);
+    trace.action('branching-apply:branch-restored', { branch: branchId, why });
+  };
+  attachHistoryEffect(historyBefore, {
+    undo: () => restore(preBranch, 'undo'),
+    redo: () => restore(postBranch, 'redo'),
+  });
 
   projectFS.clearBranchConflicts(branchId);
   const files = [...written, ...deleted];

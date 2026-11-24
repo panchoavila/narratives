@@ -19,3 +19,9 @@ export const SELF_HOSTED = !CLOUD_ENABLED && import.meta.env.VITE_SELF_HOSTED ==
 
 /** Live collaboration runs in cloud mode and in self-hosted mode. */
 export const COLLAB_ENABLED = CLOUD_ENABLED || SELF_HOSTED;
+
+/** The in-editor AI (Vibe chat, page agent) needs a compatible AI service.
+ *  A self-hosted build without `VITE_AI_SERVICE_URL` has none, and its AI
+ *  controls would do nothing — so they are hidden there. Development and
+ *  cloud builds keep them (their service has a default). */
+export const AI_AVAILABLE = !SELF_HOSTED || !!import.meta.env.VITE_AI_SERVICE_URL;
