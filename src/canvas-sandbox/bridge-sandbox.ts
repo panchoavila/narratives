@@ -11,7 +11,7 @@
 // ./sandbox/rect-emit.ts is what broke the old bridge-sandbox ↔
 // sandbox-code-host circular import.
 
-import { applySceneInspection, findSceneViewport, getSceneViewportBounds } from './sandbox/scene-inspection';
+import { applySceneInspection, findSceneViewport, getSceneViewportBounds, pulseSceneGesture } from './sandbox/scene-inspection';
 import type { SceneInspectionOptions } from './sandbox/scene-inspection';
 import { CullingController } from './culling-controller';
 import * as Comlink from 'comlink';
@@ -45,7 +45,7 @@ import {
   setContentRoot,
   currentSandboxTransform,
   setCurrentSandboxTransform,
-  emit, setCurrentRenderSeq } from './sandbox/sandbox-state';
+  emit, setCurrentRenderSeq, setMeasuresSuspended } from './sandbox/sandbox-state';
 import {
   forceRemeasureAllRects,
   startSettleObserver,
@@ -150,6 +150,13 @@ let _rasteredScale: number | null = null;
 
 function hintCameraGesture(scale?: number): void {
   if (!contentRoot) return;
+  // In 3D every node is its own layer: freeze them all (scene-inspection.ts).
+  // The 2D settle below would also walk them through the scene's own
+  // will-change rule and toggle each one for nothing.
+  if (sceneInspection.enabled) {
+    pulseSceneGesture(contentRoot);
+    return;
+  }
   if (contentRoot.style.willChange !== 'transform') contentRoot.style.willChange = 'transform';
   if (_gestureHintTimer) clearTimeout(_gestureHintTimer);
   _gestureHintTimer = setTimeout(() => {
@@ -245,13 +252,23 @@ const api: SandboxApi = {
   async setSceneInspection(options): Promise<boolean> {
     if (!contentRoot) return false;
     const request = ++sceneInspectionRequest;
-    // Keep culling suspended through the transition back to 2D.
-    if (options.enabled) sceneInspection = options;
-    if (options.enabled) getCulling()?.restoreAll();
+    // Keep culling and measuring suspended through the transition back to 2D.
+    if (options.enabled) {
+      sceneInspection = options;
+      setMeasuresSuspended(true);
+      getCulling()?.restoreAll();
+    }
     await applySceneInspection(contentRoot, options);
     if (request !== sceneInspectionRequest) return true;
     sceneInspection = options;
-    if (!options.interacting) forceRemeasureAllRects();
+    // No full remeasure on camera or selection changes in 3D: the 2D overlays it
+    // feeds are hidden, and every node would be measured through the rotation
+    // (22,498 forced layouts in a 3 s pinch on a 945-node page). Leaving 3D,
+    // once the rotation and the inspection CSS are gone, measures once.
+    if (!options.enabled) {
+      setMeasuresSuspended(false);
+      forceRemeasureAllRects();
+    }
     observeSceneViewport();
     if (!options.enabled) getCulling()?.scheduleEvaluate();
     return true;

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { parseJSXToNodes } from '@/code/parsing/parser';
 import { parseCanvasConfig } from '@/code/project/canvas-config';
 import { renderNodes } from '@/canvas/Renderer';
-import { applySceneInspection, getSceneViewportBounds } from './sandbox/scene-inspection';
+import { applySceneInspection, clearSceneGesture, getSceneViewportBounds, holdSceneGesture, pulseSceneGesture, SCENE_GESTURE_REST_MS } from './sandbox/scene-inspection';
 import { applySceneProjection, projectScenePoint, SCENE_TRANSITION_MS } from '@/shared/scene-projection';
 
 beforeEach(() => {
@@ -172,5 +172,112 @@ describe('focused live responsive viewport', () => {
     await applySceneInspection(scene, { enabled: false, instant: true, separation: 0, selectedId: '' });
     expect(scene.innerHTML).toBe(before);
     for (const v of views) expect(getComputedStyle(root(v.id)).visibility).not.toBe('hidden');
+  });
+});
+
+// While the inspection camera moves, every 3D layer keeps the raster scale it had (one attribute on
+// the scene root switches `will-change: transform` on); once the camera rests they re-raster sharp.
+// Ways it can fail: never released (blurry at rest), released by a zoom pulse while an orbit still
+// holds it, re-armed by a timer after leaving 3D, or shared between two scenes.
+describe('raster-scale freeze while the inspection camera moves', () => {
+  const frozen = (root: HTMLElement) => root.hasAttribute('data-scene-gesture');
+  // An undeclared will-change computes to '' in the DOM test environment, `auto` in browsers.
+  const willChange = (el: HTMLElement) => getComputedStyle(el).willChange || 'auto';
+
+  it('holds while a holder holds and releases one rest after the last one lets go', () => {
+    const root = document.createElement('div');
+    holdSceneGesture(root, 'orbit', true);
+    expect(frozen(root)).toBe(true);
+    vi.advanceTimersByTime(SCENE_GESTURE_REST_MS * 4);
+    expect(frozen(root)).toBe(true);
+    holdSceneGesture(root, 'orbit', false);
+    expect(frozen(root)).toBe(true);
+    vi.advanceTimersByTime(SCENE_GESTURE_REST_MS - 1);
+    expect(frozen(root)).toBe(true);
+    vi.advanceTimersByTime(1);
+    expect(frozen(root)).toBe(false);
+  });
+
+  it('a pulse holds for one rest, and every pulse restarts it', () => {
+    const root = document.createElement('div');
+    pulseSceneGesture(root);
+    expect(frozen(root)).toBe(true);
+    vi.advanceTimersByTime(SCENE_GESTURE_REST_MS - 10);
+    pulseSceneGesture(root);
+    vi.advanceTimersByTime(SCENE_GESTURE_REST_MS - 10);
+    expect(frozen(root)).toBe(true);
+    vi.advanceTimersByTime(10);
+    expect(frozen(root)).toBe(false);
+  });
+
+  it('a pulse ending never releases a hold, and a hold ending never cuts a pulse short', () => {
+    const root = document.createElement('div');
+    holdSceneGesture(root, 'orbit', true);
+    pulseSceneGesture(root);
+    vi.advanceTimersByTime(SCENE_GESTURE_REST_MS * 2);
+    expect(frozen(root)).toBe(true);
+    holdSceneGesture(root, 'transition', true);
+    holdSceneGesture(root, 'orbit', false);
+    vi.advanceTimersByTime(SCENE_GESTURE_REST_MS * 2);
+    expect(frozen(root)).toBe(true);
+    holdSceneGesture(root, 'transition', false);
+    pulseSceneGesture(root);
+    vi.advanceTimersByTime(SCENE_GESTURE_REST_MS - 1);
+    expect(frozen(root)).toBe(true);
+    vi.advanceTimersByTime(1);
+    expect(frozen(root)).toBe(false);
+  });
+
+  it('clearing ends it at once, and no timer armed before brings it back', () => {
+    const root = document.createElement('div');
+    pulseSceneGesture(root);
+    holdSceneGesture(root, 'orbit', true);
+    holdSceneGesture(root, 'orbit', false);
+    clearSceneGesture(root);
+    expect(frozen(root)).toBe(false);
+    vi.advanceTimersByTime(SCENE_GESTURE_REST_MS * 4);
+    expect(frozen(root)).toBe(false);
+  });
+
+  it('keeps each scene root apart', () => {
+    const a = document.createElement('div');
+    const b = document.createElement('div');
+    holdSceneGesture(a, 'orbit', true);
+    pulseSceneGesture(b);
+    vi.advanceTimersByTime(SCENE_GESTURE_REST_MS);
+    expect(frozen(a)).toBe(true);
+    expect(frozen(b)).toBe(false);
+  });
+
+  it('freezes the 3D layers and the floor grid only while held, and leaves nothing after exit', async () => {
+    const scene = document.createElement('div');
+    scene.innerHTML = `<div data-viewport="desktop" data-node-id="desktop" style="width:1440px;height:4600px">
+      <section data-node-id="hero"><h1 data-node-id="title">Title</h1></section></div>
+      <div data-viewport="mobile" data-node-id="mobile"><p data-node-id="mobile-copy">Hidden</p></div>`;
+    document.body.append(scene);
+    const opts = { enabled: true, instant: true, separation: 24, selectedId: '', viewportId: 'desktop',
+      bounds: { x: 0, y: 0, width: 1440, height: 4600 }, origin: { x: 720, y: 2300 } };
+    await applySceneInspection(scene, opts);
+    vi.advanceTimersByTime(SCENE_GESTURE_REST_MS);
+    const title = scene.querySelector<HTMLElement>('[data-node-id="title"]')!;
+    const floor = scene.querySelector<HTMLElement>(':scope > [data-scene-grid] > :not([data-scene-axis])')!;
+    expect(willChange(title)).toBe('auto');
+    await applySceneInspection(scene, { ...opts, interacting: true });
+    expect(willChange(title)).toBe('transform');
+    expect(willChange(floor)).toBe('transform');
+    // A hidden viewport draws nothing; freezing it would promote layers for nothing.
+    expect(willChange(scene.querySelector<HTMLElement>('[data-node-id="mobile-copy"]')!)).toBe('auto');
+    expect(willChange(scene.querySelector<HTMLElement>('[data-node-id="mobile"]')!)).toBe('auto');
+    await applySceneInspection(scene, { ...opts, interacting: false });
+    vi.advanceTimersByTime(SCENE_GESTURE_REST_MS);
+    expect(willChange(title)).toBe('auto');
+    // The floor spans the page's width, not its 4600 px height.
+    expect(parseFloat(floor.style.width)).toBeGreaterThanOrEqual(1440);
+    expect(parseFloat(floor.style.width)).toBeLessThanOrEqual(2880);
+    await applySceneInspection(scene, { ...opts, interacting: true });
+    await applySceneInspection(scene, { ...opts, enabled: false });
+    vi.advanceTimersByTime(SCENE_GESTURE_REST_MS * 4);
+    expect(scene.hasAttribute('data-scene-gesture')).toBe(false);
+    expect(willChange(title)).toBe('auto');
   });
 });

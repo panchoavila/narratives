@@ -17,7 +17,7 @@ import {
   type Affine, type SvgCtmContext,
 } from '../svg-user-to-screen';
 import { isSandboxDndInteracting } from '../sandbox-dnd-host';
-import { contentRoot, currentSandboxTransform, emit } from './sandbox-state';
+import { contentRoot, currentSandboxTransform, emit, measuresSuspended } from './sandbox-state';
 import { replayOverlayPlacements } from '@/canvas/renderer/overlay-portals';
 
 /** getBBox guarded against throwing / degenerate (zero-area) results. */
@@ -292,6 +292,12 @@ function runRemeasureOnNextFrame(force = false): void {
   _remeasureRaf = requestAnimationFrame(() => {
     _remeasureRaf = 0;
     if (!contentRoot) return;
+    // 3D inspection defers every full sweep, overlay replay included: the
+    // overlays are hidden and the geometry is rotated. Exit measures once.
+    if (measuresSuspended) {
+      trace.fn('sandbox:measure-deferred', { reason: 'scene-inspection', force });
+      return;
+    }
     // MID-DRAG GATE (scheduled sweeps only — `force` = gesture-critical
     // commit-time callers bypass it). ResizeObservers on code-component
     // wrappers fire during drags and this sweep used to run FULL-PAGE

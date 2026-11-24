@@ -29,7 +29,7 @@
 
 import { trace } from '@/shared/debug-trace';
 import type { CornersLike } from '../sandbox-api';
-import { contentRoot, currentSandboxTransform, currentRenderSeq, emit } from './sandbox-state';
+import { contentRoot, currentSandboxTransform, currentRenderSeq, emit, measuresSuspended } from './sandbox-state';
 import { cornersForElement, svgMatrixStyles, cornersAreDecoupled } from './rect-emit';
 
 interface MeasureEntry {
@@ -188,6 +188,12 @@ export interface EmitAllMeasuresOptions {
 
 export function emitAllMeasures(opts?: EmitAllMeasuresOptions): void {
   if (!contentRoot) return;
+  // 3D inspection: the render path, camera-idle heals and the settle observer all
+  // land here; leaving 3D measures once (bridge-sandbox setSceneInspection).
+  if (measuresSuspended) {
+    trace.fn('sandbox:measure-deferred', { reason: 'scene-inspection' });
+    return;
+  }
   const root = contentRoot;
   const skipOffscreen = opts?.skipOffscreenSections !== false;
   const t0 = performance.now();
