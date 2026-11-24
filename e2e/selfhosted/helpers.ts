@@ -109,7 +109,19 @@ export async function deleteBoxUntilGone(page: Page, id: string, at = { x: 0.3, 
     if (gone) return;
     await page.waitForTimeout(500);
   }
-  throw new Error(`box ${id} is still on the canvas after 3 deletes`);
+  // The editor's own trace says why (selection, the delete command, the queue).
+  const recent = await page.evaluate(() => {
+    const t = (window as unknown as { __trace?: { getEntries?: () => { category: string; data?: unknown }[] } }).__trace;
+    return (t?.getEntries?.() ?? []).slice(-80).map((e) => `${e.category} ${JSON.stringify(e.data ?? '').slice(0, 140)}`);
+  }).catch(() => [] as string[]);
+  const box = await node(page, id).first().boundingBox();
+  const count = await node(page, id).count();
+  const atPoint = box ? await page.evaluate(([x, y]) => {
+    const el = document.elementFromPoint(x, y) as HTMLElement | null;
+    return el ? `${el.tagName}.${String(el.className).slice(0, 80)} [${el.getAttribute('data-testid') ?? ''}]` : 'none';
+  }, [box.x + box.width * at.x, box.y + box.height * at.y]) : 'no box';
+  await page.screenshot({ path: path.join(DATA, `delete-failed-${id}.png`) }).catch(() => {});
+  throw new Error(`box ${id} is still on the canvas after 3 deletes (box ${JSON.stringify(box)}, ${count} element(s), top element at the click point: ${atPoint}). Last editor trace:\n${recent.join('\n')}`);
 }
 
 export const idsIn = (source: string) => [...source.matchAll(/data-id="(\w+)"/g)].map((m) => m[1]);

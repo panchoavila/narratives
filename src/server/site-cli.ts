@@ -23,8 +23,6 @@ import { readEnvFiles } from './site-publishing';
 import {
   isCmsDataPath,
   isContentPublicAssetPath,
-  isDesignManagedPath,
-  isDesignPublicAssetPath,
   validateFullCmsSite,
 } from '../shared/cms-site-contract';
 import { checkFile, type FileKind } from '../code/oracle/check-file';
@@ -76,27 +74,6 @@ function parseArgs(argv: string[]): CliFlags {
     }
   }
   return { positional, url, token, cookie, branch, title, strictOracle };
-}
-
-function walkDesignPublicAssets(siteDir: string): Record<string, Buffer> {
-  const out: Record<string, Buffer> = {};
-  const publicDir = path.join(siteDir, 'public');
-  if (!fs.existsSync(publicDir) || !fs.statSync(publicDir).isDirectory()) return out;
-  const walk = (absDir: string, relPrefix: string) => {
-    for (const entry of fs.readdirSync(absDir, { withFileTypes: true })) {
-      if (entry.name.startsWith('.')) continue;
-      const absChild = path.join(absDir, entry.name);
-      if (fs.lstatSync(absChild).isSymbolicLink()) continue;
-      const relChild = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) {
-        walk(absChild, relChild);
-      } else if (entry.isFile() && isDesignPublicAssetPath(relChild)) {
-        out[relChild] = fs.readFileSync(absChild);
-      }
-    }
-  };
-  walk(publicDir, '');
-  return out;
 }
 
 export interface SiteCheckReport {

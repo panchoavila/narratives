@@ -30,6 +30,7 @@ import {
 } from '@/code/mutation/mutation-queue';
 import { clearHistoryStacks } from '@/code/mutation/history';
 import { clearBridgeReadCaches } from '@/canvas/canvas-bridge';
+import { forceCanvasRender } from '@/canvas/node-ops';
 import { bumpProjectVersion } from '@/code/project/modify-file';
 import { triggerAutosave } from '@/backend/autosave';
 import {
@@ -127,6 +128,12 @@ export function switchBranchFile(branchId: string): string | null {
   setTimeout(() => {
     setForceRender();
     bumpProjectVersion();
+    // The bridge's rect caches were cleared above, and only a render refills
+    // them. A branch whose page equals the one on screen (a branch just cut
+    // from it) is skipped by the Renderer as duplicate input, so nothing was
+    // rendered, hit-testing found no node, and clicks selected nothing until
+    // some other edit re-rendered. An intentional render re-measures.
+    forceCanvasRender();
     trace.action('branching-switch:late-bump', { branch: branchId });
   }, 250);
 
