@@ -121,6 +121,15 @@ export function buildAutoImports(body) {
   if (/\bRevymeSplitText\b/.test(body)) revymeRuntime.push('RevymeSplitText');
   // Ticker effect wrapper on a layout frame (ticker-gen.ts).
   if (/\bRevymeTicker\b/.test(body)) revymeRuntime.push('RevymeTicker');
+  // VHS wrapper on one object (vhs-gen.ts), its page surface, and the Liquid
+  // Glass backdrop wrapper. They exist only in the workspace build, so the
+  // npm-based coverage check could not see them missing: every flush on a page
+  // with a VHS object dropped `RevymeVhs` and validation refused every edit
+  // ("References undefined identifier: RevymeVhs", live find 2026-11-24).
+  // `\bRevymeVhs\b` does not match inside `RevymeVhsPage`.
+  if (/\bRevymeVhs\b/.test(body)) revymeRuntime.push('RevymeVhs');
+  if (/\bRevymeVhsPage\b/.test(body)) revymeRuntime.push('RevymeVhsPage');
+  if (/\bRevymeLiquidBackdrop\b/.test(body)) revymeRuntime.push('RevymeLiquidBackdrop');
   // localizeRows — a translated CMS collection list resolves its own locale at
   // the head of the chain. Missing here, the dedup pass above dropped the
   // import line and nothing rebuilt it, so the FIRST edit after the list was

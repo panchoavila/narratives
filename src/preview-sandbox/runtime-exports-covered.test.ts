@@ -93,3 +93,49 @@ describe('buildAutoImports covers the runtime', () => {
     expect(buildAutoImports(body).join('\n')).not.toContain('@revyme/runtime');
   });
 });
+
+// ─── …including the components only the workspace build has ─────────────────
+//
+// `import * as RevymeRuntime from '@revyme/runtime'` above resolves to the npm
+// package, which lacks every component that exists only in the workspace build
+// (`packages/revyme-runtime-scene`, published as `vendor/revyme-runtime`). So the
+// check above never saw `RevymeVhs`: it was missing from `buildAutoImports`, every
+// flush on a page with a VHS object dropped its import, and validation refused
+// every edit on the canvas demo with "References undefined identifier: RevymeVhs"
+// (live find 2026-11-24). A page names these components as JSX tags, so every
+// component the workspace build exports must survive a flush. Read from the
+// package's source index: importing it would boot WebGL modules in jsdom.
+
+describe('buildAutoImports covers the workspace runtime components', () => {
+  const index = readFileSync(resolve(__dirname, '../../packages/revyme-runtime-scene/src/index.ts'), 'utf8');
+  /** Value exports named like components (`RevymeVhs`, `Override`), not types or constants. */
+  const components = [...index.matchAll(/export\s*\{([^}]*)\}\s*from/g)]
+    .flatMap((m) => m[1].split(','))
+    .map((spec) => spec.trim())
+    .filter((spec) => spec && !spec.startsWith('type '))
+    .map((spec) => spec.split(/\s+as\s+/).pop()!)
+    .filter((name) => /^[A-Z][a-z][A-Za-z0-9]*$/.test(name));
+
+  it('reads the components from the workspace index', () => {
+    expect(components).toEqual(expect.arrayContaining(['RevymeVhs', 'RevymeVhsPage', 'RevymeLiquidBackdrop', 'RevymeTicker']));
+  });
+
+  it('re-emits the import for every workspace runtime component used as a tag', () => {
+    const missing = components.filter((name) => {
+      const body = `export default function Page() { return <${name}><div data-id="root" /></${name}>; }`;
+      return !buildAutoImports(body).some(
+        (line: string) => line.includes('@revyme/runtime') && new RegExp(`\\b${name}\\b`).test(line),
+      );
+    });
+    expect(
+      missing,
+      `buildAutoImports drops these on flush → "References undefined identifier": ${missing.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('covers the specific one that regressed, once', () => {
+    const body = `export default function Page() { return <RevymeVhs><button data-id="b" data-canvas-effect="vhs" /></RevymeVhs>; }`;
+    const runtime = buildAutoImports(body).filter((line: string) => line.includes('@revyme/runtime'));
+    expect(runtime).toEqual(["import { RevymeVhs } from '@revyme/runtime';"]);
+  });
+});
