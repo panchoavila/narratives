@@ -147,7 +147,8 @@ export function initCameraPersist(): () => void {
     if (settleTimer !== null) clearTimeout(settleTimer);
     settleTimer = setTimeout(() => {
       settleTimer = null;
-      // 3D inspection has a temporary focus camera. Keep the file's 2D camera.
+      // While 3D is on, settles are not saved: leaving 3D re-arms this with the
+      // camera it leaves (useSceneInspection), so the view after 3D is what persists.
       if (document.querySelector('[data-canvas-root][data-scene-view="isometric"]')) return;
       const active = getDefaultStore().get(activeFilePathAtom);
       if (!active) return;

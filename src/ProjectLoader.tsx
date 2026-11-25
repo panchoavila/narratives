@@ -81,6 +81,8 @@ function e2eSharedHooks(store: ReturnType<typeof getDefaultStore>) {
       return checkFile(code, { kind, path, readProjectFile: p => projectFS.readFile(p) }).map(v => ({ code: v.code, tier: v.tier, message: v.message, elementId: v.elementId }));
     },
     activeFile: () => store.get(activeFilePathAtom),
+    // The breakpoint edits go to (3D entry may switch it, exit gives it back).
+    interactingViewport: () => store.get(interactingViewportIdAtom),
   };
 }
 

@@ -44,10 +44,12 @@ function overlapArea(a: SceneViewportBounds, b: SceneViewportBounds): number {
 
 const contains = (b: SceneViewportBounds, p: SceneOrigin) => p.x >= b.x && p.x <= b.x + b.width && p.y >= b.y && p.y <= b.y + b.height;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+const nearestPoint = (b: SceneViewportBounds, p: SceneOrigin): SceneOrigin => ({ x: clamp(p.x, b.x, b.x + b.width), y: clamp(p.y, b.y, b.y + b.height) });
 
 /** The breakpoint the screen shows: the one under the centre of the visible area,
- * else the one with the most visible area, else null (none is on screen).
- * `preferred` (the clicked breakpoint) wins ties. */
+ * else the visible one nearest the centre (the pivot then lies as close to the
+ * centre as it can), else null (none is on screen). `preferred` (the clicked
+ * breakpoint) wins ties. */
 export function pickSceneViewport(
   candidates: Array<{ id: string; bounds: SceneViewportBounds }>,
   camera: SceneCameraTransform,
@@ -59,10 +61,12 @@ export function pickSceneViewport(
   const atCentre = ordered.find(c => contains(c.bounds, centre));
   if (atCentre) return atCentre.id;
   const visible = sceneVisibleRect(camera, area);
-  let best: string | null = null, most = 0;
+  let best: string | null = null, nearest = Infinity;
   for (const c of ordered) {
-    const shown = overlapArea(c.bounds, visible);
-    if (shown > most) { best = c.id; most = shown; }
+    if (!overlapArea(c.bounds, visible)) continue;
+    const p = nearestPoint(c.bounds, centre);
+    const distance = Math.hypot(p.x - centre.x, p.y - centre.y);
+    if (distance < nearest) { best = c.id; nearest = distance; }
   }
   return best;
 }
@@ -72,6 +76,5 @@ export function pickSceneViewport(
  * while the plane turns. Null when the breakpoint is not on screen at all. */
 export function sceneEntryPivot(bounds: SceneViewportBounds, camera: SceneCameraTransform, area: SceneScreenArea): SceneOrigin | null {
   if (!overlapArea(bounds, sceneVisibleRect(camera, area))) return null;
-  const centre = sceneScreenCentre(camera, area);
-  return { x: clamp(centre.x, bounds.x, bounds.x + bounds.width), y: clamp(centre.y, bounds.y, bounds.y + bounds.height) };
+  return nearestPoint(bounds, sceneScreenCentre(camera, area));
 }

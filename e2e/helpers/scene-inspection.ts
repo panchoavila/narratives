@@ -22,7 +22,11 @@ import type { Editor } from './editor';
 
 const SANDBOX_PORT = ':5174';
 /** The editor's DEV-only test hooks this file uses (src/ProjectLoader.tsx). */
-type E2EHooks = { traceEntries(pattern: string): unknown[]; select(ids: string[]): void };
+type E2EHooks = {
+  traceEntries(pattern: string): Array<{ category: string; data: unknown }>;
+  select(ids: string[], vpId?: string): void;
+  interactingViewport(): string;
+};
 /** Longer than the freeze's rest delay (250 ms), so a released freeze has ended. */
 const REST_MS = 600;
 /** Wheel ticks per pinch direction: about what a trackpad pinch-in sends. */
@@ -277,8 +281,10 @@ export function defineScenePerformanceSpecs(site: string, label: string): void {
 // grid follows the pivot (C5); an off-screen breakpoint gives an empty 3D
 // view (C6); 3D shows another breakpoint than the one on screen (C7); a centre
 // outside every breakpoint (C8); exit restores the pre-entry camera (C9);
-// re-entry reuses the old pivot (C10); a double click leaves 3D half on (C11);
-// switching breakpoint in 3D does not reframe (C12).
+// re-entry reuses the old pivot (C10); a double click or Escape during entry
+// leaves 3D half on (C11); switching breakpoint in 3D does not reframe (C12);
+// entering 3D changes where edits go (C14); a re-entry during the exit
+// animation moves the pivot while the plane is still turned (C15).
 //
 // The probe is a 2x2 element inside the scene root at a scene point. It is not
 // a canvas node, so layer separation never moves it: only the camera and the
@@ -389,6 +395,17 @@ async function sampleProbe(page: Page, frame: Frame, name: string, ms: number, s
   return samples;
 }
 
+/** Samples several probes together for `ms`. */
+async function sampleProbes(frame: Frame, names: string[], ms: number): Promise<Record<string, Point[]>> {
+  const out: Record<string, Point[]> = Object.fromEntries(names.map((n) => [n, []]));
+  const start = Date.now();
+  while (Date.now() - start < ms) for (const n of names) out[n].push(await probeAt(frame, n));
+  return out;
+}
+
+const interacting = (page: Page) => page.evaluate(() => (window as unknown as { __e2e: E2EHooks }).__e2e.interactingViewport());
+const traceCount = (page: Page, pattern: string) => page.evaluate((p) => (window as unknown as { __e2e: E2EHooks }).__e2e.traceEntries(p).length, pattern);
+
 const drift = (samples: Point[], from: Point) => Math.max(0, ...samples.map((p) => Math.hypot(p.x - from.x, p.y - from.y)));
 
 /** The plane's pivot, read from the scene root, and the host header plane's. */
@@ -430,7 +447,7 @@ export function defineSceneEntrySpecs(site: string, label: string): void {
       const [first] = await sceneViewports(frame);
       // Look at part of the first breakpoint, zoomed in, away from its centre.
       const target = { x: first.x + Math.min(400, first.width * 0.3), y: first.y + Math.min(300, first.height * 0.2) };
-      await page.evaluate(([vp]) => (window as unknown as { __e2e: E2EHooks & { select(ids: string[], vp?: string): void } }).__e2e.select([], vp), [first.id]);
+      await page.evaluate(([vp]) => (window as unknown as { __e2e: E2EHooks }).__e2e.select([], vp), [first.id]);
       await panSceneTo(page, frame, target);
       await zoomAtCentre(page, 12);
       const centre = await canvasCentre(page);
@@ -502,7 +519,7 @@ export function defineSceneEntrySpecs(site: string, label: string): void {
       test.skip(viewports.length < 2, 'needs two breakpoints');
       const results: Array<Record<string, unknown>> = [];
       // The click stays in the first breakpoint; the screen moves to the others.
-      await page.evaluate(([vp]) => (window as unknown as { __e2e: E2EHooks & { select(ids: string[], vp?: string): void } }).__e2e.select([], vp), [viewports[0].id]);
+      await page.evaluate(([vp]) => (window as unknown as { __e2e: E2EHooks }).__e2e.select([], vp), [viewports[0].id]);
       for (const vp of viewports.slice(1, 3)) {
         const target = { x: vp.x + vp.width / 2, y: vp.y + Math.min(300, vp.height / 2) };
         await panSceneTo(page, frame, target);
@@ -512,9 +529,12 @@ export function defineSceneEntrySpecs(site: string, label: string): void {
         const entering = await enter3dWatching(page, editor, frame, vp.id);
         const shown = await shownViewport(frame);
         await page.screenshot({ path: info.outputPath(`${site}-entry-002-${vp.id}.png`) });
-        results.push({ viewport: vp.id, shown, looked, entryDrift: drift(entering, before) });
+        const editingIn3d = await interacting(page);
         await exit3d(page, editor);
+        const editingAfter = await interacting(page);
+        results.push({ viewport: vp.id, shown, looked, entryDrift: drift(entering, before), editingIn3d, editingAfter });
         await removeProbes(frame);
+        expect(editingAfter, `C14: leaving 3D gives edits back to ${viewports[0].id}`).toBe(viewports[0].id);
         // C7 + C10: the breakpoint under the centre, turned about the new centre.
         expect(shown, `C7: 3D shows ${vp.id}, the breakpoint on screen`).toBe(vp.id);
         expect(drift(entering, before), `C10: re-entry turns about the new centre (${vp.id})`).toBeLessThan(DRIFT_PX);
@@ -534,7 +554,7 @@ export function defineSceneEntrySpecs(site: string, label: string): void {
       const report: Record<string, unknown> = { site };
 
       // C6: nothing on screen -> 3D reframes to the breakpoint instead of an empty view.
-      await page.evaluate(([vp]) => (window as unknown as { __e2e: E2EHooks & { select(ids: string[], vp?: string): void } }).__e2e.select([], vp), [first.id]);
+      await page.evaluate(([vp]) => (window as unknown as { __e2e: E2EHooks }).__e2e.select([], vp), [first.id]);
       const host = (await page.locator('[data-canvas-root]').boundingBox())!;
       const m = await sceneMapping(frame);
       // 1.2 screens up and left of the breakpoint's corner: nothing of it is on screen.
@@ -557,11 +577,11 @@ export function defineSceneEntrySpecs(site: string, label: string): void {
         await addProbe(frame, 'right-edge', { x: right.x, y });
         const edges = { [first.id]: await probeAt(frame, 'left-edge'), [right.id]: await probeAt(frame, 'right-edge') };
         await page.getByTitle('Isometric view', { exact: true }).click();
-        const leftSamples = await sampleProbe(page, frame, 'left-edge', SAMPLE_MS);
+        const both = await sampleProbes(frame, ['left-edge', 'right-edge'], SAMPLE_MS);
         await settleTransitions(editor);
         const chosen = await shownViewport(frame);
         const pivot = (await pivots(page, frame)).scene;
-        const rightSamples = [await probeAt(frame, 'right-edge')];
+        const leftSamples = both['left-edge'], rightSamples = both['right-edge'];
         await page.screenshot({ path: info.outputPath(`${site}-entry-003-gap.png`) });
         await exit3d(page, editor);
         await removeProbes(frame);
@@ -572,32 +592,66 @@ export function defineSceneEntrySpecs(site: string, label: string): void {
         expect(held, 'C8: the clamped point stays put').toBeLessThan(DRIFT_PX);
       }
 
-      // C11: a double click on the toggle leaves the canvas in 2D.
-      const toggle = page.getByTitle('Isometric view', { exact: true });
-      await toggle.click();
-      await page.locator('[title="Isometric view"], [title="2D view (Esc)"]').first().click();
+      // C11: two clicks in one task (the second lands while the first entry is
+      // still measuring) cancel it; so does Escape during that wait.
+      const cancelledBefore = await traceCount(page, 'scene-composer:entry-cancelled');
+      await page.evaluate(() => {
+        const button = document.querySelector<HTMLElement>('[title="Isometric view"]')!;
+        button.click(); button.click();
+      });
       await page.waitForTimeout(SAMPLE_MS + REST_MS);
-      report.doubleClick = await contentRoot(editor).getAttribute('data-scene-inspection');
-      expect(report.doubleClick, 'C11: a double click does not leave 3D on').toBeNull();
+      const afterDouble = await contentRoot(editor).getAttribute('data-scene-inspection');
+      await page.evaluate(() => {
+        document.querySelector<HTMLElement>('[title="Isometric view"]')!.click();
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      });
+      await page.waitForTimeout(SAMPLE_MS + REST_MS);
+      const afterEscape = await contentRoot(editor).getAttribute('data-scene-inspection');
+      const cancelled = (await traceCount(page, 'scene-composer:entry-cancelled')) - cancelledBefore;
+      report.cancel = { afterDouble, afterEscape, cancelled };
+      expect(afterDouble, 'C11: a double click does not leave 3D on').toBeNull();
+      expect(afterEscape, 'C11: Escape during the entry keeps 2D').toBeNull();
+      expect(cancelled, 'C11: both went through the cancel path').toBe(2);
 
       // C12: switching breakpoint while in 3D reframes to it, pivot at its centre.
       const other = viewports.find((v) => v.id !== first.id);
       if (other) {
         await panSceneTo(page, frame, { x: first.x + first.width / 2, y: first.y + Math.min(300, first.height / 2) });
         await enter3d(page, editor);
-        await page.evaluate(([vp]) => (window as unknown as { __e2e: E2EHooks & { select(ids: string[], vp?: string): void } }).__e2e.select([], vp), [other.id]);
+        await page.evaluate(([vp]) => (window as unknown as { __e2e: E2EHooks }).__e2e.select([], vp), [other.id]);
         await expect.poll(() => shownViewport(frame)).toBe(other.id);
         await settleTransitions(editor);
         await page.waitForTimeout(REST_MS);
         const pivot = (await pivots(page, frame)).scene;
+        // Measured now: a culled breakpoint's placeholder can be larger than its tile.
+        const live = (await sceneViewports(frame)).find((v) => v.id === other.id)!;
         const otherBox = (await frame.locator(`[data-content-root] > [data-viewport="${other.id}"][data-node-id]`).boundingBox())!;
         const a2 = await area();
         await page.screenshot({ path: info.outputPath(`${site}-entry-003-switch.png`) });
         await exit3d(page, editor);
         report.switch = { other: other.id, pivot, otherBox };
-        expect(Math.abs(pivot.x - (other.x + other.width / 2)) + Math.abs(pivot.y - (other.y + other.height / 2)), 'C12: pivot at the new breakpoint\'s centre').toBeLessThan(1);
+        expect(Math.abs(pivot.x - (live.x + live.width / 2)) + Math.abs(pivot.y - (live.y + live.height / 2)), 'C12: pivot at the new breakpoint\'s centre').toBeLessThan(1);
         expect(otherBox.x < a2.right && otherBox.x + otherBox.width > a2.left, 'C12: the new breakpoint is framed').toBe(true);
       }
+      // C15: Escape and an immediate re-entry, after a pan in 3D moved the camera.
+      await enter3d(page, editor);
+      const centre = await canvasCentre(page);
+      await page.mouse.move(centre.x, centre.y);
+      await page.mouse.wheel(240, 120);
+      await page.waitForTimeout(REST_MS);
+      await page.keyboard.press('Escape');
+      await page.evaluate(() => document.querySelector<HTMLElement>('[title="Isometric view"]')!.click());
+      await expect(contentRoot(editor)).toHaveAttribute('data-scene-inspection', 'isometric');
+      await settleTransitions(editor);
+      const order = await page.evaluate(() => (window as unknown as { __e2e: E2EHooks }).__e2e
+        .traceEntries('scene-composer:(mode|entry)$').map((e) => e.category));
+      report.reentry = { order: order.slice(-4) };
+      await page.screenshot({ path: info.outputPath(`${site}-entry-003-reentry.png`) });
+      await exit3d(page, editor);
+      // An exit cut short by a new entry never logs its settle, so the last two
+      // must be this exit settling, then the re-entry.
+      expect(order.slice(-2), 'C15: the re-entry starts after the exit has flattened the plane').toEqual(['scene-composer:mode', 'scene-composer:entry']);
+
       fs.writeFileSync(info.outputPath(`${site}-entry-003.json`), JSON.stringify(report, null, 2));
     });
   });

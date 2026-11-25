@@ -14,6 +14,11 @@ import './editor-isometric.css';
 
 /** Longest wait for the sandbox to measure the breakpoints before entering 3D anyway. */
 const CHOOSE_VIEWPORT_TIMEOUT_MS = 800;
+/** Longest wait for the last exit to flatten (it animates 320 ms) before entering anyway:
+ * a sandbox that never answers (a reloaded iframe) must not lock 3D out. */
+const EXIT_SETTLE_TIMEOUT_MS = 1000;
+
+const delay = (ms: number) => new Promise<void>(resolve => window.setTimeout(resolve, ms));
 
 /** The breakpoint the screen is showing, measured in the sandbox; the clicked one
  * when the bridge cannot measure or does not answer in time. */
@@ -24,7 +29,7 @@ async function viewportOnScreen(preferred: string, ids: string[], area: SceneScr
     bounds => (bounds && bounds.width > 0 && bounds.height > 0 ? { id, bounds } : null),
     () => null,
   )));
-  const timeout = new Promise<null>(resolve => window.setTimeout(() => resolve(null), CHOOSE_VIEWPORT_TIMEOUT_MS));
+  const timeout = delay(CHOOSE_VIEWPORT_TIMEOUT_MS).then(() => null);
   const measured = await Promise.race([measure, timeout]);
   if (!measured) { trace.error('scene-composer:choose-viewport', 'timeout'); return preferred; }
   const candidates = measured.filter((c): c is { id: string; bounds: SceneViewportBounds } => !!c);
@@ -57,8 +62,16 @@ export function useSceneInspection() {
   // The visible canvas area when 3D was asked for: the 3D panel that opens next
   // narrows it, and the pivot is what the user was looking at, not its new centre.
   const entryArea = useRef<SceneScreenArea | null>(null);
+  // The breakpoint 3D switched to and the one it replaced. Entering a view does
+  // not change where edits go: exit gives the clicked breakpoint back.
+  const entryViewport = useRef<{ previous: string; chosen: string } | null>(null);
+  // The last exit's animation. A new entry waits for it: the pivot may only
+  // change while the plane is flat.
+  const settling = useRef<Promise<unknown>>(Promise.resolve());
 
   useEffect(() => { ++pendingEntry.current; entering.current = false; setActive(false); setError(''); }, [file, setActive]);
+  // An entry still being measured when the toolbar unmounts must not turn 3D on.
+  useEffect(() => () => { ++pendingEntry.current; entering.current = false; }, []);
   useEffect(() => {
     if (!active) return;
     const host = document.querySelector<HTMLElement>('[data-canvas-root]');
@@ -77,17 +90,25 @@ export function useSceneInspection() {
       window.removeEventListener('keydown', onKey, true);
       stopCamera();
       focused.current = ''; pivot.current = null; entryArea.current = null; setBounds(null);
+      const switched = entryViewport.current;
+      entryViewport.current = null;
+      if (switched && switched.previous !== switched.chosen && store.get(interactingViewportIdAtom) === switched.chosen) {
+        store.set(interactingViewportIdAtom, switched.previous);
+        trace.action('scene-composer:viewport-restored', switched);
+      }
       const exit = ++generation.current;
       const off = { enabled: false, separation: 0, selectedId: '' };
-      void Promise.all([applySceneProjection(getViewportHeaderPlane(headers), off), bridge.setSceneInspection!(off)]).catch(cause => trace.error('scene-composer:close', cause)).finally(() => {
+      settling.current = Promise.all([applySceneProjection(getViewportHeaderPlane(headers), off), bridge.setSceneInspection!(off)]).catch(cause => trace.error('scene-composer:close', cause)).finally(() => {
         if (generation.current !== exit) return;
         delete host.dataset.sceneView;
         setViewportHeaderInspection(headers, false);
         // The 2D view continues from the 3D one: pan and zoom done in 3D are kept.
+        // Camera persistence skips settles while 3D is on, so hand it this camera now.
+        transformManager.setTransform(transformManager.getTransform());
         trace.action('scene-composer:mode', { isometric: false, camera: transformManager.getTransform() });
       });
     };
-  }, [active, setActive, setBounds]);
+  }, [active, store, setActive, setBounds]);
 
   useEffect(() => {
     if (!active) return;
@@ -139,14 +160,28 @@ export function useSceneInspection() {
     entering.current = true;
     const preferred = store.get(interactingViewportIdAtom);
     const area = sceneScreenRect();
-    void viewportOnScreen(preferred, store.get(visibleViewportsAtom).map(v => v.id), area).then(chosen => {
-      if (pendingEntry.current !== attempt) return;
-      entering.current = false;
-      if (chosen !== preferred) store.set(interactingViewportIdAtom, chosen);
-      entryArea.current = area;
-      trace.action('scene-composer:entry', { preferred, chosen, area });
-      setCamera({ ...DEFAULT_SCENE_CAMERA }); setBounds(null);
-      setActive(true);
-    });
+    const cancelOnEscape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || pendingEntry.current !== attempt) return;
+      ++pendingEntry.current; entering.current = false;
+      trace.action('scene-composer:entry-cancelled', { attempt, by: 'escape' });
+    };
+    window.addEventListener('keydown', cancelOnEscape, true);
+    void Promise.race([settling.current, delay(EXIT_SETTLE_TIMEOUT_MS)])
+      .then(() => viewportOnScreen(preferred, store.get(visibleViewportsAtom).map(v => v.id), area))
+      .then(chosen => {
+        if (pendingEntry.current !== attempt) return;
+        entering.current = false;
+        if (chosen !== preferred) store.set(interactingViewportIdAtom, chosen);
+        entryViewport.current = { previous: preferred, chosen };
+        entryArea.current = area;
+        trace.action('scene-composer:entry', { preferred, chosen, area });
+        setCamera({ ...DEFAULT_SCENE_CAMERA }); setBounds(null);
+        setActive(true);
+      })
+      .catch(cause => {
+        trace.error('scene-composer:entry', cause);
+        if (pendingEntry.current === attempt) entering.current = false;
+      })
+      .finally(() => window.removeEventListener('keydown', cancelOnEscape, true));
   }, [active, store, setActive, setBounds, setCamera]) };
 }
