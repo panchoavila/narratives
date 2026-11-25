@@ -108,12 +108,15 @@ export function getSceneViewportBounds(root: HTMLElement, id: string): SceneView
 
 function updateGrid(root: HTMLElement, options: SceneInspectionOptions) {
   let grid = root.querySelector<HTMLElement>(':scope > [data-scene-grid]');
-  if (!options.viewportId || !options.bounds || !options.origin) { grid?.remove(); return; }
+  if (!options.viewportId || !options.bounds) { grid?.remove(); return; }
   if (!grid) { grid = root.ownerDocument.createElement('div'); grid.dataset.sceneGrid = ''; root.appendChild(grid); }
-  const signature = JSON.stringify([options.viewportId, options.bounds, options.origin, options.gridColor]);
+  const signature = JSON.stringify([options.viewportId, options.bounds, options.gridColor]);
   if (grid.dataset.sceneGrid === signature) return;
   grid.dataset.sceneGrid = signature;
-  const { x, y } = options.origin;
+  // The floor is a fixed world feature centred on the breakpoint. The pivot is
+  // wherever the user was looking at entry, so the grid does not follow it.
+  const x = options.bounds.x + options.bounds.width / 2;
+  const y = options.bounds.y + options.bounds.height / 2;
   const extent = sceneGridExtent(options.bounds);
   const step = Math.max(50, Math.round(extent / 2000) * 50);
   grid.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:0;height:0;transform-style:preserve-3d;pointer-events:none;`;

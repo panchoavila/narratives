@@ -1,5 +1,5 @@
 import { transformManager } from '@/canvas/transform';
-import type { SceneViewportBounds } from '@/shared/scene-projection';
+import type { SceneOrigin, SceneViewportBounds } from '@/shared/scene-projection';
 
 /** Screen area of the existing canvas left unobscured by editor panels. */
 export function sceneScreenRect() {
@@ -15,4 +15,63 @@ export function fitSceneViewport(bounds: SceneViewportBounds) {
   const area = sceneScreenRect();
   const scale = Math.max(.05, Math.min(1, (area.width - 120) / Math.max(bounds.width, 1), (area.height - 180) / Math.max(bounds.height, 1)));
   transformManager.setTransform({ x: area.x - (bounds.x + bounds.width / 2) * scale, y: area.y - (bounds.y + bounds.height / 2) * scale, scale });
+}
+
+/** The 2D camera: a scene point p is drawn at host-local x + p * scale. */
+export interface SceneCameraTransform { x: number; y: number; scale: number }
+export type SceneScreenArea = ReturnType<typeof sceneScreenRect>;
+
+/** The scene point drawn at the centre of the visible canvas area. */
+export function sceneScreenCentre(camera: SceneCameraTransform, area: SceneScreenArea): SceneOrigin {
+  return { x: (area.x - camera.x) / camera.scale, y: (area.y - camera.y) / camera.scale };
+}
+
+/** The scene rectangle the camera shows in the visible canvas area. */
+export function sceneVisibleRect(camera: SceneCameraTransform, area: SceneScreenArea): SceneViewportBounds {
+  return {
+    x: (area.left - camera.x) / camera.scale,
+    y: -camera.y / camera.scale,
+    width: Math.max(0, area.right - area.left) / camera.scale,
+    height: area.height / camera.scale,
+  };
+}
+
+function overlapArea(a: SceneViewportBounds, b: SceneViewportBounds): number {
+  const width = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+  const height = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+  return width > 0 && height > 0 ? width * height : 0;
+}
+
+const contains = (b: SceneViewportBounds, p: SceneOrigin) => p.x >= b.x && p.x <= b.x + b.width && p.y >= b.y && p.y <= b.y + b.height;
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+/** The breakpoint the screen shows: the one under the centre of the visible area,
+ * else the one with the most visible area, else null (none is on screen).
+ * `preferred` (the clicked breakpoint) wins ties. */
+export function pickSceneViewport(
+  candidates: Array<{ id: string; bounds: SceneViewportBounds }>,
+  camera: SceneCameraTransform,
+  area: SceneScreenArea,
+  preferred: string,
+): string | null {
+  const ordered = [...candidates].sort((a, b) => Number(b.id === preferred) - Number(a.id === preferred));
+  const centre = sceneScreenCentre(camera, area);
+  const atCentre = ordered.find(c => contains(c.bounds, centre));
+  if (atCentre) return atCentre.id;
+  const visible = sceneVisibleRect(camera, area);
+  let best: string | null = null, most = 0;
+  for (const c of ordered) {
+    const shown = overlapArea(c.bounds, visible);
+    if (shown > most) { best = c.id; most = shown; }
+  }
+  return best;
+}
+
+/** Where 3D turns about so the view continues from 2D: the breakpoint's point
+ * nearest the centre of the visible area. That point stays where it is on screen
+ * while the plane turns. Null when the breakpoint is not on screen at all. */
+export function sceneEntryPivot(bounds: SceneViewportBounds, camera: SceneCameraTransform, area: SceneScreenArea): SceneOrigin | null {
+  if (!overlapArea(bounds, sceneVisibleRect(camera, area))) return null;
+  const centre = sceneScreenCentre(camera, area);
+  return { x: clamp(centre.x, bounds.x, bounds.x + bounds.width), y: clamp(centre.y, bounds.y, bounds.y + bounds.height) };
 }
