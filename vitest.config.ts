@@ -19,6 +19,9 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // Node 25+ globals shadow jsdom's localStorage / sessionStorage; this puts
+    // the window's own storage back (see the file's header).
+    setupFiles: ['./src/vitest-setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     exclude: [
       '**/node_modules/**', '**/dist/**',
