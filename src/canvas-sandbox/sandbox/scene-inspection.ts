@@ -1,6 +1,6 @@
 import { trace } from '@/shared/debug-trace';
 import { applySceneProjection, SCENE_TRANSITION_MS, SCENE_EASING, type SceneProjectionOptions, type SceneViewportBounds } from '@/shared/scene-projection';
-import { FORCED_VISIBLE, applySceneClips, clearSceneClips, detectSceneClippers, markSceneClipsDirty, measureSceneClips, remeasureSceneClips, sceneClipRule } from './scene-clipping';
+import { FORCED_VISIBLE, applySceneClips, clearSceneClips, measureSceneClips, scheduleSceneClipRemeasure, sceneClipRule } from './scene-clipping';
 
 export interface SceneInspectionOptions extends SceneProjectionOptions {
   separation: number;
@@ -180,19 +180,17 @@ ${options.viewportId ? `${scope} > [data-viewport]:not([data-viewport=${viewport
 ${options.selectedId ? `${scope} [data-node-id][data-id=${selected}] { outline: 2px solid var(--scene-selection, currentColor) !important; outline-offset: 3px !important; }` : ''}
 @media (prefers-reduced-motion: reduce) { ${scope} [data-node-id]:not(svg [data-node-id]) { transition: none !important; } }
 `;
-    // Entry: which containers crop is read in 2D, before the attribute scopes the
-    // stylesheet in; the cuts are measured in the 3D layout while the plane is flat.
+    // Entry: what 2D crops is measured before the attribute scopes the stylesheet in.
     const entering = !root.hasAttribute('data-scene-inspection');
-    if (entering) detectSceneClippers(root);
+    if (entering) measureSceneClips(root);
     if (style.textContent !== css) style.textContent = css;
     root.style.setProperty('--scene-selection', options.selectionColor || 'currentColor');
     if (entering) {
       root.setAttribute('data-scene-inspection', '2d');
       root.getBoundingClientRect();
-      measureSceneClips(root);
     } else {
-      if (rendered) markSceneClipsDirty(root);
       applySceneClips(root); // a render may have dropped them
+      if (rendered) scheduleSceneClipRemeasure(root, style);
     }
     root.setAttribute('data-scene-inspection', 'isometric');
     updateGrid(root, options);
@@ -213,8 +211,6 @@ ${options.selectedId ? `${scope} [data-node-id][data-id=${selected}] { outline: 
   await settled;
   if (moving) holdSceneGesture(root, transition, false);
   if (requests.get(root) !== request) return;
-  // After a render, once the plane is still: flatten it for one read and measure the cuts again.
-  if (options.enabled) remeasureSceneClips(root);
   if (!options.enabled) {
     clearSceneGesture(root);
     root.removeAttribute('data-scene-inspection');

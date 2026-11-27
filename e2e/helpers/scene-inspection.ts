@@ -684,7 +684,8 @@ function clipFixture(p: string, edgeLeft: number): string {
     if (tag === 'svg') return `<svg ${attrs} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#08c"/></svg>`;
     return `<${tag} ${attrs}>${inner}</${tag}>`;
   };
-  const abs = 'position:absolute;margin:0;';
+  // Sites restyle bare elements (`img { max-width: 100% }` on Thayér and Real): pin what the cuts depend on.
+  const abs = 'position:absolute;margin:0;padding:0;max-width:none;max-height:none;min-width:0;min-height:0;box-sizing:border-box;';
   return n('card', `${abs}left:40px;top:40px;width:300px;height:200px;box-sizing:border-box;border:4px solid #000;overflow:hidden;background:#fff;z-index:9999`, 'div', [
     n('wrap', 'position:static;width:50px;height:50px;overflow:hidden;background:#eee', 'div',
       n('escape', `${abs}left:100px;top:60px;width:80px;height:40px;background:#9c6`)), // R5: its block is the card, not the wrap

@@ -18,11 +18,15 @@
 //      whole, because a clip-path would flatten its subtree; its own leaves are
 //      cut instead.
 //
-// Which containers crop, and on which axes, is read from the 2D computed style
-// before the 3D stylesheet applies: in 3D every container reads `visible`.
-// The cuts are measured in the 3D layout (containers visible, scroll offsets
-// gone) with the plane flat: at entry, before the turn starts, and after a render
-// in 3D by flattening the plane for one synchronous read (flattenSceneWhile).
+// Measured in 2D: the part of each node that 2D hides, as an inset in the node's
+// own box. 3D then hides the same part of the node, wherever the 3D layout moves
+// it. That layout differs: containers are visible (margins collapse through
+// them), scroll offsets are gone, and every node is a containing block. A crop
+// taken from the 3D layout would cut what 2D shows, such as a title pushed 11 px
+// past its row by a collapsed margin on Thayér's archive.
+// At entry the 3D stylesheet does not apply yet. After a render in 3D, it is
+// switched off for one synchronous read, with the plane flat and transitions held
+// (with2dCascade). That read is debounced, and waits until nothing animates.
 
 import { trace } from '@/shared/debug-trace';
 
@@ -45,16 +49,17 @@ export function sceneClipRule(scope: string): string {
 interface Axes { x: boolean; y: boolean }
 interface Box { left: number; top: number; right: number; bottom: number }
 interface SceneClips {
-  /** Containers that crop in 2D, by `data-node-id` (unique per breakpoint), and the axes they crop. */
-  clippers: Map<string, Axes>;
   /** Nodes carrying a cut, and the cut. */
   marked: Map<HTMLElement, string>;
-  /** A render in 3D happened: measure again once the plane can be flattened. */
-  dirty: boolean;
+  /** A measurement waiting for renders to stop and the scene to be still. */
+  timer: ReturnType<typeof setTimeout> | null;
 }
+/** Renders can arrive in a burst; one measurement after the last. */
+const REMEASURE_DEBOUNCE_MS = 150;
+const MEASURING_ATTR = 'data-scene-measuring';
+const MEASURING_STYLE_ID = 'revyme-scene-measuring';
 const states = new WeakMap<HTMLElement, SceneClips>();
 
-const nodeKey = (el: Element) => el.getAttribute('data-node-id') ?? '';
 const isReplaced = (el: Element) => el.matches(REPLACED_NODES);
 /** A visual leaf of the node tree: no canvas node below it. An svg's inner shapes do not count. */
 const isLeaf = (el: Element) => isReplaced(el) || !el.querySelector('[data-node-id]');
@@ -112,6 +117,15 @@ function paddingBox(el: HTMLElement, cs: CSSStyleDeclaration): Box | null {
   return { left, top, right: left + el.clientWidth * sx, bottom: top + el.clientHeight * sy };
 }
 
+/** The axes a container crops on in 2D. A container holding (or inside) a spatial
+ *  surface is left alone: the inspection CSS keeps its geometry. */
+function clipperAxes(el: HTMLElement, cs: CSSStyleDeclaration): Axes | null {
+  if (isLeaf(el) || insideSvg(el)) return null; // leaves keep their own overflow in 3D
+  const axes = cropAxes(cs);
+  if (!axes || el.querySelector(SPATIAL) || el.closest(SPATIAL)) return null;
+  return axes;
+}
+
 type Escape = 'absolute' | 'fixed' | null;
 const escapeOf = (cs: CSSStyleDeclaration): Escape => (cs.position === 'absolute' || cs.position === 'fixed' ? cs.position : null);
 /** Whether `cs` is the containing block of an absolute (or fixed) descendant, as in 2D.
@@ -122,42 +136,12 @@ function containingBlock(cs: CSSStyleDeclaration, escape: Exclude<Escape, null>)
 }
 
 /**
- * Before the 3D stylesheet applies: which containers crop in 2D, and on which axes.
- * Reads every breakpoint, so a breakpoint switch in 3D needs no 2D read.
- */
-export function detectSceneClippers(root: HTMLElement): void {
-  const clippers = new Map<string, Axes>();
-  let spatial = 0;
-  for (const el of root.querySelectorAll<HTMLElement>('[data-node-id]')) {
-    if (insideSvg(el) || isLeaf(el)) continue; // leaves keep their own overflow in 3D
-    const axes = cropAxes(getComputedStyle(el));
-    if (!axes) continue;
-    if (el.querySelector(SPATIAL) || el.closest(SPATIAL)) { spatial++; continue; }
-    clippers.set(nodeKey(el), axes);
-  }
-  states.set(root, { clippers, marked: states.get(root)?.marked ?? new Map(), dirty: false });
-  trace.dom('scene-inspection:clippers-detected', { clippers: clippers.size, spatial });
-}
-
-/** A node edited in 3D: its inline `overflow` wins over what was read in 2D. */
-function clipperAxes(el: HTMLElement, state: SceneClips, cs: CSSStyleDeclaration): Axes | null {
-  const shorthand = el.style.overflow.split(/\s+/).filter(Boolean);
-  const ix = el.style.overflowX || shorthand[0], iy = el.style.overflowY || shorthand[shorthand.length - 1];
-  if (ix || iy) {
-    if (cs.display === 'inline' || cs.display === 'contents' || cs.display.startsWith('ruby')) return null;
-    const x = !!ix && ix !== 'visible', y = !!iy && iy !== 'visible';
-    return x || y ? { x, y } : null;
-  }
-  return state.clippers.get(nodeKey(el)) ?? null;
-}
-
-/**
- * Measures every cut and writes it. The plane must be flat (no turn): at entry,
- * or inside flattenSceneWhile. Containers are `visible` here (the 3D layout).
+ * Measures every cut and writes it. Needs the 2D cascade and a flat plane: at
+ * entry before the 3D stylesheet applies, or inside with2dCascade.
  */
 export function measureSceneClips(root: HTMLElement): void {
-  const state = states.get(root);
-  if (!state) return;
+  let state = states.get(root);
+  if (!state) { state = { marked: new Map(), timer: null }; states.set(root, state); }
   const styles = new Map<Element, CSSStyleDeclaration>();
   const style = (el: Element) => { let cs = styles.get(el); if (!cs) { cs = getComputedStyle(el); styles.set(el, cs); } return cs; };
   const boxes = new Map<HTMLElement, Box | null>();
@@ -166,7 +150,7 @@ export function measureSceneClips(root: HTMLElement): void {
   // Candidates: every node under a container that crops.
   const candidates = new Set<HTMLElement>();
   for (const el of root.querySelectorAll<HTMLElement>('[data-node-id]')) {
-    if (insideSvg(el) || isLeaf(el) || !clipperAxes(el, state, style(el))) continue;
+    if (insideSvg(el) || isLeaf(el) || !clipperAxes(el, style(el))) continue;
     for (const d of el.querySelectorAll<HTMLElement>('[data-node-id]')) if (!insideSvg(d)) candidates.add(d);
   }
 
@@ -190,7 +174,7 @@ export function measureSceneClips(root: HTMLElement): void {
       const acs = style(a);
       if (escape && !containingBlock(acs, escape)) continue; // between the box and its containing block: no crop
       if (a.hasAttribute('data-node-id')) {
-        const axes = clipperAxes(a, state, acs);
+        const axes = clipperAxes(a, acs);
         if (axes) {
           if (turnedBelow) { unmeasurable = true; break; }
           const b = boxOf(a);
@@ -226,7 +210,6 @@ export function measureSceneClips(root: HTMLElement): void {
   }
   for (const el of state.marked.keys()) if (!next.has(el)) unmark(el);
   state.marked = next;
-  state.dirty = false;
   applySceneClips(root);
   trace.dom('scene-inspection:clips-measured', { candidates: candidates.size, cut: next.size, skipped });
 }
@@ -248,39 +231,56 @@ export function applySceneClips(root: HTMLElement): void {
   }
 }
 
-/** A render in 3D may have changed what is cropped. */
-export function markSceneClipsDirty(root: HTMLElement): void {
+/** A render in 3D may have changed what 2D crops: measure again once renders stop
+ *  and nothing animates. `sheet` is the 3D stylesheet, switched off for the read. */
+export function scheduleSceneClipRemeasure(root: HTMLElement, sheet: HTMLStyleElement | null): void {
   const state = states.get(root);
-  if (state) state.dirty = true;
+  if (!state || !sheet) return;
+  if (state.timer !== null) clearTimeout(state.timer);
+  state.timer = setTimeout(() => {
+    state.timer = null;
+    if (states.get(root) !== state || !root.isConnected) return;
+    // A read now would cut a running turn or layer lift short: try again after it.
+    if (root.getAnimations({ subtree: true }).some(a => a.playState === 'running')) { scheduleSceneClipRemeasure(root, sheet); return; }
+    with2dCascade(root, sheet, () => measureSceneClips(root));
+    trace.dom('scene-inspection:clips-remeasured', { cut: state.marked.size });
+  }, REMEASURE_DEBOUNCE_MS);
 }
 
-/** Measures again after a render in 3D. The caller runs it only once the plane is
- *  not animating: flattening interrupts a running turn. */
-export function remeasureSceneClips(root: HTMLElement): void {
-  if (!states.get(root)?.dirty) return;
-  flattenSceneWhile(root, () => measureSceneClips(root));
-}
-
-/** One synchronous read with the plane flat. No frame paints in between, and with the
- *  plane's transition off the turn snaps back without animating. */
-function flattenSceneWhile(root: HTMLElement, read: () => void): void {
+/**
+ * One synchronous read in 2D, in the middle of 3D: the plane is flat and the 3D
+ * stylesheet off. No frame paints in between. Transitions are held while the
+ * styles come back, so the turn and the layer lift return without animating.
+ */
+function with2dCascade(root: HTMLElement, sheet: HTMLStyleElement, read: () => void): void {
+  const doc = root.ownerDocument;
+  if (!doc.getElementById(MEASURING_STYLE_ID)) {
+    const hold = doc.createElement('style');
+    hold.id = MEASURING_STYLE_ID;
+    // More specific than the 3D stylesheet's `transition` on nodes, so it wins while both apply.
+    hold.textContent = `[${MEASURING_ATTR}], [${MEASURING_ATTR}][data-scene-inspection] [data-node-id][data-node-id][data-node-id][data-node-id] { transition: none !important; }`;
+    doc.head.appendChild(hold);
+  }
   const transform = [root.style.getPropertyValue('transform'), root.style.getPropertyPriority('transform')] as const;
-  const transition = [root.style.getPropertyValue('transition'), root.style.getPropertyPriority('transition')] as const;
-  root.style.setProperty('transition', 'none', 'important');
+  root.setAttribute(MEASURING_ATTR, '');
   root.style.setProperty('transform', 'none');
+  sheet.disabled = true;
   try {
     read();
   } finally {
+    sheet.disabled = false;
     if (transform[0]) root.style.setProperty('transform', transform[0], transform[1]); else root.style.removeProperty('transform');
-    root.getBoundingClientRect(); // the turn is back before the transition returns, so nothing animates
-    if (transition[0]) root.style.setProperty('transition', transition[0], transition[1]); else root.style.removeProperty('transition');
+    root.getBoundingClientRect(); // styles are back while transitions are held: nothing animates
+    root.removeAttribute(MEASURING_ATTR);
   }
 }
 
-/** Leaving 3D: no cut, mark or measurement survives. */
+/** Leaving 3D: no cut, mark, timer or measurement survives. */
 export function clearSceneClips(root: HTMLElement): void {
   const state = states.get(root);
+  if (state?.timer != null) clearTimeout(state.timer);
   if (state) for (const el of state.marked.keys()) unmark(el);
+  root.ownerDocument.getElementById(MEASURING_STYLE_ID)?.remove();
   for (const el of root.querySelectorAll<HTMLElement>(`[${CLIP_ATTR}]`)) unmark(el);
   states.delete(root);
 }
