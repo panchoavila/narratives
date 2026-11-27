@@ -948,9 +948,9 @@ export function defineSceneClipSpecs(site: string, label: string, pages: string[
       });
     }
 
-    for (const file of pages) {
-      const slug = file.replace(/[^\w]+/g, '-');
-      test(`CLIP-003 ${label}, ${file}: a real render in 3D keeps every cut`, { tag: ['@p1', '@scene'] }, async ({ page, editor }, info) => {
+    for (const file of ['', ...pages]) {
+      const slug = (file || 'home').replace(/[^\w]+/g, '-');
+      test(`CLIP-003 ${label}, ${file || 'the home page'}: a real render in 3D keeps every cut`, { tag: ['@p1', '@scene'] }, async ({ page, editor }, info) => {
         const frame = await openSite(page, editor, site);
         await openPage(page, editor, frame, file);
         const vpId = await page.evaluate(() => (window as unknown as { __e2e: E2EHooks }).__e2e.interactingViewport());
@@ -963,7 +963,7 @@ export function defineSceneClipSpecs(site: string, label: string, pages: string[
         const after = await cutIn3d(frame, vpId);
         await page.screenshot({ path: info.outputPath(`${site}-clip-003-${slug}.png`) });
         await exit3d(page, editor);
-        fs.writeFileSync(info.outputPath(`${site}-clip-003-${slug}.json`), JSON.stringify({ site, file, renders, before, after }, null, 2));
+        fs.writeFileSync(info.outputPath(`${site}-clip-003-${slug}.json`), JSON.stringify({ site, file: file || 'home', renders, before, after }, null, 2));
         expect(after, 'K11: after a real render in 3D the same nodes carry the same cuts').toEqual(before);
       });
     }
