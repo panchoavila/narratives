@@ -1,5 +1,6 @@
 import { trace } from '@/shared/debug-trace';
 import { applySceneProjection, SCENE_TRANSITION_MS, SCENE_EASING, type SceneProjectionOptions, type SceneViewportBounds } from '@/shared/scene-projection';
+import { FORCED_VISIBLE, applySceneClips, clearSceneClips, measureSceneClips } from './scene-clipping';
 
 export interface SceneInspectionOptions extends SceneProjectionOptions {
   separation: number;
@@ -155,8 +156,12 @@ export async function applySceneInspection(root: HTMLElement, options: SceneInsp
     // Spatial components keep their own geometry through every intermediate
     // wrapper. Grouping properties would otherwise flatten that geometry
     // before the inspector camera can rotate it.
+    // Only containers lose their overflow (it would flatten their children);
+    // leaves keep their own crop, and what containers cropped is redrawn on the
+    // leaves with clip-path (scene-clipping.ts).
     const css = `
-${scope}, ${scope} [data-node-id] { transform-style: preserve-3d !important; contain: none !important; overflow: visible !important; }
+${scope}, ${scope} [data-node-id] { transform-style: preserve-3d !important; contain: none !important; }
+${scope}, ${scope} ${FORCED_VISIBLE} { overflow: visible !important; }
 ${scope}:has([data-revyme-spatial-surface]), ${scope} :has([data-revyme-spatial-surface]) {
   transform-style: preserve-3d !important; contain: none !important; content-visibility: visible !important;
   overflow: visible !important; opacity: 1 !important; filter: none !important; isolation: auto !important;
@@ -173,7 +178,10 @@ ${options.viewportId ? `${scope} > [data-viewport]:not([data-viewport=${viewport
 ${options.selectedId ? `${scope} [data-node-id][data-id=${selected}] { outline: 2px solid var(--scene-selection, currentColor) !important; outline-offset: 3px !important; }` : ''}
 @media (prefers-reduced-motion: reduce) { ${scope} [data-node-id]:not(svg [data-node-id]) { transition: none !important; } }
 `;
+    // Entry: measure the 2D crops before the attribute scopes the stylesheet in.
+    if (!root.hasAttribute('data-scene-inspection')) measureSceneClips(root);
     if (style.textContent !== css) style.textContent = css;
+    applySceneClips(root, scope);
     root.style.setProperty('--scene-selection', options.selectionColor || 'currentColor');
     if (!root.hasAttribute('data-scene-inspection')) {
       root.setAttribute('data-scene-inspection', '2d');
@@ -204,6 +212,7 @@ ${options.selectedId ? `${scope} [data-node-id][data-id=${selected}] { outline: 
     root.style.removeProperty('--scene-selection');
     style?.remove();
     root.querySelector(':scope > [data-scene-grid]')?.remove();
+    clearSceneClips(root);
   }
   trace.action('scene-inspection:mode', { enabled: options.enabled, separation: options.separation, projection: 'upright-shared-plane' });
 }
