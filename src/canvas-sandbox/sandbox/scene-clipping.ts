@@ -122,13 +122,37 @@ function paddingBox(el: HTMLElement, cs: CSSStyleDeclaration): Box | null {
   return { left, top, right: left + el.clientWidth * sx, bottom: top + el.clientHeight * sy };
 }
 
-/** The axes a container crops on in 2D. A container holding (or inside) a spatial
- *  surface is left alone: the inspection CSS keeps its geometry. */
-function clipperAxes(el: HTMLElement, cs: CSSStyleDeclaration): Axes | null {
-  if (isLeaf(el) || insideSvg(el)) return null; // leaves keep their own overflow in 3D
-  const axes = cropAxes(cs);
-  if (!axes || el.querySelector(SPATIAL) || el.closest(SPATIAL)) return null;
-  return axes;
+/** Per-measurement memo. Every node is asked about once, however many leaves sit
+ *  under it: answering again per leaf rescanned whole subtrees, and entry on Real
+ *  (2,600 nodes over three breakpoints) took a 167 ms frame. */
+class Memo {
+  private styles = new Map<Element, CSSStyleDeclaration>();
+  private leaves = new Map<Element, boolean>();
+  private axes = new Map<Element, Axes | null>();
+  private turns = new Map<Element, boolean>();
+  private boxes = new Map<Element, Box | null>();
+  /** Nodes holding a spatial surface, and the surfaces' own subtrees: left alone. */
+  private spatial = new Set<Element>();
+  constructor(root: HTMLElement) {
+    for (const surface of root.querySelectorAll(SPATIAL)) {
+      for (let a: Element | null = surface; a && a !== root; a = a.parentElement) this.spatial.add(a);
+      for (const d of surface.querySelectorAll('*')) this.spatial.add(d);
+    }
+  }
+  style(el: Element): CSSStyleDeclaration { let cs = this.styles.get(el); if (!cs) { cs = getComputedStyle(el); this.styles.set(el, cs); } return cs; }
+  leaf(el: Element): boolean { let v = this.leaves.get(el); if (v === undefined) { v = isLeaf(el); this.leaves.set(el, v); } return v; }
+  turned(el: Element): boolean { let v = this.turns.get(el); if (v === undefined) { v = turned(this.style(el)); this.turns.set(el, v); } return v; }
+  isSpatial(el: Element): boolean { return this.spatial.has(el); }
+  /** The axes a container crops on in 2D. Leaves keep their own overflow in 3D, and a
+   *  container holding (or inside) a spatial surface is left alone: the inspection
+   *  CSS keeps its geometry. */
+  clipperAxes(el: HTMLElement): Axes | null {
+    if (this.axes.has(el)) return this.axes.get(el)!;
+    const v = this.leaf(el) || insideSvg(el) || this.spatial.has(el) ? null : cropAxes(this.style(el));
+    this.axes.set(el, v);
+    return v;
+  }
+  box(el: HTMLElement): Box | null { if (!this.boxes.has(el)) this.boxes.set(el, paddingBox(el, this.style(el))); return this.boxes.get(el)!; }
 }
 
 type Escape = 'absolute' | 'fixed' | null;
@@ -148,15 +172,13 @@ export function measureSceneClips(root: HTMLElement): void {
   let state = states.get(root);
   const entry = !state;
   if (!state) { state = { marked: new Map(), scroll: new Map(), timer: null, observer: null }; states.set(root, state); }
-  const styles = new Map<Element, CSSStyleDeclaration>();
-  const style = (el: Element) => { let cs = styles.get(el); if (!cs) { cs = getComputedStyle(el); styles.set(el, cs); } return cs; };
-  const boxes = new Map<HTMLElement, Box | null>();
-  const boxOf = (el: HTMLElement) => { if (!boxes.has(el)) boxes.set(el, paddingBox(el, style(el))); return boxes.get(el)!; };
+  const started = performance.now();
+  const memo = new Memo(root);
 
   // Candidates: every node under a container that crops.
   const candidates = new Set<HTMLElement>();
   for (const el of root.querySelectorAll<HTMLElement>('[data-node-id]')) {
-    if (insideSvg(el) || isLeaf(el) || !clipperAxes(el, style(el))) continue;
+    if (!memo.clipperAxes(el)) continue;
     if (entry && (el.scrollLeft || el.scrollTop)) state.scroll.set(el.getAttribute('data-node-id') ?? '', [el.scrollLeft, el.scrollTop]);
     for (const d of el.querySelectorAll<HTMLElement>('[data-node-id]')) if (!insideSvg(d)) candidates.add(d);
   }
@@ -164,9 +186,9 @@ export function measureSceneClips(root: HTMLElement): void {
   const next = new Map<HTMLElement, string>();
   const skipped = { turned: 0, authored: 0, spatial: 0 };
   for (const node of candidates) {
-    const leaf = isLeaf(node);
-    const cs = style(node);
-    if (node.closest(SPATIAL) || (!leaf && node.querySelector(SPATIAL))) { skipped.spatial++; continue; }
+    const leaf = memo.leaf(node);
+    const cs = memo.style(node);
+    if (memo.isSpatial(node)) { skipped.spatial++; continue; }
     if (!none(cs.clipPath)) { skipped.authored++; continue; }
 
     // The crop is the intersection of the ancestors that crop this node in 2D.
@@ -175,16 +197,16 @@ export function measureSceneClips(root: HTMLElement): void {
     // - A turned box below a cropping ancestor makes the client rect a bounding
     //   box, which an inset cannot describe.
     let visible: Box | null = null;
-    let turnedBelow = turned(cs), unmeasurable = false;
+    let turnedBelow = memo.turned(node), unmeasurable = false;
     let escape = escapeOf(cs);
     for (let a = node.parentElement; a && a !== root.parentElement; a = a.parentElement) {
-      const acs = style(a);
+      const acs = memo.style(a);
       if (escape && !containingBlock(acs, escape)) continue; // between the box and its containing block: no crop
       if (a.hasAttribute('data-node-id')) {
-        const axes = clipperAxes(a, acs);
+        const axes = memo.clipperAxes(a);
         if (axes) {
           if (turnedBelow) { unmeasurable = true; break; }
-          const b = boxOf(a);
+          const b = memo.box(a);
           if (b) {
             const clip: Box = { left: axes.x ? b.left : -FAR, right: axes.x ? b.right : FAR, top: axes.y ? b.top : -FAR, bottom: axes.y ? b.bottom : FAR };
             visible = visible
@@ -193,7 +215,7 @@ export function measureSceneClips(root: HTMLElement): void {
           }
         }
       }
-      if (turned(acs)) turnedBelow = true;
+      if (memo.turned(a)) turnedBelow = true;
       escape = escapeOf(acs); // an out-of-flow ancestor carries the node past the crops below its containing block
     }
     if (unmeasurable) { skipped.turned++; continue; }
@@ -218,7 +240,7 @@ export function measureSceneClips(root: HTMLElement): void {
   for (const el of state.marked.keys()) if (!next.has(el)) unmark(el);
   state.marked = next;
   applySceneClips(root);
-  trace.dom('scene-inspection:clips-measured', { candidates: candidates.size, cut: next.size, skipped });
+  trace.dom('scene-inspection:clips-measured', { candidates: candidates.size, cut: next.size, skipped, ms: Math.round(performance.now() - started) });
 }
 
 function unmark(el: HTMLElement): void {
@@ -242,19 +264,22 @@ export function applySceneClips(root: HTMLElement): void {
   for (const el of root.querySelectorAll<HTMLElement>('[data-node-id][style*="--scene-clip"]')) if (!state.marked.has(el)) unmark(el);
 }
 
-/** In 3D, measures again whenever the canvas structure or text changes, not only
- *  after a render: collection items are synced after the render that announces it.
- *  The cuts' own writes are attributes and style, which this does not watch. */
+/** In 3D, measures again when canvas nodes are added or removed, not only after a
+ *  render: collection items are synced after the render that announces it.
+ *  Only node structure counts. Text and non-node elements change all the time on
+ *  pages with live components (Real: idle CPU 70 -> 106 ms/s while every change
+ *  re-measured), and the floor grid and the cuts' own writes are not nodes. */
 export function watchSceneClips(root: HTMLElement, sheet: HTMLStyleElement): void {
   const state = states.get(root);
   if (!state || state.observer) return;
+  const isNode = (n: Node) => n.nodeType === 1 && ((n as Element).hasAttribute('data-node-id') || !!(n as Element).querySelector('[data-node-id]'));
   state.observer = new MutationObserver(records => {
-    if (records.some(r => !(r.target instanceof Element ? r.target : r.target.parentElement)?.closest('[data-scene-grid]'))) {
+    if (records.some(r => [...r.addedNodes, ...r.removedNodes].some(isNode))) {
       applySceneClips(root);
       scheduleSceneClipRemeasure(root, sheet);
     }
   });
-  state.observer.observe(root, { childList: true, subtree: true, characterData: true });
+  state.observer.observe(root, { childList: true, subtree: true });
 }
 
 /** A render in 3D may have changed what 2D crops: measure again once renders stop
