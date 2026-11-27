@@ -29,6 +29,7 @@ import { trace } from '@/shared/debug-trace';
 // path are invisible to readers on the other.
 import { nodesAtom, selectedIdsAtom } from '@/code/stores/store';
 import { interactingViewportIdAtom } from '@/code/stores/viewport-store';
+import { forceCanvasRender } from '@/canvas/node-ops';
 import { overlayEditingIdAtom } from '@/code/stores/overlay-store';
 import { shapeEditingIdAtom, groupEditingIdAtom } from '@/code/stores/shape-edit-store';
 import { queueMutation, flushNow, setForceRender, hasQueuedMutations, isMutationQueueProcessing, hasPendingDeferredFanOut } from '@/code/mutation/mutation-queue';
@@ -83,6 +84,8 @@ function e2eSharedHooks(store: ReturnType<typeof getDefaultStore>) {
     activeFile: () => store.get(activeFilePathAtom),
     // The breakpoint edits go to (3D entry may switch it, exit gives it back).
     interactingViewport: () => store.get(interactingViewportIdAtom),
+    // A real canvas render with the current nodes (the 3D view re-measures its crops on one).
+    forceRender: () => forceCanvasRender(),
   };
 }
 

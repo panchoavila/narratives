@@ -1,6 +1,6 @@
 import { trace } from '@/shared/debug-trace';
 import { applySceneProjection, SCENE_TRANSITION_MS, SCENE_EASING, type SceneProjectionOptions, type SceneViewportBounds } from '@/shared/scene-projection';
-import { FORCED_VISIBLE, applySceneClips, clearSceneClips, measureSceneClips } from './scene-clipping';
+import { FORCED_VISIBLE, applySceneClips, clearSceneClips, detectSceneClippers, markSceneClipsDirty, measureSceneClips, remeasureSceneClips, sceneClipRule } from './scene-clipping';
 
 export interface SceneInspectionOptions extends SceneProjectionOptions {
   separation: number;
@@ -136,8 +136,9 @@ function updateGrid(root: HTMLElement, options: SceneInspectionOptions) {
 }
 
 /** Rotate the renderer's ONE scene plane, containing all breakpoint views.
- * Nodes, camera, layout, and authored styles remain owned by the live editor. */
-export async function applySceneInspection(root: HTMLElement, options: SceneInspectionOptions): Promise<void> {
+ * Nodes, camera, layout, and authored styles remain owned by the live editor.
+ * `rendered`: the canvas was just rendered, so the 2D crops are measured again. */
+export async function applySceneInspection(root: HTMLElement, options: SceneInspectionOptions, rendered = false): Promise<void> {
   const request = (requests.get(root) ?? 0) + 1;
   requests.set(root, request);
   const doc = root.ownerDocument;
@@ -162,6 +163,7 @@ export async function applySceneInspection(root: HTMLElement, options: SceneInsp
     const css = `
 ${scope}, ${scope} [data-node-id] { transform-style: preserve-3d !important; contain: none !important; }
 ${scope}, ${scope} ${FORCED_VISIBLE} { overflow: visible !important; }
+${sceneClipRule(scope)}
 ${scope}:has([data-revyme-spatial-surface]), ${scope} :has([data-revyme-spatial-surface]) {
   transform-style: preserve-3d !important; contain: none !important; content-visibility: visible !important;
   overflow: visible !important; opacity: 1 !important; filter: none !important; isolation: auto !important;
@@ -178,14 +180,19 @@ ${options.viewportId ? `${scope} > [data-viewport]:not([data-viewport=${viewport
 ${options.selectedId ? `${scope} [data-node-id][data-id=${selected}] { outline: 2px solid var(--scene-selection, currentColor) !important; outline-offset: 3px !important; }` : ''}
 @media (prefers-reduced-motion: reduce) { ${scope} [data-node-id]:not(svg [data-node-id]) { transition: none !important; } }
 `;
-    // Entry: measure the 2D crops before the attribute scopes the stylesheet in.
-    if (!root.hasAttribute('data-scene-inspection')) measureSceneClips(root);
+    // Entry: which containers crop is read in 2D, before the attribute scopes the
+    // stylesheet in; the cuts are measured in the 3D layout while the plane is flat.
+    const entering = !root.hasAttribute('data-scene-inspection');
+    if (entering) detectSceneClippers(root);
     if (style.textContent !== css) style.textContent = css;
-    applySceneClips(root, scope);
     root.style.setProperty('--scene-selection', options.selectionColor || 'currentColor');
-    if (!root.hasAttribute('data-scene-inspection')) {
+    if (entering) {
       root.setAttribute('data-scene-inspection', '2d');
       root.getBoundingClientRect();
+      measureSceneClips(root);
+    } else {
+      if (rendered) markSceneClipsDirty(root);
+      applySceneClips(root); // a render may have dropped them
     }
     root.setAttribute('data-scene-inspection', 'isometric');
     updateGrid(root, options);
@@ -206,6 +213,8 @@ ${options.selectedId ? `${scope} [data-node-id][data-id=${selected}] { outline: 
   await settled;
   if (moving) holdSceneGesture(root, transition, false);
   if (requests.get(root) !== request) return;
+  // After a render, once the plane is still: flatten it for one read and measure the cuts again.
+  if (options.enabled) remeasureSceneClips(root);
   if (!options.enabled) {
     clearSceneGesture(root);
     root.removeAttribute('data-scene-inspection');

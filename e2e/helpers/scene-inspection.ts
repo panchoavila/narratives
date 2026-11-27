@@ -659,45 +659,65 @@ export function defineSceneEntrySpecs(site: string, label: string): void {
 
 // ─── Clipping in 3D (CLIP-*) ────────────────────────────────────────────
 // Failure modes, written before the code (Websites
-// research/2026-11-27-3d-clipping/FAILURE-MODES.md):
-//   K1/K2   a leaf (photo, ellipsis text) paints past its own box, or loses depth;
+// research/2026-11-27-3d-clipping/FAILURE-MODES.md), and review 1's additions:
+//   K1/K2   a leaf (photo, svg, ellipsis text) paints past its own box, or loses depth;
 //   K3/K4   a leaf a container cropped in 2D spills in 3D, or the fix flattens;
-//   K6/K7   nested clippers intersect, and a leaf outside its clipper is hidden;
-//   K8/K9   an authored clip-path is kept, and a turned leaf is left alone;
-//   K11/K12 a render in 3D re-applies the crops, and exit leaves nothing behind;
-//   K15     a breakpoint that crops in 2D crops its leaves in 3D.
-// The fixture is a set of canvas nodes inserted into the active breakpoint, in 2D.
-// No site source changes, and it is removed at the end.
+//   K6/K7   nested crops intersect; a node wholly outside its crop is hidden;
+//   K8/K9   an authored clip-path is kept; a turned or mirrored node is left alone;
+//   K11     a real render in 3D keeps the cuts right; K12 exit leaves nothing;
+//   K15     a breakpoint that crops in 2D cuts its leaves in 3D;
+//   R1-R6   (review 1) svg leaves, zero-size crops, inline "clippers", signed insets
+//           that keep outlines, escaping absolute boxes, one-axis crops.
+// The fixture is a set of canvas nodes inserted into a breakpoint in 2D. No site
+// source changes; it is removed at the end. A render rebuilds the DOM from the
+// node map, which does not know the fixture, so K11 runs on real content (CLIP-003).
 
 const SVG_PHOTO = 'data:image/svg+xml;utf8,' + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="300"><rect width="600" height="300" fill="#e33"/><rect x="250" width="100" height="300" fill="#3a3"/></svg>');
 
-/** Card at (40,40) in the breakpoint, 300x200, overflow hidden. Comments give each node's box in card coordinates. */
-function clipFixture(photo: string, edgeLeft: number): string {
-  const n = (id: string, style: string, tag = 'div', inner = '') =>
-    `<${tag} data-node-id="${id}" data-id="${id}" style="${style}"${tag === 'img' ? ` src="${photo}" alt=""` : ''}>${inner}</${tag}>`;
-  return n('e2e-card', 'position:absolute;left:40px;top:40px;width:300px;height:200px;overflow:hidden;background:#fff;z-index:9999', 'div', [
-    n('e2e-photo', 'position:absolute;left:-150px;top:-50px;width:600px;height:300px;margin:0', 'img'), // B: 150 | 50 past each side
-    n('e2e-cover', 'position:absolute;left:10px;top:10px;width:100px;height:100px;object-fit:cover;margin:0', 'img'), // A
-    n('e2e-text', 'position:absolute;left:200px;top:150px;width:300px;height:20px;margin:0;font:14px/20px sans-serif', 'p', 'text past the card edge'), // B: 200 right
-    n('e2e-inner', 'position:absolute;left:150px;top:20px;width:120px;height:120px;overflow:hidden;background:#ddd', 'div',
-      n('e2e-nested', 'position:absolute;left:60px;top:60px;width:200px;height:200px;background:#33a')), // K6: (210..410, 80..280) in card
-    n('e2e-outside', 'position:absolute;left:400px;top:0;width:50px;height:50px;background:#a3a'), // K7
-    n('e2e-turned', 'position:absolute;left:250px;top:150px;width:100px;height:100px;background:#aa3;transform:rotate(20deg)'), // K9
-    n('e2e-authored', 'position:absolute;left:-30px;top:120px;width:100px;height:100px;background:#3aa;clip-path:circle(40%)'), // K8
-    n('e2e-ellipsis', 'position:absolute;left:10px;top:120px;width:80px;margin:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font:14px/20px sans-serif', 'p', 'a long line that the box cuts'), // A
+/** The fixture. Coordinates in comments are in the card's padding box (292x192 at the card's
+ *  inner corner: a 300x200 border-box card with a 4px border). `p` prefixes every id. */
+function clipFixture(p: string, edgeLeft: number): string {
+  const n = (id: string, style: string, tag = 'div', inner = '') => {
+    const attrs = `data-node-id="${p}-${id}" data-id="${p}-${id}" style="${style}"`;
+    if (tag === 'img') return `<img ${attrs} src="${SVG_PHOTO}" alt="">`;
+    if (tag === 'svg') return `<svg ${attrs} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#08c"/></svg>`;
+    return `<${tag} ${attrs}>${inner}</${tag}>`;
+  };
+  const abs = 'position:absolute;margin:0;';
+  return n('card', `${abs}left:40px;top:40px;width:300px;height:200px;box-sizing:border-box;border:4px solid #000;overflow:hidden;background:#fff;z-index:9999`, 'div', [
+    n('wrap', 'position:static;width:50px;height:50px;overflow:hidden;background:#eee', 'div',
+      n('escape', `${abs}left:100px;top:60px;width:80px;height:40px;background:#9c6`)), // R5: its block is the card, not the wrap
+    n('photo', `${abs}left:-150px;top:-50px;width:592px;height:292px`, 'img'), // K3: 150 | 50 past each side
+    n('cover', `${abs}left:10px;top:10px;width:100px;height:100px;object-fit:cover`, 'img'), // K1
+    n('text', `${abs}left:200px;top:150px;width:300px;height:20px;font:14px/20px sans-serif`, 'p', 'text past the card edge'), // K3 + R4
+    n('inner', `${abs}left:220px;top:20px;width:120px;height:120px;overflow:hidden;background:#ddd`, 'div', // past the card's right edge
+      n('nested', `${abs}left:60px;top:60px;width:200px;height:200px;background:#33a`)), // K6: (280..480, 80..280)
+    n('outside', `${abs}left:400px;top:0;width:50px;height:50px;background:#a3a`), // K7
+    n('turned', `${abs}left:250px;top:150px;width:100px;height:100px;background:#aa3;transform:rotate(20deg)`), // K9
+    n('mirrored', `${abs}left:250px;top:100px;width:100px;height:60px;background:#a63;transform:scaleX(-1)`), // K9
+    n('authored', `${abs}left:-30px;top:120px;width:100px;height:100px;background:#3aa;clip-path:circle(40%)`), // K8
+    n('ellipsis', `${abs}left:10px;top:120px;width:80px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font:14px/20px sans-serif`, 'p', 'a long line that the box cuts'), // K1
+    n('svg', `${abs}left:240px;top:40px;width:120px;height:60px`, 'svg'), // R1: 68 past the right edge
+    n('svg-out', `${abs}left:300px;top:0;width:40px;height:40px`, 'svg'), // R1 + K7
   ].join('')) +
-    n('e2e-free', 'position:absolute;left:140px;top:300px;width:100px;height:100px;overflow:visible;background:#eee', 'div',
-      n('e2e-free-child', 'position:absolute;left:-50px;top:0;width:100px;height:50px;background:#333')) + // K3: never cropped
-    n('e2e-edge', `position:absolute;left:${edgeLeft}px;top:300px;width:200px;height:50px;background:#f80`); // K15: 150 past the breakpoint
+    n('free', `${abs}left:140px;top:300px;width:100px;height:100px;overflow:visible;background:#eee`, 'div',
+      n('free-child', `${abs}left:-50px;top:0;width:100px;height:50px;background:#333`)) + // no crop above it
+    n('acc', `${abs}left:140px;top:420px;width:200px;height:0;overflow:hidden`, 'div', // R2: a closed accordion
+      n('acc-row', 'width:200px;height:40px;background:#c33', 'div', n('acc-text', 'margin:0;font:14px/20px sans-serif', 'p', 'hidden in 2D'))) +
+    n('line', `${abs}left:140px;top:470px;width:200px`, 'div', // R3: overflow does not apply to an inline box
+      n('inline', 'overflow:hidden', 'span', n('inline-b', '', 'b', 'bold text'))) +
+    n('axis', `${abs}left:140px;top:520px;width:100px;height:40px;overflow-x:clip;overflow-y:visible;background:#eee`, 'div', // R6
+      n('axis-leaf', `${abs}left:-30px;top:-20px;width:160px;height:80px;background:#3c9`)) +
+    n('edge', `${abs}left:${edgeLeft}px;top:300px;width:200px;height:50px;background:#f80`); // K15: 150 past the breakpoint
 }
 
-/** clip-path as computed: inset(t r b l) in px, or the raw value. */
+/** clip-path as computed: inset(t r b l) in whole px, or the raw value. */
 function parseInset(v: string): number[] | string {
   const m = /^inset\(([^)]*)\)$/.exec(v.trim());
   if (!m) return v;
-  const parts = m[1].split(/\s+/).map((p) => (p.endsWith('%') ? p : parseFloat(p)));
-  if (parts.some((p) => typeof p === 'string')) return v;
+  const parts = m[1].split(/\s+/).map((x) => (x.endsWith('%') ? x : parseFloat(x)));
+  if (parts.some((x) => typeof x === 'string')) return v;
   const [t, r = t, b = t, l = r] = parts as number[];
   return [t, r, b, l].map((x) => Math.round(x));
 }
@@ -707,7 +727,7 @@ async function nodeState(frame: Frame, ids: string[]) {
     const el = document.querySelector<HTMLElement>(`[data-content-root] [data-id="${id}"]`);
     if (!el) return [id, null];
     const cs = getComputedStyle(el);
-    return [id, { overflow: cs.overflow, clipPath: cs.clipPath, mark: el.getAttribute('data-scene-clip') }];
+    return [id, { overflow: cs.overflow, clipPath: cs.clipPath, mark: el.hasAttribute('data-scene-clip') }];
   })), ids);
 }
 
@@ -728,30 +748,82 @@ async function depthLive(frame: Frame, id: string): Promise<{ live: boolean; dx:
   }, id);
 }
 
-/** Leaves a container crops in 2D, in the active breakpoint (same rules as the code: no turned boxes,
- *  no authored clip-path, nothing spatial). Read in 2D, before entry. */
-function croppedLeaves2d(frame: Frame, viewportId: string): Promise<string[]> {
+/** The 2D oracle, read with the 2D cascade (real overflow), independently of the 3D
+ *  measurement: nodes whose painted box a cropping ancestor cuts. A leaf counts when
+ *  the crop cuts it; a container when it lies wholly outside. Out-of-flow boxes escape
+ *  the crops below their containing block; overflow does not apply to inline boxes;
+ *  turned or mirrored boxes and spatial surfaces are left out (the code skips them). */
+function croppedIn2d(frame: Frame, viewportId: string): Promise<string[]> {
   return frame.evaluate((vpId) => {
     const vp = [...document.querySelectorAll<HTMLElement>('[data-content-root] > [data-viewport][data-node-id]')].find((v) => v.dataset.viewport === vpId)!;
     const replaced = 'img, video, canvas, iframe, embed, object, svg';
-    const leaf = (el: Element) => el.matches(replaced) || !el.querySelector('[data-node-id]');
-    const turned = (el: Element) => { const cs = getComputedStyle(el); return (cs.rotate && cs.rotate !== 'none') || (cs.transform !== 'none' && !/^matrix\([^,]+, 0, 0,/.test(cs.transform)); };
-    const crops = (el: Element) => { const cs = getComputedStyle(el); return cs.overflowX !== 'visible' || cs.overflowY !== 'visible'; };
-    const out: string[] = [];
-    for (const el of [vp, ...vp.querySelectorAll<HTMLElement>('[data-node-id]')]) {
-      if (!leaf(el) || el.closest('[data-revyme-spatial-surface]') || getComputedStyle(el).clipPath !== 'none' || turned(el)) continue;
-      if (el.tagName.toLowerCase() !== 'svg' && el.closest('svg') && el.closest('svg') !== el) continue;
+    const isLeaf = (el: Element) => el.matches(replaced) || !el.querySelector('[data-node-id]');
+    const inSvg = (el: Element) => el.tagName.toLowerCase() !== 'svg' && !!el.parentElement?.closest('svg');
+    const cs = (el: Element) => getComputedStyle(el);
+    const turned = (el: Element) => {
+      const s = cs(el);
+      if (s.rotate !== 'none' || (s.scale !== 'none' && s.scale.split(' ').some((v) => parseFloat(v) < 0))) return true;
+      if (s.transform === 'none') return false;
+      const m = new DOMMatrixReadOnly(s.transform);
+      return !m.is2D || Math.abs(m.b) > 1e-6 || Math.abs(m.c) > 1e-6 || m.a < 0 || m.d < 0;
+    };
+    const crop = (el: Element) => {
+      const s = cs(el);
+      if (s.display === 'inline' || s.display === 'contents' || isLeaf(el)) return null;
+      const x = s.overflowX !== 'visible', y = s.overflowY !== 'visible';
+      if (!x && !y) return null;
       const r = el.getBoundingClientRect();
-      if (!r.width || !r.height) continue;
-      for (let a = el.parentElement; a && a.hasAttribute('data-node-id'); a = a.parentElement) {
-        if (turned(a)) break;
-        if (leaf(a) || !crops(a) || a.querySelector('[data-revyme-spatial-surface]')) continue;
-        const c = a.getBoundingClientRect();
-        if (r.left < c.left - 1 || r.top < c.top - 1 || r.right > c.right + 1 || r.bottom > c.bottom + 1) { out.push(el.getAttribute('data-id') ?? '?'); break; }
+      const he = el as HTMLElement;
+      const left = r.left + he.clientLeft, top = r.top + he.clientTop;
+      return { x, y, left, top, right: left + he.clientWidth * (r.width / (he.offsetWidth || 1) || 1), bottom: top + he.clientHeight * (r.height / (he.offsetHeight || 1) || 1) };
+    };
+    const contains = (s: CSSStyleDeclaration, fixed: boolean) => s.transform !== 'none' || s.perspective !== 'none' || s.filter !== 'none' || (!fixed && s.position !== 'static');
+    const out: string[] = [];
+    for (const el of [...vp.querySelectorAll<HTMLElement>('[data-node-id]')]) {
+      if (inSvg(el) || el.closest('[data-revyme-spatial-surface]') || cs(el).clipPath !== 'none') continue;
+      const leaf = isLeaf(el);
+      if (!leaf && el.querySelector('[data-revyme-spatial-surface]')) continue;
+      const r = el.getBoundingClientRect();
+      let L = -Infinity, T = -Infinity, R = Infinity, B = Infinity, any = false, skip = turned(el);
+      let escape: string | null = ['absolute', 'fixed'].includes(cs(el).position) ? cs(el).position : null;
+      for (let a = el.parentElement; a && a.closest('[data-content-root]'); a = a.parentElement) {
+        const s = cs(a);
+        if (escape && !contains(s, escape === 'fixed')) continue; // between the box and its containing block
+        if (a.hasAttribute('data-node-id')) {
+          const c = crop(a);
+          if (c) {
+            if (skip) { any = false; break; }
+            any = true;
+            if (c.x) { L = Math.max(L, c.left); R = Math.min(R, c.right); }
+            if (c.y) { T = Math.max(T, c.top); B = Math.min(B, c.bottom); }
+          }
+        }
+        if (turned(a)) skip = true;
+        escape = ['absolute', 'fixed'].includes(s.position) ? s.position : null;
       }
+      if (!any || skip || (!r.width && !r.height)) continue;
+      const empty = R <= r.left || L >= r.right || B <= r.top || T >= r.bottom;
+      const cut = r.left < L - 0.5 || r.top < T - 0.5 || r.right > R + 0.5 || r.bottom > B + 0.5;
+      if (empty || (leaf && cut)) out.push(el.getAttribute('data-node-id')!);
     }
     return out;
   }, viewportId);
+}
+
+/** Nodes of a breakpoint carrying a cut in 3D, by data-node-id, with their cut. */
+function cutIn3d(frame: Frame, viewportId: string): Promise<Record<string, string>> {
+  return frame.evaluate((vpId) => {
+    const vp = [...document.querySelectorAll<HTMLElement>('[data-content-root] > [data-viewport][data-node-id]')].find((v) => v.dataset.viewport === vpId)!;
+    return Object.fromEntries([...vp.querySelectorAll<HTMLElement>('[data-scene-clip]')].map((el) => [el.getAttribute('data-node-id')!, getComputedStyle(el).clipPath]));
+  }, viewportId);
+}
+
+async function openPage(page: Page, editor: Editor, frame: Frame, file: string): Promise<void> {
+  if (!file) return;
+  await page.evaluate((f) => (window as unknown as { __e2e: { openFile(p: string): void } }).__e2e.openFile(f), file);
+  await editor.settled();
+  await frame.locator('[data-content-root] > [data-viewport][data-node-id]').first().waitFor({ state: 'attached' });
+  await page.waitForTimeout(REST_MS);
 }
 
 /** Defines the "3D keeps the 2D crops" checks for one disk site. `pages` are extra page
@@ -762,84 +834,137 @@ export function defineSceneClipSpecs(site: string, label: string, pages: string[
     test.beforeAll(() => { restore = preserveSiteState(site); });
     test.afterAll(() => restore());
 
-    test(`CLIP-001 ${label}: photos, text and nested crops hold in 3D without flattening`, { tag: ['@p1', '@scene'] }, async ({ page, editor }, info) => {
+    test(`CLIP-001 ${label}: the fixture's crops hold in 3D without flattening, at any zoom and breakpoint`, { tag: ['@p1', '@scene'] }, async ({ page, editor }, info) => {
       const frame = await openSite(page, editor, site);
       const vpId = await page.evaluate(() => (window as unknown as { __e2e: E2EHooks }).__e2e.interactingViewport());
-      const vpBox = (await sceneViewports(frame)).find((v) => v.id === vpId)!;
+      const all = await sceneViewports(frame);
+      const vpBox = all.find((v) => v.id === vpId)!;
+      const other = all.find((v) => v.id !== vpId);
       const vpCrops = await frame.evaluate((id) => getComputedStyle(document.querySelector<HTMLElement>(`[data-content-root] > [data-viewport="${id}"][data-node-id]`)!).overflow, vpId);
-      await frame.evaluate(({ id, html }) => {
+      const insert = (id: string, p: string, width: number) => frame.evaluate(({ id, html }) => {
         document.querySelector<HTMLElement>(`[data-content-root] > [data-viewport="${id}"][data-node-id]`)!.insertAdjacentHTML('beforeend', html);
-      }, { id: vpId, html: clipFixture(SVG_PHOTO, vpBox.width - 50) });
-      const ids = ['e2e-card', 'e2e-photo', 'e2e-cover', 'e2e-text', 'e2e-inner', 'e2e-nested', 'e2e-outside', 'e2e-turned', 'e2e-authored', 'e2e-ellipsis', 'e2e-free-child', 'e2e-edge'];
+      }, { id, html: clipFixture(p, width - 50) });
+      await insert(vpId, 'e2e', vpBox.width);
+      if (other) await insert(other.id, 'e2e2', other.width);
+      const names = ['card', 'wrap', 'escape', 'photo', 'cover', 'text', 'inner', 'nested', 'outside', 'turned', 'mirrored', 'authored', 'ellipsis', 'svg', 'svg-out', 'free-child', 'acc-row', 'acc-text', 'inline-b', 'axis-leaf', 'edge'];
+      const ids = names.map((x) => `e2e-${x}`);
       const before = await nodeState(frame, ids);
-      await panSceneTo(page, frame, { x: vpBox.x + 190, y: vpBox.y + 200 });
+      await panSceneTo(page, frame, { x: vpBox.x + 190, y: vpBox.y + 240 });
       await page.screenshot({ path: info.outputPath(`${site}-clip-2d.png`) });
 
       await enter3d(page, editor);
       const in3d = await nodeState(frame, ids);
-      const depth = { card: await depthLive(frame, 'e2e-card'), photo: await depthLive(frame, 'e2e-photo'), cover: await depthLive(frame, 'e2e-cover'), inner: await depthLive(frame, 'e2e-inner'), nested: await depthLive(frame, 'e2e-nested'), text: await depthLive(frame, 'e2e-text') };
+      const depth = Object.fromEntries(await Promise.all(['card', 'photo', 'cover', 'nested', 'svg', 'text'].map(async (x) => [x, await depthLive(frame, `e2e-${x}`)])));
       await page.screenshot({ path: info.outputPath(`${site}-clip-3d.png`) });
 
-      // K11: a render may strip the marks; the next update (a selection) writes them back.
-      await frame.evaluate(() => document.querySelectorAll('[data-scene-clip]').forEach((el) => el.removeAttribute('data-scene-clip')));
+      // A render may strip the marks; the next update writes them back without measuring.
+      await frame.evaluate(() => document.querySelectorAll('[data-id^="e2e-"][data-scene-clip]').forEach((el) => { el.removeAttribute('data-scene-clip'); (el as HTMLElement).style.removeProperty('--scene-clip'); }));
       await page.evaluate(() => (window as unknown as { __e2e: E2EHooks }).__e2e.select(['e2e-card']));
-      await expect.poll(async () => (await nodeState(frame, ['e2e-photo']))['e2e-photo']?.mark ?? null).not.toBeNull();
-      const reapplied = await nodeState(frame, ['e2e-photo', 'e2e-text']);
+      await expect.poll(async () => (await nodeState(frame, ['e2e-photo']))['e2e-photo']?.clipPath).toBe(in3d['e2e-photo']!.clipPath);
 
+      // Breakpoint switch in 3D: the other breakpoint was measured at entry.
+      let switched: Record<string, unknown> | null = null;
+      if (other) {
+        await page.evaluate((vp) => (window as unknown as { __e2e: E2EHooks }).__e2e.select([], vp), other.id);
+        await expect.poll(() => shownViewport(frame)).toBe(other.id);
+        switched = await nodeState(frame, ['e2e2-photo', 'e2e2-svg', 'e2e2-acc-row']);
+        await page.evaluate((vp) => (window as unknown as { __e2e: E2EHooks }).__e2e.select([], vp), vpId);
+      }
       await exit3d(page, editor);
       const after = await nodeState(frame, ids);
-      const leftovers = await frame.evaluate(() => ({ marks: document.querySelectorAll('[data-scene-clip]').length, style: !!document.getElementById('revyme-scene-clips') }));
-      await frame.evaluate(() => document.querySelectorAll('[data-id^="e2e-"]').forEach((el) => { if (!el.parentElement?.closest('[data-id^="e2e-"]')) el.remove(); }));
+      const leftovers = await frame.evaluate(() => ({
+        marks: document.querySelectorAll('[data-scene-clip]').length,
+        vars: [...document.querySelectorAll<HTMLElement>('[data-content-root] [data-node-id]')].filter((el) => el.style.getPropertyValue('--scene-clip')).length,
+      }));
 
-      const summary = { site, viewport: vpId, viewportOverflow: vpCrops, before, in3d, depth, reapplied, after, leftovers };
+      // Zoom: the cuts are in the leaf's own px, so another zoom gives the same cuts.
+      await zoomAtCentre(page, 10);
+      await enter3d(page, editor);
+      const zoomed = await nodeState(frame, ['e2e-photo', 'e2e-text', 'e2e-nested', 'e2e-svg']);
+      await exit3d(page, editor);
+      await frame.evaluate(() => document.querySelectorAll('[data-id="e2e-card"], [data-id="e2e2-card"], [data-id^="e2e-"], [data-id^="e2e2-"]').forEach((el) => { if (!el.parentElement?.closest('[data-id^="e2e"]')) el.remove(); }));
+
+      const summary = { site, viewport: vpId, viewportOverflow: vpCrops, before, in3d, depth, switched, after, leftovers, zoomed };
       fs.writeFileSync(info.outputPath(`${site}-clip-001.json`), JSON.stringify(summary, null, 2));
-      const inset = (id: string) => parseInset(in3d[id]!.clipPath);
+      const inset = (state: Record<string, { clipPath: string } | null>, id: string) => parseInset(state[id]!.clipPath);
 
       expect(in3d['e2e-cover']!.overflow, 'K1: a photo keeps its own crop').toBe('clip');
       expect(in3d['e2e-ellipsis']!.overflow, 'K1: a text leaf keeps its own crop').toBe('hidden');
-      expect(depth.cover.live, 'K2: the photo still rises').toBe(true);
+      expect(in3d['e2e-svg']!.overflow, 'K1: an svg keeps its own crop').toBe('hidden');
+      for (const [x, d] of Object.entries(depth)) expect((d as { live: boolean }).live, `K2/K4: ${x} still rises`).toBe(true);
       expect(in3d['e2e-card']!.overflow, 'K4: the container stays visible, so its children keep depth').toBe('visible');
-      expect(depth.photo.live && depth.nested.live, 'K4: cropped leaves still rise').toBe(true);
-      expect(inset('e2e-photo'), 'K3: the photo is cut to the card').toEqual([50, 150, 50, 150]);
-      expect(inset('e2e-text'), 'K3: the text is cut at the card edge').toEqual([0, 200, 0, 0]);
-      expect(inset('e2e-nested'), 'K6: nested crops intersect').toEqual([0, 140, 140, 0]);
+      expect(inset(in3d, 'e2e-photo'), 'K3: the photo is cut to the card').toEqual([50, 150, 50, 150]);
+      expect(inset(in3d, 'e2e-text'), 'K3/R4: the text is cut at the card edge, other sides open to the card').toEqual([-150, 208, -22, -200]);
+      expect(inset(in3d, 'e2e-nested'), 'K6: nested crops intersect (the card cuts more than the inner box)').toEqual([-60, 188, 140, -60]);
       expect(in3d['e2e-outside']!.clipPath, 'K7: a leaf outside its card is hidden').toMatch(/^inset\(50%/);
-      expect(in3d['e2e-turned']!.mark, 'K9: a turned leaf is left alone').toBeNull();
+      expect(in3d['e2e-turned']!.mark, 'K9: a turned leaf is left alone').toBe(false);
+      expect(in3d['e2e-mirrored']!.mark, 'K9: a mirrored leaf is left alone').toBe(false);
       expect(in3d['e2e-authored']!.clipPath, 'K8: an authored clip-path is kept').toBe(before['e2e-authored']!.clipPath);
-      expect(in3d['e2e-free-child']!.mark, 'K3: a leaf nothing crops is not cut').toBeNull();
-      if (vpCrops !== 'visible') expect(inset('e2e-edge'), 'K15: a cropping breakpoint cuts its leaves').toEqual([0, 150, 0, 0]);
-      else expect(in3d['e2e-edge']!.mark, 'K15: a breakpoint that does not crop cuts nothing').toBeNull();
-      expect(reapplied['e2e-photo']!.mark, 'K11: the marks come back after an update').not.toBeNull();
-      expect(after['e2e-photo']!.clipPath, 'K12: no crop survives exit').toBe('none');
+      expect(inset(in3d, 'e2e-svg'), 'R1: an svg leaf is cut').toEqual([-40, 68, -92, -240]);
+      expect(in3d['e2e-svg-out']!.clipPath, 'R1/K7: an svg outside its card is hidden').toMatch(/^inset\(50%/);
+      expect(in3d['e2e-escape']!.mark, 'R5: an absolute box escapes the static wrapper\'s crop').toBe(false);
+      expect(in3d['e2e-acc-row']!.clipPath, 'R2: a container inside a zero-height crop is hidden').toMatch(/^inset\(50%/);
+      expect(in3d['e2e-acc-text']!.clipPath, 'R2: a leaf inside a zero-height crop is hidden').toMatch(/^inset\(50%/);
+      expect(in3d['e2e-inline-b']!.mark, 'R3: an inline box crops nothing').toBe(false);
+      const axis = inset(in3d, 'e2e-axis-leaf') as number[];
+      expect([axis[1], axis[3]], 'R6: overflow-x crops left and right').toEqual([30, 30]);
+      expect(axis[0] < 0 && axis[2] < 0, 'R6: ... and does not cut top or bottom (only a cropping breakpoint could)').toBe(true);
+      expect(in3d['e2e-free-child']!.mark, 'a leaf nothing crops is not cut').toBe(false);
+      if (vpCrops !== 'visible') expect((inset(in3d, 'e2e-edge') as number[])[1], 'K15: a cropping breakpoint cuts its leaves').toBe(150);
+      else expect(in3d['e2e-edge']!.mark, 'K15: a breakpoint that does not crop cuts nothing').toBe(false);
+      if (switched) {
+        expect((switched as Record<string, { clipPath: string }>)['e2e2-photo'].clipPath, 'switch: the other breakpoint\'s photo is cut').toBe(in3d['e2e-photo']!.clipPath);
+        expect((switched as Record<string, { clipPath: string }>)['e2e2-acc-row'].clipPath, 'switch: ...and its accordion hidden').toMatch(/^inset\(50%/);
+      }
+      expect(after['e2e-photo']!.clipPath, 'K12: no cut survives exit').toBe('none');
       expect(after['e2e-card']!.overflow, 'K12: the card crops again in 2D').toBe('hidden');
-      expect(leftovers, 'K12: no mark or stylesheet survives exit').toEqual({ marks: 0, style: false });
+      expect(leftovers, 'K12: no mark or custom property survives exit').toEqual({ marks: 0, vars: 0 });
+      for (const id of ['e2e-photo', 'e2e-text', 'e2e-nested', 'e2e-svg']) expect(zoomed[id]!.clipPath, `zoom: ${id} gets the same cut at another zoom`).toBe(in3d[id]!.clipPath);
     });
 
     for (const file of ['', ...pages]) {
       const pageLabel = file || 'the home page';
-      test(`CLIP-002 ${label}, ${pageLabel}: every leaf a container crops in 2D is cut in 3D, every leaf keeps its own crop`, { tag: ['@p1', '@scene'] }, async ({ page, editor }, info) => {
+      const slug = (file || 'home').replace(/[^\w]+/g, '-');
+      test(`CLIP-002 ${label}, ${pageLabel}: exactly the nodes cropped in 2D are cut in 3D, and every replaced node keeps its own crop`, { tag: ['@p1', '@scene'] }, async ({ page, editor }, info) => {
         const frame = await openSite(page, editor, site);
-        if (file) {
-          await page.evaluate((f) => (window as unknown as { __e2e: { openFile(p: string): void } }).__e2e.openFile(f), file);
-          await editor.settled();
-          await frame.locator('[data-content-root] > [data-viewport][data-node-id]').first().waitFor({ state: 'attached' });
-          await page.waitForTimeout(REST_MS);
-        }
+        await openPage(page, editor, frame, file);
         const vpId = await page.evaluate(() => (window as unknown as { __e2e: E2EHooks }).__e2e.interactingViewport());
-        const cropped = await croppedLeaves2d(frame, vpId);
-        const ownCrop2d = await frame.evaluate((id) => [...document.querySelectorAll<HTMLElement>(`[data-content-root] > [data-viewport="${id}"] img[data-node-id]`)]
-          .map((el) => getComputedStyle(el).overflow), vpId);
+        const cropped = await croppedIn2d(frame, vpId);
+        const own = (id: string) => frame.evaluate((vp) => [...document.querySelectorAll<HTMLElement>(`[data-content-root] > [data-viewport="${vp}"] :is(img, video, canvas, svg)[data-node-id]`)]
+          .map((el) => getComputedStyle(el).overflow), id);
+        const own2d = await own(vpId);
+        test.skip(cropped.length === 0 && own2d.length === 0, 'nothing cropped and no replaced node on this page: nothing to check');
         await enter3d(page, editor);
-        const marked = await frame.evaluate((ids) => ids.filter((id) => [...document.querySelectorAll(`[data-content-root] [data-id="${id}"]`)].some((el) => el.hasAttribute('data-scene-clip'))), cropped);
-        const ownCrop3d = await frame.evaluate((id) => [...document.querySelectorAll<HTMLElement>(`[data-content-root] > [data-viewport="${id}"] img[data-node-id]`)]
-          .map((el) => getComputedStyle(el).overflow), vpId);
-        const slug = (file || 'home').replace(/[^\w]+/g, '-');
+        const cut = await cutIn3d(frame, vpId);
+        const own3d = await own(vpId);
         await page.screenshot({ path: info.outputPath(`${site}-clip-002-${slug}.png`) });
         await exit3d(page, editor);
-        const report = { site, file: file || 'home', viewport: vpId, cropped: cropped.length, marked: marked.length, missing: cropped.filter((id) => !marked.includes(id)), imgs: ownCrop3d.length, imgsVisible3d: ownCrop3d.filter((o) => o === 'visible').length };
+        const marked = Object.keys(cut);
+        const report = { site, file: file || 'home', viewport: vpId, cropped: cropped.length, cut: marked.length, missing: cropped.filter((id) => !marked.includes(id)), extra: marked.filter((id) => !cropped.includes(id)), replaced: own3d.length };
         fs.writeFileSync(info.outputPath(`${site}-clip-002-${slug}.json`), JSON.stringify(report, null, 2));
-        expect(report.missing, 'K3: every leaf cropped in 2D is cut in 3D').toEqual([]);
-        expect(ownCrop3d, 'K1: every photo keeps its 2D overflow in 3D').toEqual(ownCrop2d);
+        expect(report.missing, 'K3: every node cropped in 2D is cut in 3D').toEqual([]);
+        expect(report.extra, 'no node is cut in 3D that 2D did not crop').toEqual([]);
+        expect(own3d, 'K1: every replaced node keeps its 2D overflow in 3D').toEqual(own2d);
+      });
+    }
+
+    for (const file of pages) {
+      const slug = file.replace(/[^\w]+/g, '-');
+      test(`CLIP-003 ${label}, ${file}: a real render in 3D keeps every cut`, { tag: ['@p1', '@scene'] }, async ({ page, editor }, info) => {
+        const frame = await openSite(page, editor, site);
+        await openPage(page, editor, frame, file);
+        const vpId = await page.evaluate(() => (window as unknown as { __e2e: E2EHooks }).__e2e.interactingViewport());
+        await enter3d(page, editor);
+        const before = await cutIn3d(frame, vpId);
+        test.skip(Object.keys(before).length === 0, 'no cut on this page: nothing a render could break');
+        const renders = await page.evaluate(() => (window as unknown as { __e2e: E2EHooks }).__e2e.traceEntries('canvas:render|render-done').length);
+        await page.evaluate(() => (window as unknown as { __e2e: { forceRender(): void } }).__e2e.forceRender());
+        await page.waitForTimeout(REST_MS);
+        const after = await cutIn3d(frame, vpId);
+        await page.screenshot({ path: info.outputPath(`${site}-clip-003-${slug}.png`) });
+        await exit3d(page, editor);
+        fs.writeFileSync(info.outputPath(`${site}-clip-003-${slug}.json`), JSON.stringify({ site, file, renders, before, after }, null, 2));
+        expect(after, 'K11: after a real render in 3D the same nodes carry the same cuts').toEqual(before);
       });
     }
   });

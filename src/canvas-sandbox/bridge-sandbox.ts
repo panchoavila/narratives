@@ -435,7 +435,7 @@ const api: SandboxApi = {
       );
       trace.action('canvas-sandbox:render-done', { children: contentRoot.children.length });
       if (sceneInspection.enabled) {
-        void applySceneInspection(contentRoot, sceneInspection);
+        void applySceneInspection(contentRoot, sceneInspection, true);
         observeSceneViewport();
       }
       // Re-cull SYNCHRONOUSLY before measuring: at high zoom this drops the
