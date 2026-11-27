@@ -1,6 +1,6 @@
 import { trace } from '@/shared/debug-trace';
 import { applySceneProjection, SCENE_TRANSITION_MS, SCENE_EASING, type SceneProjectionOptions, type SceneViewportBounds } from '@/shared/scene-projection';
-import { FORCED_VISIBLE, applySceneClips, clearSceneClips, measureSceneClips, scheduleSceneClipRemeasure, sceneClipRule } from './scene-clipping';
+import { FORCED_VISIBLE, applySceneClips, clearSceneClips, measureSceneClips, scheduleSceneClipRemeasure, sceneClipRule, watchSceneClips } from './scene-clipping';
 
 export interface SceneInspectionOptions extends SceneProjectionOptions {
   separation: number;
@@ -188,6 +188,7 @@ ${options.selectedId ? `${scope} [data-node-id][data-id=${selected}] { outline: 
     if (entering) {
       root.setAttribute('data-scene-inspection', '2d');
       root.getBoundingClientRect();
+      watchSceneClips(root, style);
     } else {
       applySceneClips(root); // a render may have dropped them
       if (rendered) scheduleSceneClipRemeasure(root, style);

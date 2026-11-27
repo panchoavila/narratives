@@ -56,6 +56,8 @@ interface SceneClips {
   scroll: Map<string, [number, number]>;
   /** A measurement waiting for renders to stop and the scene to be still. */
   timer: ReturnType<typeof setTimeout> | null;
+  /** Structure changes in 3D that no render announces (collection items synced after one). */
+  observer: MutationObserver | null;
 }
 /** Renders can arrive in a burst; one measurement after the last. */
 const REMEASURE_DEBOUNCE_MS = 150;
@@ -145,7 +147,7 @@ function containingBlock(cs: CSSStyleDeclaration, escape: Exclude<Escape, null>)
 export function measureSceneClips(root: HTMLElement): void {
   let state = states.get(root);
   const entry = !state;
-  if (!state) { state = { marked: new Map(), scroll: new Map(), timer: null }; states.set(root, state); }
+  if (!state) { state = { marked: new Map(), scroll: new Map(), timer: null, observer: null }; states.set(root, state); }
   const styles = new Map<Element, CSSStyleDeclaration>();
   const style = (el: Element) => { let cs = styles.get(el); if (!cs) { cs = getComputedStyle(el); styles.set(el, cs); } return cs; };
   const boxes = new Map<HTMLElement, Box | null>();
@@ -225,7 +227,9 @@ function unmark(el: HTMLElement): void {
 }
 
 /** Writes the cuts back. Idempotent and cheap: run after every update, since a
- *  render may drop the attribute or the custom property. */
+ *  render may drop the attribute or the custom property. A node can also carry a
+ *  cut that is not its own: collection items are cloned from their template,
+ *  attributes and inline style included. Those are removed. */
 export function applySceneClips(root: HTMLElement): void {
   const state = states.get(root);
   if (!state) return;
@@ -234,6 +238,23 @@ export function applySceneClips(root: HTMLElement): void {
     if (!el.hasAttribute(CLIP_ATTR)) el.setAttribute(CLIP_ATTR, '');
     if (el.style.getPropertyValue(CLIP_VAR) !== inset) el.style.setProperty(CLIP_VAR, inset);
   }
+  for (const el of root.querySelectorAll<HTMLElement>(`[${CLIP_ATTR}]`)) if (!state.marked.has(el)) unmark(el);
+  for (const el of root.querySelectorAll<HTMLElement>('[data-node-id][style*="--scene-clip"]')) if (!state.marked.has(el)) unmark(el);
+}
+
+/** In 3D, measures again whenever the canvas structure or text changes, not only
+ *  after a render: collection items are synced after the render that announces it.
+ *  The cuts' own writes are attributes and style, which this does not watch. */
+export function watchSceneClips(root: HTMLElement, sheet: HTMLStyleElement): void {
+  const state = states.get(root);
+  if (!state || state.observer) return;
+  state.observer = new MutationObserver(records => {
+    if (records.some(r => !(r.target instanceof Element ? r.target : r.target.parentElement)?.closest('[data-scene-grid]'))) {
+      applySceneClips(root);
+      scheduleSceneClipRemeasure(root, sheet);
+    }
+  });
+  state.observer.observe(root, { childList: true, subtree: true, characterData: true });
 }
 
 /** A render in 3D may have changed what 2D crops: measure again once renders stop
@@ -246,7 +267,8 @@ export function scheduleSceneClipRemeasure(root: HTMLElement, sheet: HTMLStyleEl
     state.timer = null;
     if (states.get(root) !== state || !root.isConnected) return;
     // A read now would cut a running turn or layer lift short: try again after it.
-    if (root.getAnimations({ subtree: true }).some(a => a.playState === 'running')) { scheduleSceneClipRemeasure(root, sheet); return; }
+    const animating = typeof root.getAnimations === 'function' && root.getAnimations({ subtree: true }).some(a => a.playState === 'running');
+    if (animating) { scheduleSceneClipRemeasure(root, sheet); return; }
     with2dCascade(root, sheet, () => measureSceneClips(root));
     trace.dom('scene-inspection:clips-remeasured', { cut: state.marked.size });
   }, REMEASURE_DEBOUNCE_MS);
@@ -292,6 +314,7 @@ function with2dCascade(root: HTMLElement, sheet: HTMLStyleElement, read: () => v
 export function clearSceneClips(root: HTMLElement): void {
   const state = states.get(root);
   if (state?.timer != null) clearTimeout(state.timer);
+  state?.observer?.disconnect();
   if (state) for (const el of state.marked.keys()) unmark(el);
   root.ownerDocument.getElementById(MEASURING_STYLE_ID)?.remove();
   for (const el of root.querySelectorAll<HTMLElement>(`[${CLIP_ATTR}]`)) unmark(el);
