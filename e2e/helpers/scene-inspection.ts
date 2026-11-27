@@ -775,8 +775,10 @@ function croppedIn2d(frame: Frame, viewportId: string): Promise<string[]> {
       if (!x && !y) return null;
       const r = el.getBoundingClientRect();
       const he = el as HTMLElement;
-      const left = r.left + he.clientLeft, top = r.top + he.clientTop;
-      return { x, y, left, top, right: left + he.clientWidth * (r.width / (he.offsetWidth || 1) || 1), bottom: top + he.clientHeight * (r.height / (he.offsetHeight || 1) || 1) };
+      // Client offsets are layout px; the rect is screen px at the camera's zoom.
+      const sx = he.offsetWidth ? r.width / he.offsetWidth : 1, sy = he.offsetHeight ? r.height / he.offsetHeight : 1;
+      const left = r.left + he.clientLeft * sx, top = r.top + he.clientTop * sy;
+      return { x, y, left, top, right: left + he.clientWidth * sx, bottom: top + he.clientHeight * sy };
     };
     const contains = (s: CSSStyleDeclaration, fixed: boolean) => s.transform !== 'none' || s.perspective !== 'none' || s.filter !== 'none' || (!fixed && s.position !== 'static');
     const out: string[] = [];
@@ -802,9 +804,14 @@ function croppedIn2d(frame: Frame, viewportId: string): Promise<string[]> {
         if (turned(a)) skip = true;
         escape = ['absolute', 'fixed'].includes(s.position) ? s.position : null;
       }
-      if (!any || skip || (!r.width && !r.height)) continue;
+      if (!any || skip || !r.width || !r.height) continue; // nothing to paint
+      // Compare in layout px (half a px), not screen px: at a far zoom a screen px is many layout px.
+      const he = el as HTMLElement;
+      const w = typeof he.offsetWidth === 'number' ? he.offsetWidth : parseFloat(cs(el).width);
+      const h = typeof he.offsetHeight === 'number' ? he.offsetHeight : parseFloat(cs(el).height);
+      const ex = 0.5 * (r.width / (w || 1)), ey = 0.5 * (r.height / (h || 1));
       const empty = R <= r.left || L >= r.right || B <= r.top || T >= r.bottom;
-      const cut = r.left < L - 0.5 || r.top < T - 0.5 || r.right > R + 0.5 || r.bottom > B + 0.5;
+      const cut = r.left < L - ex || r.top < T - ey || r.right > R + ex || r.bottom > B + ey;
       if (empty || (leaf && cut)) out.push(el.getAttribute('data-node-id')!);
     }
     return out;

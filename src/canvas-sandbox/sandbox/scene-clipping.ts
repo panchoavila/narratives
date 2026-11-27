@@ -51,6 +51,9 @@ interface Box { left: number; top: number; right: number; bottom: number }
 interface SceneClips {
   /** Nodes carrying a cut, and the cut. */
   marked: Map<HTMLElement, string>;
+  /** Scroll offsets of cropping containers at entry, by `data-node-id`. 3D makes them
+   *  `visible`, which drops the offset; a later 2D read puts it back first. */
+  scroll: Map<string, [number, number]>;
   /** A measurement waiting for renders to stop and the scene to be still. */
   timer: ReturnType<typeof setTimeout> | null;
 }
@@ -141,7 +144,8 @@ function containingBlock(cs: CSSStyleDeclaration, escape: Exclude<Escape, null>)
  */
 export function measureSceneClips(root: HTMLElement): void {
   let state = states.get(root);
-  if (!state) { state = { marked: new Map(), timer: null }; states.set(root, state); }
+  const entry = !state;
+  if (!state) { state = { marked: new Map(), scroll: new Map(), timer: null }; states.set(root, state); }
   const styles = new Map<Element, CSSStyleDeclaration>();
   const style = (el: Element) => { let cs = styles.get(el); if (!cs) { cs = getComputedStyle(el); styles.set(el, cs); } return cs; };
   const boxes = new Map<HTMLElement, Box | null>();
@@ -151,6 +155,7 @@ export function measureSceneClips(root: HTMLElement): void {
   const candidates = new Set<HTMLElement>();
   for (const el of root.querySelectorAll<HTMLElement>('[data-node-id]')) {
     if (insideSvg(el) || isLeaf(el) || !clipperAxes(el, style(el))) continue;
+    if (entry && (el.scrollLeft || el.scrollTop)) state.scroll.set(el.getAttribute('data-node-id') ?? '', [el.scrollLeft, el.scrollTop]);
     for (const d of el.querySelectorAll<HTMLElement>('[data-node-id]')) if (!insideSvg(d)) candidates.add(d);
   }
 
@@ -266,6 +271,14 @@ function with2dCascade(root: HTMLElement, sheet: HTMLStyleElement, read: () => v
   root.style.setProperty('transform', 'none');
   sheet.disabled = true;
   try {
+    // The 2D read sees what entry saw: containers scrolled as they were then.
+    const scroll = states.get(root)?.scroll;
+    if (scroll?.size) {
+      for (const el of root.querySelectorAll<HTMLElement>('[data-node-id]')) {
+        const at = scroll.get(el.getAttribute('data-node-id') ?? '');
+        if (at) { el.scrollLeft = at[0]; el.scrollTop = at[1]; }
+      }
+    }
     read();
   } finally {
     sheet.disabled = false;
